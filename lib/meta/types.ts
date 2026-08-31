@@ -8,12 +8,9 @@ export type MetaAdAccount = {
 };
 
 export type MetaSyncSummary = {
-  businessManagersFound: number;
   metaAccountsFromApi: number;
   uniqueMetaAccounts: number;
   metaAccountsCreated: number;
   metaAccountsUpdated: number;
   metaAccountsExisting: number;
-  metaAccountsWithoutBusiness: number;
-  metaAccountsWithMultipleBusinesses: number;
 };

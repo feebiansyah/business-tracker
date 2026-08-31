@@ -10,10 +10,9 @@ type MetaPage<T> = {
   error?: { message?: string; code?: number };
 };
 
-const TEMPORARY_ERROR_CODES = new Set([1, 2, 4, 17, 32, 613]);
+const TEMPORARY_ERROR_CODES = new Set([1, 2, 17, 32, 613]);
 const MAX_RETRIES = 3;
 const BASE_RETRY_DELAY_MS = 1_000;
-const RATE_LIMIT_RETRY_DELAY_MS = 5_000;
 const BUSINESS_DELAY_MS = 500;
 
 function sleep(milliseconds: number) {
@@ -107,9 +106,8 @@ export class MetaGraphClient {
       const errorCode = Number(payload.error?.code);
       const canRetry = attempt < MAX_RETRIES && TEMPORARY_ERROR_CODES.has(errorCode);
       if (canRetry) {
-        const baseDelay = errorCode === 4 ? RATE_LIMIT_RETRY_DELAY_MS : BASE_RETRY_DELAY_MS;
         const retryAfter = Number(response.headers.get("retry-after")) * 1_000;
-        const backoff = baseDelay * 2 ** attempt;
+        const backoff = BASE_RETRY_DELAY_MS * 2 ** attempt;
         await sleep(Math.max(backoff, Number.isFinite(retryAfter) ? retryAfter : 0));
         continue;
       }
