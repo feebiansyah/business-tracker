@@ -1,0 +1,2 @@
+import { PagePlaceholder } from "@/components/shared/page-placeholder";
+export default function AduPage() { return <PagePlaceholder title="ADU" />; }

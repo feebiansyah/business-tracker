@@ -1,0 +1,7 @@
+import Link from "next/link";
+import { createShopeeAccount } from "@/app/shopee/actions";
+import { Button } from "@/components/ui/button";
+
+export function ShopeeAccountForm() {
+  return <form action={createShopeeAccount} className="space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"><div><p className="text-sm font-medium text-slate-500">Akun Shopee</p><h2 className="mt-1 text-xl font-semibold text-slate-950">Tambah Akun Shopee</h2></div><label className="block text-sm font-medium text-slate-700">Nama akun<input name="name" required className="mt-1.5 h-10 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" /></label><label className="block text-sm font-medium text-slate-700">Shop ID <span className="font-normal text-slate-400">(opsional)</span><input name="shopId" className="mt-1.5 h-10 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" /></label><label className="block text-sm font-medium text-slate-700">Status<select name="status" defaultValue="ACTIVE" className="mt-1.5 h-10 w-full rounded-md border bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"><option value="ACTIVE">Aktif</option><option value="INACTIVE">Nonaktif</option></select></label><div className="flex justify-end gap-3"><Button asChild variant="ghost"><Link href="/shopee">Batal</Link></Button><Button type="submit">Simpan Akun</Button></div></form>;
+}
