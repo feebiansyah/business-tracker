@@ -14,3 +14,12 @@ export type MetaSyncSummary = {
   metaAccountsUpdated: number;
   metaAccountsExisting: number;
 };
+
+export type MetaBusinessMappingSummary = {
+  businessesProcessed: number;
+  metaAccountsFound: number;
+  metaAccountsMapped: number;
+  metaAccountsWithMultipleBusinesses: number;
+  businessesRemaining: number;
+  completed: boolean;
+};

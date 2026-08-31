@@ -47,3 +47,10 @@ model MetaAccount {
   businessManager BusinessManager? @relation(fields: [businessManagerId], references: [id])
   shopeeAccount   ShopeeAccount?  @relation(fields: [shopeeAccountId], references: [id])
 }
+
+model MetaBusinessMappingProgress {
+  id                Int       @id
+  nextBusinessIndex Int       @default(0)
+  completed         Boolean   @default(false)
+  lastSyncAt        DateTime?
+}
