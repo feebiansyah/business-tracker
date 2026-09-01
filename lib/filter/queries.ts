@@ -39,13 +39,13 @@ export async function getFilterCampaignDetail(shopeeAccountId: number, campaignI
     select: {
       id: true, name: true, metaStatus: true, startTime: true, effectiveDailyBudget: true,
       metaAccount: { select: { name: true } },
-      dailyMetrics: { select: { date: true, spend: true, commission: true, clickFp: true, shopeeClicks: true, cpcFp: true }, orderBy: { date: "desc" } },
+      dailyMetrics: { select: { id: true, date: true, spend: true, commission: true, clickFp: true, shopeeClicks: true, cpcFp: true, note: true, completed: true }, orderBy: { date: "desc" } },
     },
   });
   if (!campaign) return null;
   const sources: DailyMetricSource[] = campaign.dailyMetrics.map((metric) => ({
-    date: dateString(metric.date), spend: metric.spend?.toNumber() ?? 0, commission: metric.commission?.toNumber() ?? null,
-    clickFp: metric.clickFp, shopeeClicks: metric.shopeeClicks, cpcFp: metric.cpcFp?.toNumber() ?? null,
+    id: metric.id, date: dateString(metric.date), spend: metric.spend?.toNumber() ?? 0, commission: metric.commission?.toNumber() ?? null,
+    clickFp: metric.clickFp, shopeeClicks: metric.shopeeClicks, cpcFp: metric.cpcFp?.toNumber() ?? null, note: metric.note, completed: metric.completed,
   }));
   return {
     campaign: {

@@ -85,6 +85,8 @@ model CampaignDailyMetric {
   cpcFp        Decimal? @db.Decimal(18, 4)
   commission   Decimal? @db.Decimal(18, 2)
   shopeeClicks Int?
+  note         String?  @db.Text
+  completed    Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
