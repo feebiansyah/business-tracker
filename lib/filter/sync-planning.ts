@@ -14,9 +14,10 @@ export function planCampaignCoverage(campaigns: CoverageCampaign[], today: strin
       continue;
     }
     for (const range of buildMonthlyChunks(start, today)) {
-      const key = `${range.since}:${range.until}`;
+      const key = range.until;
       const chunk = chunksByRange.get(key) ?? { ...range, campaignIds: [] };
-      chunk.campaignIds.push(campaign.id);
+      if (range.since < chunk.since) chunk.since = range.since;
+      if (!chunk.campaignIds.includes(campaign.id)) chunk.campaignIds.push(campaign.id);
       chunksByRange.set(key, chunk);
     }
   }
