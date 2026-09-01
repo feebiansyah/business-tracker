@@ -14,3 +14,20 @@ export type ParsedCommissionRow = {
   normalizedTagLink2: string;
   commission: Decimal;
 };
+
+export type CommissionAggregate = {
+  date: string;
+  tagLink2: string;
+  normalizedTagLink2: string;
+  commission: Decimal;
+  rowCount: number;
+};
+
+export type AggregationResult = {
+  aggregates: CommissionAggregate[];
+  csvRowCount: number;
+  tagCount: number;
+  dateFrom: string;
+  dateTo: string;
+  totalCommission: Decimal;
+};
