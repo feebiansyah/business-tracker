@@ -30,7 +30,8 @@ model ShopeeAccount {
   status    String   @default("ACTIVE")
   createdAt DateTime @default(now())
 
-  metaAccounts MetaAccount[]
+  metaAccounts      MetaAccount[]
+  commissionImports ShopeeCommissionImport[]
 }
 
 model MetaAccount {
@@ -95,4 +96,39 @@ model CampaignDailyMetric {
 
   @@unique([campaignId, date])
   @@index([date])
+}
+
+model ShopeeCommissionImport {
+  id                  Int      @id @default(autoincrement())
+  originalFilename    String   @db.VarChar(255)
+  fileSha256          String   @db.Char(64)
+  dateFrom            DateTime @db.Date
+  dateTo              DateTime @db.Date
+  csvRowCount         Int
+  tagCount            Int
+  matchedCount        Int
+  unmatchedCount      Int
+  matchedCommission   Decimal  @db.Decimal(18, 2)
+  unmatchedCommission Decimal  @db.Decimal(18, 2)
+  createdAt           DateTime @default(now())
+
+  shopeeAccountId Int
+  shopeeAccount   ShopeeAccount                     @relation(fields: [shopeeAccountId], references: [id], onDelete: Restrict)
+  unmatched       ShopeeCommissionImportUnmatched[]
+
+  @@index([shopeeAccountId, createdAt])
+}
+
+model ShopeeCommissionImportUnmatched {
+  id         Int      @id @default(autoincrement())
+  date       DateTime @db.Date
+  tagLink2   String   @db.Text
+  commission Decimal  @db.Decimal(18, 2)
+  rowCount   Int
+  reason     String   @db.VarChar(32)
+
+  importId Int
+  import   ShopeeCommissionImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([importId, date])
 }
