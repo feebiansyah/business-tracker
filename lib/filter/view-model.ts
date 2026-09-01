@@ -9,3 +9,10 @@ export function summarizeCampaignMetrics(metrics: SummaryMetric[]) {
   const financial = calculateFinancialMetrics(totalSpend, totalCommission, null, null);
   return { daysWithData: new Set(metrics.map((metric) => metric.date)).size, totalSpend, costWithFee: financial.costWithFee, totalCommission, profit: financial.profit, profitPercent: financial.profitPercent };
 }
+
+export type DailyMetricSource = { date: string; spend: number; commission: number | null; clickFp: number | null; shopeeClicks: number | null; cpcFp: number | null };
+
+export function buildDailyMetricView(metric: DailyMetricSource) {
+  const financial = calculateFinancialMetrics(metric.spend, metric.commission, metric.clickFp, metric.shopeeClicks);
+  return { ...metric, costWithFee: financial.costWithFee, profit: financial.profit, profitPercent: financial.profitPercent, clickPercent: financial.clickPercent, cpcShopee: financial.cpcShopee };
+}
