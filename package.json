@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test lib/prafilter/*.test.mjs"
+    "test": "node --test components/**/*.test.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

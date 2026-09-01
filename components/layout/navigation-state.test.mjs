@@ -1,0 +1,37 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { getShopeeNavigationState } from "./navigation-state.ts";
+
+test("marks the Shopee parent active on the Shopee index", () => {
+  assert.deepEqual(getShopeeNavigationState("/shopee", 3), {
+    shopeeActive: true,
+    accountActive: false,
+    activeWorkflow: null,
+  });
+});
+
+test("marks only the matching Shopee account active", () => {
+  assert.deepEqual(getShopeeNavigationState("/shopee/3", 3), {
+    shopeeActive: true,
+    accountActive: true,
+    activeWorkflow: null,
+  });
+  assert.equal(getShopeeNavigationState("/shopee/3", 4).accountActive, false);
+});
+
+test("identifies the exact Filter workflow", () => {
+  assert.equal(getShopeeNavigationState("/shopee/3/filter", 3).activeWorkflow, "filter");
+  assert.equal(getShopeeNavigationState("/shopee/3/filter", 4).activeWorkflow, null);
+});
+
+test("does not confuse OFF Filter with Filter", () => {
+  assert.equal(getShopeeNavigationState("/shopee/3/off-filter", 3).activeWorkflow, "off-filter");
+});
+
+test("keeps Shopee navigation inactive on unrelated routes", () => {
+  assert.deepEqual(getShopeeNavigationState("/meta", 3), {
+    shopeeActive: false,
+    accountActive: false,
+    activeWorkflow: null,
+  });
+});
