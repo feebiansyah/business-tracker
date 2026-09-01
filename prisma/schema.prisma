@@ -45,6 +45,7 @@ model MetaAccount {
 
   businessManager BusinessManager? @relation(fields: [businessManagerId], references: [id])
   shopeeAccount   ShopeeAccount?   @relation(fields: [shopeeAccountId], references: [id])
+  campaigns       Campaign[]
 }
 
 model MetaBusinessMappingProgress {
@@ -52,4 +53,44 @@ model MetaBusinessMappingProgress {
   nextBusinessIndex Int       @default(0)
   completed         Boolean   @default(false)
   lastSyncAt        DateTime?
+}
+
+model Campaign {
+  id                   Int       @id @default(autoincrement())
+  metaCampaignId       String    @unique
+  name                 String
+  startTime            DateTime?
+  metaStatus           String?
+  effectiveStatus      String?
+  effectiveDailyBudget Decimal?  @db.Decimal(18, 2)
+  budgetSource         String
+  historySyncedThrough DateTime? @db.Date
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  metaAccountId Int
+  metaAccount   MetaAccount @relation(fields: [metaAccountId], references: [id])
+
+  dailyMetrics CampaignDailyMetric[]
+
+  @@index([metaAccountId])
+  @@index([metaStatus, effectiveDailyBudget])
+}
+
+model CampaignDailyMetric {
+  id           Int      @id @default(autoincrement())
+  date         DateTime @db.Date
+  spend        Decimal? @db.Decimal(18, 2)
+  clickFp      Int?
+  cpcFp        Decimal? @db.Decimal(18, 4)
+  commission   Decimal? @db.Decimal(18, 2)
+  shopeeClicks Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  campaignId Int
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([campaignId, date])
+  @@index([date])
 }
