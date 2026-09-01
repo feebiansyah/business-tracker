@@ -2,9 +2,7 @@ import "server-only";
 
 import { createHmac } from "node:crypto";
 import { getMetaConfig, type MetaConfig } from "@/lib/meta/config";
-import { normalizeMetaAccountPath } from "@/lib/meta/account-id";
 import type { MetaAdAccount, MetaBusiness } from "@/lib/meta/types";
-import type { MetaCampaign, MetaCampaignInsight } from "@/lib/prafilter/types";
 
 type MetaPage<T> = {
   data?: T[];
@@ -64,32 +62,6 @@ export class MetaGraphClient {
       "name",
       "account_status",
     ]);
-  }
-
-  getCampaigns(accountId: string) {
-    return this.getAllPages<MetaCampaign>(`/${normalizeMetaAccountPath(accountId)}/campaigns`, [
-      "id",
-      "name",
-      "status",
-      "effective_status",
-      "start_time",
-    ]);
-  }
-
-  getCampaignInsights(accountId: string, date: string) {
-    return this.getAllPages<MetaCampaignInsight>(`/${normalizeMetaAccountPath(accountId)}/insights`, [
-      "campaign_id",
-      "campaign_name",
-      "account_name",
-      "clicks",
-      "cpc",
-      "spend",
-      "date_start",
-      "date_stop",
-    ], {
-      level: "campaign",
-      time_range: JSON.stringify({ since: date, until: date }),
-    });
   }
 
   async waitBetweenBusinesses() {
