@@ -2,7 +2,9 @@ import "server-only";
 
 import { createHmac } from "node:crypto";
 import { getMetaConfig, type MetaConfig } from "@/lib/meta/config";
+import { normalizeMetaAccountPath } from "@/lib/meta/account-id";
 import type { MetaAdAccount, MetaBusiness } from "@/lib/meta/types";
+import type { MetaCampaign, MetaCampaignInsight } from "@/lib/prafilter/types";
 
 type MetaPage<T> = {
   data?: T[];
@@ -64,18 +66,49 @@ export class MetaGraphClient {
     ]);
   }
 
+  getCampaigns(accountId: string) {
+    return this.getAllPages<MetaCampaign>(`/${normalizeMetaAccountPath(accountId)}/campaigns`, [
+      "id",
+      "name",
+      "status",
+      "effective_status",
+      "start_time",
+    ]);
+  }
+
+  getCampaignInsights(accountId: string, date: string) {
+    return this.getAllPages<MetaCampaignInsight>(`/${normalizeMetaAccountPath(accountId)}/insights`, [
+      "campaign_id",
+      "campaign_name",
+      "account_name",
+      "clicks",
+      "cpc",
+      "spend",
+      "date_start",
+      "date_stop",
+    ], {
+      level: "campaign",
+      time_range: JSON.stringify({ since: date, until: date }),
+    });
+  }
+
   async waitBetweenBusinesses() {
+    await this.waitBetweenAccounts();
+  }
+
+  async waitBetweenAccounts() {
     const usageDelay = this.usagePercent >= 90 ? 3_000 : this.usagePercent >= 75 ? 1_500 : this.usagePercent >= 50 ? 750 : 0;
     await sleep(Math.max(BUSINESS_DELAY_MS, usageDelay));
   }
 
-  private async getAllPages<T>(path: string, fields: string[]): Promise<T[]> {
+  private async getAllPages<T>(path: string, fields: string[], params?: Record<string, string>): Promise<T[]> {
     const records: T[] = [];
     let after: string | undefined;
     do {
       const url = new URL(`${this.baseUrl}${path}`);
       url.searchParams.set("fields", fields.join(","));
       url.searchParams.set("limit", "100");
+      for (const [key, value] of Object.entries(params ?? {})) url.searchParams.set(key, value);
       if (after) url.searchParams.set("after", after);
       if (this.appSecretProof) url.searchParams.set("appsecret_proof", this.appSecretProof);
 
