@@ -34,17 +34,22 @@ export type FilterCampaignDetail = {
 
 export async function getFilterCampaignDetail(shopeeAccountId: number, campaignId: number): Promise<FilterCampaignDetail | null> {
   if (!Number.isInteger(shopeeAccountId) || shopeeAccountId <= 0 || !Number.isInteger(campaignId) || campaignId <= 0) return null;
-  const campaign = await prisma.campaign.findFirst({
-    where: { id: campaignId, metaStatus: "ACTIVE", effectiveDailyBudget: { not: null, lt: 200000 }, metaAccount: { shopeeAccountId } },
-    select: {
-      id: true, name: true, metaStatus: true, startTime: true, effectiveDailyBudget: true,
-      metaAccount: { select: { name: true } },
-      dailyMetrics: { select: { id: true, date: true, spend: true, commission: true, clickFp: true, shopeeClicks: true, cpcFp: true, note: true, completed: true }, orderBy: { date: "desc" } },
-    },
-  });
+  const [campaign, commissionImports] = await Promise.all([
+    prisma.campaign.findFirst({
+      where: { id: campaignId, metaStatus: "ACTIVE", effectiveDailyBudget: { not: null, lt: 200000 }, metaAccount: { shopeeAccountId } },
+      select: {
+        id: true, name: true, metaStatus: true, startTime: true, effectiveDailyBudget: true,
+        metaAccount: { select: { name: true } },
+        dailyMetrics: { select: { id: true, date: true, spend: true, commission: true, clickFp: true, shopeeClicks: true, cpcFp: true, note: true, completed: true }, orderBy: { date: "desc" } },
+      },
+    }),
+    prisma.shopeeCommissionImport.findMany({ where: { shopeeAccountId }, select: { dateFrom: true, dateTo: true } }),
+  ]);
   if (!campaign) return null;
+  const importedRanges = commissionImports.map((item) => ({ from: dateString(item.dateFrom), to: dateString(item.dateTo) }));
   const sources: DailyMetricSource[] = campaign.dailyMetrics.map((metric) => ({
     id: metric.id, date: dateString(metric.date), spend: metric.spend?.toNumber() ?? 0, commission: metric.commission?.toNumber() ?? null,
+    commissionImported: importedRanges.some((range) => range.from <= dateString(metric.date) && dateString(metric.date) <= range.to),
     clickFp: metric.clickFp, shopeeClicks: metric.shopeeClicks, cpcFp: metric.cpcFp?.toNumber() ?? null, note: metric.note, completed: metric.completed,
   }));
   return {

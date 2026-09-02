@@ -10,7 +10,12 @@ export function summarizeCampaignMetrics(metrics: SummaryMetric[]) {
   return { daysWithData: new Set(metrics.map((metric) => metric.date)).size, totalSpend, costWithFee: financial.costWithFee, totalCommission, profit: financial.profit, profitPercent: financial.profitPercent };
 }
 
-export type DailyMetricSource = { id: number; date: string; spend: number; commission: number | null; clickFp: number | null; shopeeClicks: number | null; cpcFp: number | null; note: string | null; completed: boolean };
+export type DailyMetricSource = { id: number; date: string; spend: number; commission: number | null; commissionImported: boolean; clickFp: number | null; shopeeClicks: number | null; cpcFp: number | null; note: string | null; completed: boolean };
+
+export function dailyCommissionDisplay(commission: number | null, commissionImported: boolean) {
+  if (commission !== null) return commission;
+  return commissionImported ? "Rp 0" : "Belum Import";
+}
 
 export function buildDailyMetricView(metric: DailyMetricSource) {
   const financial = calculateFinancialMetrics(metric.spend, metric.commission, metric.clickFp, metric.shopeeClicks);

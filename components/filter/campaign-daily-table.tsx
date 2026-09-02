@@ -5,6 +5,7 @@ import { updateDailyMetricManualAction } from "@/app/shopee/[id]/filter/actions"
 import { SortableHeader } from "@/components/filter/sortable-header";
 import { TablePagination } from "@/components/filter/table-pagination";
 import type { FilterCampaignDetail } from "@/lib/filter/queries";
+import { dailyCommissionDisplay } from "@/lib/filter/view-model";
 import { formatRupiah, paginateRows, sortRows, type SortDirection, type SortType, type SortValue } from "@/lib/filter/table-utils";
 
 type DailyRow = FilterCampaignDetail["dailyMetrics"][number];
@@ -18,6 +19,7 @@ const columns: { key: SortKey; label: string; type: SortType }[] = [
 const number = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
 function numeric(value: number | null) { return value === null ? "—" : number.format(value); }
 function percent(value: number | null) { return value === null ? "—" : `${value.toFixed(2)}%`; }
+function commission(value: number | null, imported: boolean) { const display = dailyCommissionDisplay(value, imported); return typeof display === "number" ? formatRupiah(display) : display; }
 
 function ManualCells({ shopeeAccountId, campaignId, row, onChange }: { shopeeAccountId: number; campaignId: number; row: DailyRow; onChange: (patch: Partial<Pick<DailyRow, "note" | "completed">>) => void }) {
   const [pending, startTransition] = useTransition();
@@ -49,7 +51,7 @@ export function CampaignDailyTable({ shopeeAccountId, campaignId, rows: initialR
     <div className="overflow-x-auto"><table className="w-full min-w-425 text-left text-sm">
       <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{columns.map((column) => <SortableHeader key={column.key} label={column.label} active={sortKey === column.key} direction={direction} onSort={() => changeSort(column.key)} />)}</tr></thead>
       <tbody className="divide-y divide-slate-200">{pagination.rows.map((row) => <tr key={row.id}>
-        <td className="px-4 py-3 font-medium text-slate-950">{row.date}</td><td className="px-4 py-3">{formatRupiah(row.spend)}</td><td className="px-4 py-3">{formatRupiah(row.costWithFee)}</td><td className="px-4 py-3">{formatRupiah(row.commission)}</td><td className="px-4 py-3">{formatRupiah(row.profit)}</td><td className="px-4 py-3">{percent(row.profitPercent)}</td><td className="px-4 py-3">{numeric(row.clickFp)}</td><td className="px-4 py-3">{numeric(row.shopeeClicks)}</td><td className="px-4 py-3">{percent(row.clickPercent)}</td><td className="px-4 py-3">{formatRupiah(row.cpcFp)}</td><td className="px-4 py-3">{formatRupiah(row.cpcShopee)}</td>
+        <td className="px-4 py-3 font-medium text-slate-950">{row.date}</td><td className="px-4 py-3">{formatRupiah(row.spend)}</td><td className="px-4 py-3">{formatRupiah(row.costWithFee)}</td><td className="px-4 py-3">{commission(row.commission, row.commissionImported)}</td><td className="px-4 py-3">{formatRupiah(row.profit)}</td><td className="px-4 py-3">{percent(row.profitPercent)}</td><td className="px-4 py-3">{numeric(row.clickFp)}</td><td className="px-4 py-3">{numeric(row.shopeeClicks)}</td><td className="px-4 py-3">{percent(row.clickPercent)}</td><td className="px-4 py-3">{formatRupiah(row.cpcFp)}</td><td className="px-4 py-3">{formatRupiah(row.cpcShopee)}</td>
         <ManualCells shopeeAccountId={shopeeAccountId} campaignId={campaignId} row={row} onChange={(patch) => updateRow(row.id, patch)} />
       </tr>)}{pagination.total === 0 && <tr><td colSpan={13} className="px-6 py-10 text-center text-slate-500">Belum ada histori harian dari Meta.</td></tr>}</tbody>
     </table></div>
