@@ -1,6 +1,6 @@
-export type ShopeeWorkflowSlug = "filter" | "fix" | "off-filter" | "off-fix";
+export type ShopeeWorkflowSlug = "import" | "filter" | "fix" | "off-filter" | "off-fix";
 
-const workflowSlugs = new Set<ShopeeWorkflowSlug>(["filter", "fix", "off-filter", "off-fix"]);
+const workflowSlugs = new Set<ShopeeWorkflowSlug>(["import", "filter", "fix", "off-filter", "off-fix"]);
 
 export function getShopeeNavigationState(pathname: string, accountId: number) {
   const [root, pathAccountId, workflow] = pathname.split("/").filter(Boolean);

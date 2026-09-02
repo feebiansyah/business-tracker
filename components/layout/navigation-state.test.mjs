@@ -35,3 +35,9 @@ test("keeps Shopee navigation inactive on unrelated routes", () => {
     activeWorkflow: null,
   });
 });
+
+test("identifies Import Shopee without confusing account workflows", () => {
+  assert.equal(getShopeeNavigationState("/shopee/3/import", 3).activeWorkflow, "import");
+  assert.equal(getShopeeNavigationState("/shopee/4/import", 3).activeWorkflow, null);
+  assert.equal(getShopeeNavigationState("/shopee/3/filter", 3).activeWorkflow, "filter");
+});

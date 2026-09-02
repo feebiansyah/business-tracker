@@ -19,6 +19,7 @@ export const navigationItems: NavigationItem[] = [
 export const shopeeNavigation = { href: "/shopee", label: "Akun Shopee", icon: ShoppingBag };
 
 export const shopeeWorkflows: { href: ShopeeWorkflowSlug; label: string }[] = [
+  { href: "import", label: "Import Shopee" },
   { href: "filter", label: "Filter" },
   { href: "fix", label: "Fix" },
   { href: "off-filter", label: "OFF Filter" },
