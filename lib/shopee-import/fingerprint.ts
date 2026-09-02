@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { canonicalCommission } from "./commission.ts";
 import type { MatchDigestInput } from "./types.ts";
 
 function hash(value: string | Uint8Array) {
@@ -14,7 +15,7 @@ export function buildMatchDigest(shopeeAccountId: number, result: MatchDigestInp
     .map((row) => ({
       campaignId: row.campaignId,
       date: row.date,
-      commission: row.commission.toFixed(2),
+      commission: canonicalCommission(row.commission),
       rowCount: row.rowCount,
     }))
     .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
@@ -23,7 +24,7 @@ export function buildMatchDigest(shopeeAccountId: number, result: MatchDigestInp
       date: row.date,
       tagLink2: row.tagLink2,
       normalizedTagLink2: row.normalizedTagLink2,
-      commission: row.commission.toFixed(2),
+      commission: canonicalCommission(row.commission),
       rowCount: row.rowCount,
       reason: row.reason,
     }))
@@ -38,8 +39,8 @@ export function buildMatchDigest(shopeeAccountId: number, result: MatchDigestInp
       tagCount: result.tagCount,
       matchedCount: matched.length,
       unmatchedCount: unmatched.length,
-      matchedCommission: result.matchedCommission.toFixed(2),
-      unmatchedCommission: result.unmatchedCommission.toFixed(2),
+      matchedCommission: canonicalCommission(result.matchedCommission),
+      unmatchedCommission: canonicalCommission(result.unmatchedCommission),
       matched,
       unmatched,
     }),

@@ -16,13 +16,13 @@ export function parseCommission(value: string, row: number): Decimal {
 
   if (/^-?\d+$/.test(text)) {
     normalized = text;
-  } else if (/^-?\d+,\d{1,2}$/.test(text)) {
+  } else if (/^-?\d+,\d{1,5}$/.test(text)) {
     normalized = text.replace(",", ".");
   } else if (/^-?\d{1,3}(?:\.\d{3})+$/.test(text)) {
     normalized = text.replaceAll(".", "");
-  } else if (/^-?\d+\.\d{1,2}$/.test(text)) {
+  } else if (/^-?\d+\.\d{1,5}$/.test(text)) {
     normalized = text;
-  } else if (/^-?\d{1,3}(?:\.\d{3})+,\d{1,2}$/.test(text)) {
+  } else if (/^-?\d{1,3}(?:\.\d{3})+,\d{1,5}$/.test(text)) {
     normalized = text.replaceAll(".", "").replace(",", ".");
   } else {
     return invalidCommission(row);
@@ -34,8 +34,12 @@ export function parseCommission(value: string, row: number): Decimal {
   } catch {
     return invalidCommission(row);
   }
-  if (!commission.isFinite() || commission.decimalPlaces() > 2 || commission.abs().gte(DECIMAL_LIMIT)) {
+  if (!commission.isFinite() || commission.decimalPlaces() > 5 || commission.abs().gte(DECIMAL_LIMIT)) {
     return invalidCommission(row);
   }
   return commission;
+}
+
+export function canonicalCommission(value: Decimal) {
+  return value.toFixed(5);
 }

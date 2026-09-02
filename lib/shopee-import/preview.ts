@@ -1,4 +1,5 @@
 import { aggregateCommissionRows } from "./aggregate.ts";
+import { canonicalCommission } from "./commission.ts";
 import { decodeAndParseCsv } from "./csv.ts";
 import { ShopeeImportError } from "./errors.ts";
 import { buildMatchDigest, sha256 } from "./fingerprint.ts";
@@ -43,12 +44,12 @@ export async function buildShopeeCommissionPreview(
     tagCount: aggregation.tagCount,
     matchedCount: match.matched.length,
     unmatchedCount: match.unmatched.length,
-    matchedCommission: match.matchedCommission.toFixed(2),
-    unmatchedCommission: match.unmatchedCommission.toFixed(2),
+    matchedCommission: canonicalCommission(match.matchedCommission),
+    unmatchedCommission: canonicalCommission(match.unmatchedCommission),
     unmatched: match.unmatched.map((row) => ({
       date: row.date,
       tagLink2: row.tagLink2,
-      commission: row.commission.toFixed(2),
+      commission: canonicalCommission(row.commission),
       rowCount: row.rowCount,
       reason: row.reason,
     })),
