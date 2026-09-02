@@ -81,3 +81,5 @@ export type CsvUpload = { originalFilename: string; bytes: Uint8Array };
 export type PreviewActionResult =
   | { success: true; preview: ShopeeCommissionPreview }
   | { success: false; message: string };
+export type PersistImportInput = MatchResult & { shopeeAccountId:number; originalFilename:string; fileSha256:string; dateFrom:string; dateTo:string; csvRowCount:number; tagCount:number };
+export type ImportReceipt = { importId:number; matchedCount:number; unmatchedCount:number; matchedCommission:string; unmatchedCommission:string; createdAt:string };
