@@ -83,3 +83,5 @@ export type PreviewActionResult =
   | { success: false; message: string };
 export type PersistImportInput = MatchResult & { shopeeAccountId:number; originalFilename:string; fileSha256:string; dateFrom:string; dateTo:string; csvRowCount:number; tagCount:number };
 export type ImportReceipt = { importId:number; matchedCount:number; unmatchedCount:number; matchedCommission:string; unmatchedCommission:string; createdAt:string };
+export type ImportHistoryRow = { id:number; originalFilename:string; dateFrom:string; dateTo:string; csvRowCount:number; tagCount:number; matchedCount:number; unmatchedCount:number; matchedCommission:string; unmatchedCommission:string; createdAt:string };
+export type ShopeeImportPageData = { shopeeAccount:{id:number;name:string}; history:ImportHistoryRow[] };
