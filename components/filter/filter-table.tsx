@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
+import { CampaignHistoryModal } from "@/components/filter/campaign-history-modal";
 import { SortableHeader } from "@/components/filter/sortable-header";
 import { TablePagination } from "@/components/filter/table-pagination";
 import type { FilterCampaignRow } from "@/lib/filter/queries";
@@ -23,6 +23,7 @@ export function FilterTable({ shopeeAccountId, campaigns }: { shopeeAccountId: n
   const [direction, setDirection] = useState<SortDirection>("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [selectedCampaign, setSelectedCampaign] = useState<Pick<FilterCampaignRow, "id" | "name"> | null>(null);
   const sorted = useMemo(() => {
     const column = columns.find((item) => item.key === sortKey)!;
     return sortRows(campaigns, (row) => row[sortKey] as SortValue, direction, column.type);
@@ -33,11 +34,11 @@ export function FilterTable({ shopeeAccountId, campaigns }: { shopeeAccountId: n
     setSortKey(key);
     setPage(1);
   }
-  return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+  return <><div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
     <div className="overflow-x-auto"><table className="w-full min-w-275 text-left text-sm">
       <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{columns.map((column) => <SortableHeader key={column.key} label={column.label} active={sortKey === column.key} direction={direction} onSort={() => changeSort(column.key)} />)}</tr></thead>
       <tbody className="divide-y divide-slate-200">{pagination.rows.map((campaign) => <tr key={campaign.id}>
-        <td className="px-4 py-3 font-medium text-slate-950"><Link href={`/shopee/${shopeeAccountId}/filter/${campaign.id}`} className="hover:underline">{campaign.name}</Link></td>
+        <td className="px-4 py-3 font-medium text-slate-950"><button type="button" className="text-left hover:underline" onClick={() => setSelectedCampaign({ id: campaign.id, name: campaign.name })}>{campaign.name}</button></td>
         <td className="px-4 py-3 text-slate-600">{campaign.wlName}</td><td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.budget)}</td>
         <td className="px-4 py-3 text-slate-600">{campaign.days}</td><td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.totalSpend)}</td>
         <td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.costWithFee)}</td><td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.totalCommission)}</td>
@@ -45,5 +46,5 @@ export function FilterTable({ shopeeAccountId, campaigns }: { shopeeAccountId: n
       </tr>)}{pagination.total === 0 && <tr><td colSpan={9} className="px-6 py-10 text-center text-slate-500">Belum ada campaign yang memenuhi Filter.</td></tr>}</tbody>
     </table></div>
     <TablePagination page={pagination.page} pageCount={pagination.pageCount} total={pagination.total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
-  </div>;
+  </div>{selectedCampaign && <CampaignHistoryModal shopeeAccountId={shopeeAccountId} campaignId={selectedCampaign.id} campaignName={selectedCampaign.name} onClose={() => setSelectedCampaign(null)} />}</>;
 }

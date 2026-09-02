@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { FilterSyncError, syncFilter, type FilterSyncSummary } from "@/lib/filter/sync";
 import { buildManualMetricUpdate } from "@/lib/filter/manual-metric";
+import { getFilterCampaignDetail } from "@/lib/filter/queries";
 import { prisma } from "@/lib/prisma";
 
 export type FilterSyncActionState = { success: boolean; message: string; summary?: FilterSyncSummary };
@@ -23,6 +24,17 @@ export async function syncFilterAction(shopeeAccountId: number, previousState: F
 }
 
 export type ManualMetricActionState = { success: boolean; message: string };
+
+export async function getFilterCampaignDetailAction(shopeeAccountId: number, campaignId: number) {
+  try {
+    const data = await getFilterCampaignDetail(shopeeAccountId, campaignId);
+    return data
+      ? { success: true as const, data }
+      : { success: false as const, message: "Histori harian tidak ditemukan dalam scope Filter." };
+  } catch {
+    return { success: false as const, message: "Histori harian gagal dimuat." };
+  }
+}
 
 export async function updateDailyMetricManualAction(
   shopeeAccountId: number,
