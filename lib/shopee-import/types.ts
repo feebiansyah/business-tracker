@@ -42,3 +42,42 @@ export type MatchResult = {
   matchedCommission: Decimal;
   unmatchedCommission: Decimal;
 };
+
+export type MatchDigestInput = MatchResult & {
+  dateFrom: string;
+  dateTo: string;
+  csvRowCount: number;
+  tagCount: number;
+};
+
+export type PreviewConfirmation = { fileSha256: string; matchDigest: string };
+export type SerializableUnmatched = {
+  date: string;
+  tagLink2: string;
+  commission: string;
+  rowCount: number;
+  reason: UnmatchedReason;
+};
+export type ShopeeCommissionPreview = {
+  originalFilename: string;
+  fileSha256: string;
+  matchDigest: string;
+  confirmation: PreviewConfirmation;
+  dateFrom: string;
+  dateTo: string;
+  csvRowCount: number;
+  tagCount: number;
+  matchedCount: number;
+  unmatchedCount: number;
+  matchedCommission: string;
+  unmatchedCommission: string;
+  unmatched: SerializableUnmatched[];
+};
+export type PreviewDeps = {
+  accountExists(shopeeAccountId: number): Promise<boolean>;
+  loadCampaigns(shopeeAccountId: number): Promise<CampaignCandidate[]>;
+};
+export type CsvUpload = { originalFilename: string; bytes: Uint8Array };
+export type PreviewActionResult =
+  | { success: true; preview: ShopeeCommissionPreview }
+  | { success: false; message: string };

@@ -7,3 +7,7 @@ export class ShopeeImportError extends Error {
     this.code = code;
   }
 }
+
+export function publicImportMessage(error: unknown) {
+  return error instanceof ShopeeImportError ? error.message : "Gagal memproses file CSV.";
+}
