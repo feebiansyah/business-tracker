@@ -20,7 +20,7 @@ function parseCandidate(text: string, delimiter: "," | ";"): Candidate | null {
       delimiter,
       info: true,
       skip_empty_lines: true,
-    }) as ParsedRecord[];
+    }) as unknown as ParsedRecord[];
 
     if (parsed.length === 0) return null;
     return {
