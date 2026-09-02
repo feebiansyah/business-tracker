@@ -84,7 +84,7 @@ model CampaignDailyMetric {
   spend        Decimal? @db.Decimal(18, 2)
   clickFp      Int?
   cpcFp        Decimal? @db.Decimal(18, 4)
-  commission   Decimal? @db.Decimal(18, 2)
+  commission   Decimal? @db.Decimal(21, 5)
   shopeeClicks Int?
   note         String?  @db.Text
   completed    Boolean  @default(false)
@@ -108,8 +108,8 @@ model ShopeeCommissionImport {
   tagCount            Int
   matchedCount        Int
   unmatchedCount      Int
-  matchedCommission   Decimal  @db.Decimal(18, 2)
-  unmatchedCommission Decimal  @db.Decimal(18, 2)
+  matchedCommission   Decimal  @db.Decimal(21, 5)
+  unmatchedCommission Decimal  @db.Decimal(21, 5)
   createdAt           DateTime @default(now())
 
   shopeeAccountId Int
@@ -123,7 +123,7 @@ model ShopeeCommissionImportUnmatched {
   id         Int      @id @default(autoincrement())
   date       DateTime @db.Date
   tagLink2   String   @db.Text
-  commission Decimal  @db.Decimal(18, 2)
+  commission Decimal  @db.Decimal(21, 5)
   rowCount   Int
   reason     String   @db.VarChar(32)
 
