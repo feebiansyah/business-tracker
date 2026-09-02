@@ -31,3 +31,14 @@ export type AggregationResult = {
   dateTo: string;
   totalCommission: Decimal;
 };
+
+export type CampaignCandidate = { id: number; name: string };
+export type UnmatchedReason = "CAMPAIGN_NOT_FOUND" | "AMBIGUOUS_CAMPAIGN_NAME";
+export type MatchedCommission = CommissionAggregate & { campaignId: number };
+export type UnmatchedCommission = CommissionAggregate & { reason: UnmatchedReason };
+export type MatchResult = {
+  matched: MatchedCommission[];
+  unmatched: UnmatchedCommission[];
+  matchedCommission: Decimal;
+  unmatchedCommission: Decimal;
+};
