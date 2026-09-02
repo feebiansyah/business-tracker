@@ -32,6 +32,7 @@ model ShopeeAccount {
 
   metaAccounts      MetaAccount[]
   commissionImports ShopeeCommissionImport[]
+  clickImports      ShopeeClickImport[]
 }
 
 model MetaAccount {
@@ -129,6 +130,42 @@ model ShopeeCommissionImportUnmatched {
 
   importId Int
   import   ShopeeCommissionImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([importId, date])
+}
+
+model ShopeeClickImport {
+  id                Int      @id @default(autoincrement())
+  originalFilename  String   @db.VarChar(255)
+  fileSha256        String   @db.Char(64)
+  dateFrom          DateTime @db.Date
+  dateTo            DateTime @db.Date
+  csvRowCount       Int
+  processedRowCount Int
+  ignoredRowCount   Int
+  groupCount        Int
+  matchedCount      Int
+  unmatchedCount    Int
+  matchedClicks     Int
+  unmatchedClicks   Int
+  createdAt         DateTime @default(now())
+
+  shopeeAccountId Int
+  shopeeAccount   ShopeeAccount                @relation(fields: [shopeeAccountId], references: [id], onDelete: Restrict)
+  unmatched       ShopeeClickImportUnmatched[]
+
+  @@index([shopeeAccountId, createdAt])
+}
+
+model ShopeeClickImportUnmatched {
+  id         Int      @id @default(autoincrement())
+  date       DateTime @db.Date
+  tagLink2   String   @db.Text
+  clickCount Int
+  reason     String   @db.VarChar(32)
+
+  importId Int
+  import   ShopeeClickImport @relation(fields: [importId], references: [id], onDelete: Cascade)
 
   @@index([importId, date])
 }
