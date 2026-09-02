@@ -9,6 +9,12 @@ const METRIC_CHUNK_SIZE = 500;
 
 export const metricDuplicateUpdateColumns = Object.freeze(["commission", "updatedAt"] as const);
 
+export function assertCommissionOnlyUpdateColumns(columns: readonly string[]) {
+  if (columns.length !== 2 || columns[0] !== "commission" || columns[1] !== "updatedAt") {
+    throw new Error("Shopee metric upsert must remain commission-only");
+  }
+}
+
 export function chunkValues<T>(values: readonly T[], size: number): T[][] {
   if (!Number.isSafeInteger(size) || size <= 0) {
     throw new Error("Chunk size must be a positive integer");
@@ -70,6 +76,7 @@ export async function upsertCommissionChunks(
   assertMatchedRows(matched);
 
   for (const chunk of chunkValues(matched, METRIC_CHUNK_SIZE)) {
+    assertCommissionOnlyUpdateColumns(metricDuplicateUpdateColumns);
     await tx.$executeRaw(buildMetricUpsertQuery(chunk));
   }
 }
