@@ -33,7 +33,7 @@ function SidebarNavigation({ pathname, shopeeAccounts }: { pathname: string; sho
   const MetaIcon = metaAdsNavigation.icon;
   const showShopeeAccounts = expansion.shopeeExpanded;
 
-  return <aside className="hidden h-screen w-64 shrink-0 flex-col bg-slate-950 text-slate-200 lg:sticky lg:top-0 lg:flex">
+  return <aside className="hidden h-screen w-56 shrink-0 flex-col bg-slate-950 text-slate-200 lg:sticky lg:top-0 lg:flex">
     <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-800 px-4">
       <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500 text-[11px] font-bold tracking-wide text-white shadow-sm shadow-blue-950/30">BT</div>
       <div className="min-w-0">
