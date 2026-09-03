@@ -8,7 +8,7 @@ import { TablePagination } from "@/components/filter/table-pagination";
 import type { FilterCampaignRow, PageInfo } from "@/lib/filter/queries";
 import { filterParamsToSearch, withFilterChange, type FilterParams, type FilterSortKey } from "@/lib/filter/server-pagination";
 import { formatRupiah } from "@/lib/filter/table-utils";
-import type { CampaignMode } from "@/lib/filter/campaign-modes";
+import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-modes";
 
 const columns: { key: FilterSortKey; label: string }[] = [
   { key: "name", label: "Campaign" }, { key: "wlName", label: "WL" }, { key: "budget", label: "Budget/Hari" },
@@ -32,7 +32,7 @@ export function FilterTable({ mode, shopeeAccountId, campaigns, pagination, stat
         <td className="px-4 py-3 text-slate-600">{campaign.days}</td><td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.totalSpend)}</td>
         <td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.costWithFee)}</td><td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.totalCommission)}</td>
         <td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.profit)}</td><td className="px-4 py-3 text-slate-600">{percent(campaign.profitPercent)}</td>
-      </tr>)}{pagination.total === 0 && <tr><td colSpan={9} className="px-6 py-10 text-center text-slate-500">Belum ada campaign yang memenuhi Filter.</td></tr>}</tbody>
+      </tr>)}{pagination.total === 0 && <tr><td colSpan={9} className="px-6 py-10 text-center text-slate-500">Belum ada campaign yang memenuhi {campaignModeConfig[mode].title}.</td></tr>}</tbody>
     </table></div>
     <TablePagination page={pagination.page} pageCount={pagination.pageCount} total={pagination.total} pageSize={pagination.pageSize} onPageChange={(page) => navigate({ page })} onPageSizeChange={(pageSize) => navigate({ pageSize: pageSize as 25 | 50 | 100 })} />
   </div>{selectedCampaign && <CampaignHistoryModal mode={mode} shopeeAccountId={shopeeAccountId} campaignId={selectedCampaign.id} campaignName={selectedCampaign.name} onClose={() => setSelectedCampaign(null)} />}</>;

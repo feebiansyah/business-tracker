@@ -5,7 +5,7 @@ import { FilterSyncError, syncFilter, type FilterSyncSummary } from "@/lib/filte
 import { buildManualMetricUpdate } from "@/lib/filter/manual-metric";
 import { campaignModeWhere, getCampaignWorkspaceDetail } from "@/lib/filter/queries";
 import type { HistoryParams } from "@/lib/filter/server-pagination";
-import type { CampaignMode } from "@/lib/filter/campaign-modes";
+import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-modes";
 import { prisma } from "@/lib/prisma";
 
 export type FilterSyncActionState = { success: boolean; message: string; summary?: FilterSyncSummary };
@@ -32,7 +32,7 @@ export async function getFilterCampaignDetailAction(shopeeAccountId: number, mod
     const data = await getCampaignWorkspaceDetail(shopeeAccountId, mode, campaignId, params);
     return data
       ? { success: true as const, data }
-      : { success: false as const, message: "Histori harian tidak ditemukan dalam scope Filter." };
+      : { success: false as const, message: `Histori harian tidak ditemukan dalam scope ${campaignModeConfig[mode].title}.` };
   } catch {
     return { success: false as const, message: "Histori harian gagal dimuat." };
   }
