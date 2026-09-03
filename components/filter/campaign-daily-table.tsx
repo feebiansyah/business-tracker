@@ -9,6 +9,7 @@ import type { FilterCampaignDetail, PageInfo } from "@/lib/filter/queries";
 import { historyParamsToSearch, withHistoryChange, type HistoryParams, type HistorySortKey } from "@/lib/filter/server-pagination";
 import { dailyCommissionDisplay } from "@/lib/filter/view-model";
 import { formatRupiah } from "@/lib/filter/table-utils";
+import type { CampaignMode } from "@/lib/filter/campaign-modes";
 
 type DailyRow = FilterCampaignDetail["dailyMetrics"][number];
 const columns: { key: HistorySortKey; label: string }[] = [
@@ -22,13 +23,13 @@ function numeric(value: number | null) { return value === null ? "—" : number.
 function percent(value: number | null) { return value === null ? "—" : `${value.toFixed(2)}%`; }
 function commission(value: number | null, imported: boolean) { const display = dailyCommissionDisplay(value, imported); return typeof display === "number" ? formatRupiah(display) : display; }
 
-function ManualCells({ shopeeAccountId, campaignId, row, compact, onChange }: { shopeeAccountId: number; campaignId: number; row: DailyRow; compact: boolean; onChange: (patch: Partial<Pick<DailyRow, "note" | "completed">>) => void }) {
+function ManualCells({ mode, shopeeAccountId, campaignId, row, compact, onChange }: { mode: CampaignMode; shopeeAccountId: number; campaignId: number; row: DailyRow; compact: boolean; onChange: (patch: Partial<Pick<DailyRow, "note" | "completed">>) => void }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
   function save(next: DailyRow) {
     setMessage("");
     startTransition(async () => {
-      const result = await updateDailyMetricManualAction(shopeeAccountId, campaignId, next.id, next.note ?? "", next.completed);
+      const result = await updateDailyMetricManualAction(shopeeAccountId, mode, campaignId, next.id, next.note ?? "", next.completed);
       setMessage(result.success ? "Tersimpan" : result.message);
     });
   }
@@ -38,7 +39,7 @@ function ManualCells({ shopeeAccountId, campaignId, row, compact, onChange }: { 
   </>;
 }
 
-export function CampaignDailyTable({ shopeeAccountId, campaignId, rows: initialRows, pagination, state, compact = false, onStateChange }: { shopeeAccountId: number; campaignId: number; rows: FilterCampaignDetail["dailyMetrics"]; pagination: PageInfo; state: HistoryParams; compact?: boolean; onStateChange?: (state: HistoryParams) => void }) {
+export function CampaignDailyTable({ mode, shopeeAccountId, campaignId, rows: initialRows, pagination, state, compact = false, onStateChange }: { mode: CampaignMode; shopeeAccountId: number; campaignId: number; rows: FilterCampaignDetail["dailyMetrics"]; pagination: PageInfo; state: HistoryParams; compact?: boolean; onStateChange?: (state: HistoryParams) => void }) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
   function navigate(change: Partial<HistoryParams>) { const next = withHistoryChange(state, change); if (onStateChange) onStateChange(next); else router.push(`?${historyParamsToSearch(next)}`); }
@@ -49,7 +50,7 @@ export function CampaignDailyTable({ shopeeAccountId, campaignId, rows: initialR
       <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{columns.map((column) => <SortableHeader key={column.key} label={column.label} active={state.sort === column.key} direction={state.dir} onSort={() => changeSort(column.key)} />)}</tr></thead>
       <tbody className="divide-y divide-slate-200">{rows.map((row) => <tr key={row.id}>
         <td className="px-4 py-3 font-medium text-slate-950">{row.date}</td><td className="px-4 py-3">{formatRupiah(row.spend)}</td><td className="px-4 py-3">{formatRupiah(row.costWithFee)}</td><td className="px-4 py-3">{commission(row.commission, row.commissionImported)}</td><td className="px-4 py-3">{formatRupiah(row.profit)}</td><td className="px-4 py-3">{percent(row.profitPercent)}</td><td className="px-4 py-3">{numeric(row.clickFp)}</td><td className="px-4 py-3">{numeric(row.shopeeClicks)}</td><td className="px-4 py-3">{percent(row.clickPercent)}</td><td className="px-4 py-3">{formatRupiah(row.cpcFp)}</td><td className="px-4 py-3">{formatRupiah(row.cpcShopee)}</td>
-        <ManualCells shopeeAccountId={shopeeAccountId} campaignId={campaignId} row={row} compact={compact} onChange={(patch) => updateRow(row.id, patch)} />
+        <ManualCells mode={mode} shopeeAccountId={shopeeAccountId} campaignId={campaignId} row={row} compact={compact} onChange={(patch) => updateRow(row.id, patch)} />
       </tr>)}{pagination.total === 0 && <tr><td colSpan={13} className="px-6 py-10 text-center text-slate-500">Belum ada histori harian dari Meta.</td></tr>}</tbody>
     </table></div>
     <TablePagination page={pagination.page} pageCount={pagination.pageCount} total={pagination.total} pageSize={pagination.pageSize} onPageChange={(page) => navigate({ page })} onPageSizeChange={(pageSize) => navigate({ pageSize: pageSize as 25 | 50 | 100 })} />

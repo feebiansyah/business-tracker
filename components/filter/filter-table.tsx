@@ -8,6 +8,7 @@ import { TablePagination } from "@/components/filter/table-pagination";
 import type { FilterCampaignRow, PageInfo } from "@/lib/filter/queries";
 import { filterParamsToSearch, withFilterChange, type FilterParams, type FilterSortKey } from "@/lib/filter/server-pagination";
 import { formatRupiah } from "@/lib/filter/table-utils";
+import type { CampaignMode } from "@/lib/filter/campaign-modes";
 
 const columns: { key: FilterSortKey; label: string }[] = [
   { key: "name", label: "Campaign" }, { key: "wlName", label: "WL" }, { key: "budget", label: "Budget/Hari" },
@@ -16,7 +17,7 @@ const columns: { key: FilterSortKey; label: string }[] = [
 ];
 function percent(value: number | null) { return value === null ? "—" : `${value.toFixed(2)}%`; }
 
-export function FilterTable({ shopeeAccountId, campaigns, pagination, state }: { shopeeAccountId: number; campaigns: FilterCampaignRow[]; pagination: PageInfo; state: FilterParams }) {
+export function FilterTable({ mode, shopeeAccountId, campaigns, pagination, state }: { mode: CampaignMode; shopeeAccountId: number; campaigns: FilterCampaignRow[]; pagination: PageInfo; state: FilterParams }) {
   const router = useRouter();
   const [selectedCampaign, setSelectedCampaign] = useState<Pick<FilterCampaignRow, "id" | "name"> | null>(null);
   function navigate(change: Partial<FilterParams>) { router.push(`?${filterParamsToSearch(withFilterChange(state, change))}`); }
@@ -34,5 +35,5 @@ export function FilterTable({ shopeeAccountId, campaigns, pagination, state }: {
       </tr>)}{pagination.total === 0 && <tr><td colSpan={9} className="px-6 py-10 text-center text-slate-500">Belum ada campaign yang memenuhi Filter.</td></tr>}</tbody>
     </table></div>
     <TablePagination page={pagination.page} pageCount={pagination.pageCount} total={pagination.total} pageSize={pagination.pageSize} onPageChange={(page) => navigate({ page })} onPageSizeChange={(pageSize) => navigate({ pageSize: pageSize as 25 | 50 | 100 })} />
-  </div>{selectedCampaign && <CampaignHistoryModal shopeeAccountId={shopeeAccountId} campaignId={selectedCampaign.id} campaignName={selectedCampaign.name} onClose={() => setSelectedCampaign(null)} />}</>;
+  </div>{selectedCampaign && <CampaignHistoryModal mode={mode} shopeeAccountId={shopeeAccountId} campaignId={selectedCampaign.id} campaignName={selectedCampaign.name} onClose={() => setSelectedCampaign(null)} />}</>;
 }

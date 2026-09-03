@@ -4,6 +4,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { buildDailyMetricView, type DailyMetricSource } from "@/lib/filter/view-model";
 import type { FilterParams, FilterSortKey, HistoryParams, HistorySortKey } from "@/lib/filter/server-pagination";
+import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-modes";
 
 export type FilterCampaignRow = { id: number; name: string; wlName: string; budget: number; days: number; totalSpend: number; costWithFee: number; totalCommission: number | null; profit: number | null; profitPercent: number | null };
 export type PageInfo = { page: number; pageSize: 25 | 50 | 100; total: number; pageCount: number };
@@ -19,12 +20,28 @@ const filterOrderColumns: Record<FilterSortKey, string> = {
 };
 type FilterSqlRow = { id: number; name: string; wlName: string; budget: Prisma.Decimal; days: bigint; totalSpend: Prisma.Decimal; costWithFee: Prisma.Decimal; totalCommission: Prisma.Decimal | null; profit: Prisma.Decimal | null; profitPercent: Prisma.Decimal | null };
 
-export async function getFilterPageData(shopeeAccountId: number, params: FilterParams): Promise<FilterPageData | null> {
+export function campaignModeWhere(mode: CampaignMode) {
+  const config = campaignModeConfig[mode];
+  return {
+    ...(config.active ? { metaStatus: "ACTIVE" } : { OR: [{ metaStatus: { not: "ACTIVE" } }, { metaStatus: null }] }),
+    effectiveDailyBudget: config.minimumBudget ? { not: null, gte: 200000 } : { not: null, lt: 200000 },
+  } as const;
+}
+
+function campaignModeSql(mode: CampaignMode) {
+  const config = campaignModeConfig[mode];
+  return {
+    status: config.active ? Prisma.sql`c.metaStatus = 'ACTIVE'` : Prisma.sql`(c.metaStatus <> 'ACTIVE' OR c.metaStatus IS NULL)`,
+    budget: config.minimumBudget ? Prisma.sql`c.effectiveDailyBudget >= 200000` : Prisma.sql`c.effectiveDailyBudget < 200000`,
+  };
+}
+
+export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: CampaignMode, params: FilterParams): Promise<FilterPageData | null> {
   if (!Number.isInteger(shopeeAccountId) || shopeeAccountId <= 0) return null;
   const shopeeAccount = await prisma.shopeeAccount.findUnique({ where: { id: shopeeAccountId }, select: { id: true, name: true } });
   if (!shopeeAccount) return null;
   const scope = { metaAccount: { shopeeAccountId } };
-  const where = { ...scope, metaStatus: "ACTIVE", effectiveDailyBudget: { not: null, lt: 200000 }, ...(params.q ? { name: { contains: params.q } } : {}) } as const;
+  const where = { ...scope, ...campaignModeWhere(mode), ...(params.q ? { name: { contains: params.q } } : {}) };
   const [unresolvedBudgets, total] = await Promise.all([
     prisma.campaign.count({ where: { ...scope, effectiveDailyBudget: null } }),
     prisma.campaign.count({ where }),
@@ -32,6 +49,7 @@ export async function getFilterPageData(shopeeAccountId: number, params: FilterP
   const pagination = pageInfo(total, params.page, params.pageSize);
   const orderColumn = Prisma.raw(filterOrderColumns[params.sort]);
   const orderDirection = Prisma.raw(params.dir === "asc" ? "ASC" : "DESC");
+  const modeSql = campaignModeSql(mode);
   const rows = await prisma.$queryRaw<FilterSqlRow[]>(Prisma.sql`
     SELECT summary.* FROM (
       SELECT c.id, c.name, ma.name AS wlName, c.effectiveDailyBudget AS budget,
@@ -46,7 +64,7 @@ export async function getFilterPageData(shopeeAccountId: number, params: FilterP
       LEFT JOIN CampaignDailyMetric dm ON dm.campaignId = c.id
         AND (${params.from} = '' OR dm.date >= ${params.from})
         AND (${params.to} = '' OR dm.date <= ${params.to})
-      WHERE ma.shopeeAccountId = ${shopeeAccountId} AND c.metaStatus = 'ACTIVE' AND c.effectiveDailyBudget IS NOT NULL AND c.effectiveDailyBudget < 200000
+      WHERE ma.shopeeAccountId = ${shopeeAccountId} AND ${modeSql.status} AND c.effectiveDailyBudget IS NOT NULL AND ${modeSql.budget}
         AND (${params.q} = '' OR LOCATE(${params.q}, c.name) > 0)
       GROUP BY c.id, c.name, ma.name, c.effectiveDailyBudget
     ) summary
@@ -72,10 +90,10 @@ const historyOrderColumns: Record<HistorySortKey, string> = {
 };
 type HistorySqlRow = { id: number; date: Date; spendValue: Prisma.Decimal; commission: Prisma.Decimal | null; clickFp: number | null; shopeeClicks: number | null; cpcFp: Prisma.Decimal | null; note: string | null; completed: boolean };
 
-export async function getFilterCampaignDetail(shopeeAccountId: number, campaignId: number, params: HistoryParams): Promise<FilterCampaignDetail | null> {
+export async function getCampaignWorkspaceDetail(shopeeAccountId: number, mode: CampaignMode, campaignId: number, params: HistoryParams): Promise<FilterCampaignDetail | null> {
   if (!Number.isInteger(shopeeAccountId) || shopeeAccountId <= 0 || !Number.isInteger(campaignId) || campaignId <= 0) return null;
   const campaign = await prisma.campaign.findFirst({
-    where: { id: campaignId, metaStatus: "ACTIVE", effectiveDailyBudget: { not: null, lt: 200000 }, metaAccount: { shopeeAccountId } },
+    where: { id: campaignId, ...campaignModeWhere(mode), metaAccount: { shopeeAccountId } },
     select: { id: true, name: true, metaStatus: true, startTime: true, effectiveDailyBudget: true, metaAccount: { select: { name: true } } },
   });
   if (!campaign) return null;
