@@ -10,5 +10,5 @@ export async function AppShell({ children }: { children: ReactNode }) {
     orderBy: { name: "asc" },
   });
 
-  return <div className="flex min-h-screen bg-slate-50"><Sidebar shopeeAccounts={shopeeAccounts} /><div className="min-w-0 flex-1"><Topbar /><main className="mx-auto w-full max-w-7xl p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">{children}</main></div></div>;
+  return <div className="flex min-h-screen bg-[#f6f8fb]"><Sidebar shopeeAccounts={shopeeAccounts} /><div className="min-w-0 flex-1"><Topbar /><main className="mx-auto w-full max-w-7xl p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">{children}</main></div></div>;
 }

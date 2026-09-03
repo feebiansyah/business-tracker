@@ -14,7 +14,7 @@ test("marks only the matching Shopee account active", () => {
   assert.deepEqual(getShopeeNavigationState("/shopee/3", 3), {
     shopeeActive: true,
     accountActive: true,
-    activeWorkflow: null,
+    activeWorkflow: "overview",
   });
   assert.equal(getShopeeNavigationState("/shopee/3", 4).accountActive, false);
 });
@@ -40,4 +40,13 @@ test("identifies Import Shopee without confusing account workflows", () => {
   assert.equal(getShopeeNavigationState("/shopee/3/import", 3).activeWorkflow, "import");
   assert.equal(getShopeeNavigationState("/shopee/4/import", 3).activeWorkflow, null);
   assert.equal(getShopeeNavigationState("/shopee/3/filter", 3).activeWorkflow, "filter");
+});
+
+test("identifies every Shopee workflow route and keeps nested detail routes active", () => {
+  assert.equal(getShopeeNavigationState("/shopee/3", 3).activeWorkflow, "overview");
+  assert.equal(getShopeeNavigationState("/shopee/3/import", 3).activeWorkflow, "import");
+  assert.equal(getShopeeNavigationState("/shopee/3/filter/99", 3).activeWorkflow, "filter");
+  assert.equal(getShopeeNavigationState("/shopee/3/fix", 3).activeWorkflow, "fix");
+  assert.equal(getShopeeNavigationState("/shopee/3/off-filter", 3).activeWorkflow, "off-filter");
+  assert.equal(getShopeeNavigationState("/shopee/3/off-fix", 3).activeWorkflow, "off-fix");
 });
