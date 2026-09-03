@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getShopeeNavigationState } from "./navigation-state.ts";
+import { createSidebarExpansionState, getShopeeNavigationState, reduceSidebarExpansion } from "./navigation-state.ts";
 
 test("marks the Shopee parent active on the Shopee index", () => {
   assert.deepEqual(getShopeeNavigationState("/shopee", 3), {
@@ -49,4 +49,24 @@ test("identifies every Shopee workflow route and keeps nested detail routes acti
   assert.equal(getShopeeNavigationState("/shopee/3/fix", 3).activeWorkflow, "fix");
   assert.equal(getShopeeNavigationState("/shopee/3/off-filter", 3).activeWorkflow, "off-filter");
   assert.equal(getShopeeNavigationState("/shopee/3/off-fix", 3).activeWorkflow, "off-fix");
+});
+
+test("allows the Shopee parent to collapse on an active Shopee route", () => {
+  const initial = createSidebarExpansionState("/shopee/3/filter");
+  assert.equal(initial.shopeeExpanded, true);
+  assert.equal(reduceSidebarExpansion(initial, { type: "TOGGLE_SHOPEE" }).shopeeExpanded, false);
+});
+
+test("auto-expands the active account once and allows it to collapse manually", () => {
+  const initial = createSidebarExpansionState("/shopee/3/filter");
+  assert.equal(initial.expandedAccountId, 3);
+  assert.equal(reduceSidebarExpansion(initial, { type: "TOGGLE_ACCOUNT", accountId: 3 }).expandedAccountId, null);
+});
+
+test("keeps at most one Shopee account expanded", () => {
+  const initial = createSidebarExpansionState("/shopee");
+  const first = reduceSidebarExpansion(initial, { type: "TOGGLE_ACCOUNT", accountId: 3 });
+  const second = reduceSidebarExpansion(first, { type: "TOGGLE_ACCOUNT", accountId: 4 });
+  assert.equal(first.expandedAccountId, 3);
+  assert.equal(second.expandedAccountId, 4);
 });

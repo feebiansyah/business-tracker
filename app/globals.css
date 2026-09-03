@@ -21,3 +21,13 @@ textarea { color: #0f172a; }
 
 input::placeholder,
 textarea::placeholder { color: #94a3b8; }
+
+.sidebar-scrollbar {
+  scrollbar-color: rgb(71 85 105 / 0.55) transparent;
+  scrollbar-width: thin;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar { width: 5px; }
+.sidebar-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scrollbar::-webkit-scrollbar-thumb { background: rgb(71 85 105 / 0.55); border-radius: 999px; }
+.sidebar-scrollbar:not(:hover)::-webkit-scrollbar-thumb { background: transparent; }
