@@ -18,10 +18,10 @@ export function parseCommission(value: string, row: number): Decimal {
     normalized = text;
   } else if (/^-?\d+,\d{1,5}$/.test(text)) {
     normalized = text.replace(",", ".");
-  } else if (/^-?\d{1,3}(?:\.\d{3})+$/.test(text)) {
-    normalized = text.replaceAll(".", "");
   } else if (/^-?\d+\.\d{1,5}$/.test(text)) {
     normalized = text;
+  } else if (/^-?\d{1,3}(?:\.\d{3}){2,}$/.test(text)) {
+    normalized = text.replaceAll(".", "");
   } else if (/^-?\d{1,3}(?:\.\d{3})+,\d{1,5}$/.test(text)) {
     normalized = text.replaceAll(".", "").replace(",", ".");
   } else {
