@@ -19,3 +19,7 @@ export function resolveEffectiveDailyBudget(campaign: DailyBudgetRecord, adSets:
 export function isFilterCampaign(campaign: { status: string | null | undefined; effectiveDailyBudget: number | null }) {
   return campaign.status === "ACTIVE" && campaign.effectiveDailyBudget !== null && campaign.effectiveDailyBudget < 200000;
 }
+
+export function isHistorySyncCampaign(campaign: { status: string | null | undefined; effectiveDailyBudget: number | null }) {
+  return campaign.effectiveDailyBudget !== null;
+}
