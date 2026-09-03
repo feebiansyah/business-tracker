@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { FilterSyncError, syncFilter, type FilterSyncSummary } from "@/lib/filter/sync";
 import { buildManualMetricUpdate } from "@/lib/filter/manual-metric";
 import { getFilterCampaignDetail } from "@/lib/filter/queries";
+import type { HistoryParams } from "@/lib/filter/server-pagination";
 import { prisma } from "@/lib/prisma";
 
 export type FilterSyncActionState = { success: boolean; message: string; summary?: FilterSyncSummary };
@@ -25,9 +26,9 @@ export async function syncFilterAction(shopeeAccountId: number, previousState: F
 
 export type ManualMetricActionState = { success: boolean; message: string };
 
-export async function getFilterCampaignDetailAction(shopeeAccountId: number, campaignId: number) {
+export async function getFilterCampaignDetailAction(shopeeAccountId: number, campaignId: number, params: HistoryParams) {
   try {
-    const data = await getFilterCampaignDetail(shopeeAccountId, campaignId);
+    const data = await getFilterCampaignDetail(shopeeAccountId, campaignId, params);
     return data
       ? { success: true as const, data }
       : { success: false as const, message: "Histori harian tidak ditemukan dalam scope Filter." };
