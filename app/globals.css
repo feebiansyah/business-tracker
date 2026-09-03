@@ -6,6 +6,7 @@ html { background: #f6f8fb; }
 
 body {
   min-height: 100vh;
+  overflow-x: clip;
   background: #f6f8fb;
   color: #0f172a;
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;

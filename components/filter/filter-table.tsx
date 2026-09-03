@@ -23,8 +23,8 @@ export function FilterTable({ mode, shopeeAccountId, campaigns, pagination, stat
   function navigate(change: Partial<FilterParams>) { router.push(`?${filterParamsToSearch(withFilterChange(state, change))}`); }
   function changeSort(sort: FilterSortKey) { navigate({ sort, dir: sort === state.sort && state.dir === "asc" ? "desc" : "asc" }); }
 
-  return <><div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-    <div className="overflow-x-auto"><table className="w-full min-w-275 text-left text-sm">
+  return <><div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="max-w-full overflow-x-auto overscroll-x-contain"><table className="w-full min-w-275 text-left text-sm">
       <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{columns.map((column) => <SortableHeader key={column.key} label={column.label} active={state.sort === column.key} direction={state.dir} onSort={() => changeSort(column.key)} />)}</tr></thead>
       <tbody className="divide-y divide-slate-200">{campaigns.map((campaign) => <tr key={campaign.id}>
         <td className="px-4 py-3 font-medium text-slate-950"><button type="button" className="text-left hover:underline" onClick={() => setSelectedCampaign({ id: campaign.id, name: campaign.name })}>{campaign.name}</button></td>

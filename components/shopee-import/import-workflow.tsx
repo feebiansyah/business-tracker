@@ -50,16 +50,16 @@ export function ImportWorkflow({ shopeeAccountId, history, historyPagination, hi
     router.refresh();
   }
 
-  return <div className="space-y-6">
-    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+  return <div className="min-w-0 space-y-6">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h3 className="font-semibold text-slate-950">Upload CSV Komisi</h3>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <input aria-label="File CSV" type="file" accept=".csv,text/csv,application/vnd.ms-excel" disabled={busy} onChange={(event) => dispatch({ type: "FILE_CHANGED", file: event.target.files?.[0] ?? null })} className="block text-sm"/>
-        <Button disabled={busy || !state.file} onClick={preview}>{state.phase === "previewing" ? "Memproses…" : "Preview"}</Button>
+      <div className="mt-4 flex min-w-0 flex-wrap items-stretch gap-3 sm:items-center">
+        <input aria-label="File CSV" type="file" accept=".csv,text/csv,application/vnd.ms-excel" disabled={busy} onChange={(event) => dispatch({ type: "FILE_CHANGED", file: event.target.files?.[0] ?? null })} className="block w-full min-w-0 max-w-full text-sm sm:w-auto"/>
+        <Button className="w-full sm:w-auto" disabled={busy || !state.file} onClick={preview}>{state.phase === "previewing" ? "Memproses…" : "Preview"}</Button>
       </div>
       {state.error && <div role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{state.error}</div>}
     </div>
-    {state.preview && <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    {state.preview && <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h3 className="font-semibold">Preview</h3>
       <PreviewSummary preview={state.preview}/>
       <div><h4 className="mb-3 font-medium">Unmatched</h4><UnmatchedTable rows={state.preview.unmatched}/></div>

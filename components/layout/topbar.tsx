@@ -1,19 +1,41 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useState } from "react";
+import { Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { getNavigationTitle, isNavigationItemActive, mobileNavigationItems } from "./navigation";
+import { getNavigationTitle } from "./navigation";
+import { mobileDrawerShouldClose } from "./mobile-navigation-state";
+import { SidebarNavigationPanel, type SidebarShopeeAccount } from "./sidebar";
 
-export function Topbar() {
+export function Topbar({ shopeeAccounts }: { shopeeAccounts: SidebarShopeeAccount[] }) {
   const pathname = usePathname();
-  return <header className="sticky top-0 z-10 flex h-14 items-center border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-md lg:px-8">
-    <h1 className="text-sm font-semibold tracking-tight text-slate-900 sm:text-base">{getNavigationTitle(pathname)}</h1>
-    <nav className="fixed inset-x-0 bottom-0 flex justify-around gap-1 overflow-x-auto border-t border-slate-200 bg-white/95 p-2 shadow-[0_-8px_24px_rgba(15,23,42,0.05)] backdrop-blur lg:hidden" aria-label="Navigasi mobile">
-      {mobileNavigationItems.map((item) => {
-        const Icon = item.icon;
-        const isActive = isNavigationItemActive(pathname, item.href);
-        return <Link key={item.href} href={item.href} className={`flex min-w-18 flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-medium transition-colors ${isActive ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}><Icon className="size-4" aria-hidden="true"/>{item.label}</Link>;
-      })}
-    </nav>
-  </header>;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function keydown(event: KeyboardEvent) {
+      if (mobileDrawerShouldClose("keydown", event.key)) setDrawerOpen(false);
+    }
+    document.addEventListener("keydown", keydown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", keydown);
+    };
+  }, [drawerOpen]);
+
+  const closeDrawer = () => setDrawerOpen(false);
+
+  return <>
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-md lg:px-8">
+      <button type="button" aria-label="Buka navigasi" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)} className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden"><Menu className="size-5"/></button>
+      <h1 className="min-w-0 truncate text-sm font-semibold tracking-tight text-slate-900 sm:text-base">{getNavigationTitle(pathname)}</h1>
+    </header>
+    {drawerOpen && <div className="fixed inset-0 z-50 bg-slate-950/55 lg:hidden" onClick={() => { if (mobileDrawerShouldClose("overlay")) closeDrawer(); }}>
+      <aside className="flex h-dvh w-72 max-w-[calc(100vw-2.5rem)] flex-col bg-slate-950 text-slate-200 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <SidebarNavigationPanel key={pathname} pathname={pathname} shopeeAccounts={shopeeAccounts} onNavigate={() => { if (mobileDrawerShouldClose("navigation")) closeDrawer(); }} onClose={() => { if (mobileDrawerShouldClose("close-button")) closeDrawer(); }}/>
+      </aside>
+    </div>}
+  </>;
 }

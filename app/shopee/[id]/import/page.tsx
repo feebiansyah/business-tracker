@@ -17,7 +17,7 @@ export default async function ShopeeImportPage({ params, searchParams }: { param
   const data = await getShopeeImportPageData(prisma, accountId, historyState.commissionPage, historyState.commissionPageSize);
   if (!data) notFound();
   const clickHistory = await getShopeeClickHistory(prisma, accountId, historyState.clickPage, historyState.clickPageSize);
-  return <section className="space-y-6">
+  return <section className="min-w-0 space-y-6">
     <div><Link href={`/shopee/${accountId}`} className="text-sm text-slate-500 hover:text-slate-900">← {data.shopeeAccount.name}</Link><h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Import Shopee</h2><p className="mt-1 text-sm text-slate-500">Preview dan impor data Shopee tanpa menyimpan CSV mentah.</p></div>
     <div><h3 className="mb-3 text-lg font-semibold">Import Komisi</h3><ImportWorkflow shopeeAccountId={accountId} history={data.history} historyPagination={data.pagination} historyState={historyState}/></div>
     <ClickImportWorkflow shopeeAccountId={accountId} history={clickHistory.rows} historyPagination={clickHistory.pagination} historyState={historyState}/>
