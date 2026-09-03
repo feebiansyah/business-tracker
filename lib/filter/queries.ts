@@ -44,6 +44,8 @@ export async function getFilterPageData(shopeeAccountId: number, params: FilterP
       FROM Campaign c
       INNER JOIN MetaAccount ma ON ma.id = c.metaAccountId
       LEFT JOIN CampaignDailyMetric dm ON dm.campaignId = c.id
+        AND (${params.from} = '' OR dm.date >= ${params.from})
+        AND (${params.to} = '' OR dm.date <= ${params.to})
       WHERE ma.shopeeAccountId = ${shopeeAccountId} AND c.metaStatus = 'ACTIVE' AND c.effectiveDailyBudget IS NOT NULL AND c.effectiveDailyBudget < 200000
         AND (${params.q} = '' OR LOCATE(${params.q}, c.name) > 0)
       GROUP BY c.id, c.name, ma.name, c.effectiveDailyBudget
