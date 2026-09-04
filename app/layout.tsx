@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import { AppShell } from "@/components/layout/app-shell";
 import "./globals.css";
 
+export const dynamic = "force-dynamic";
+
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = { title: "Business Tracker", description: "Internal business performance tracker." };
