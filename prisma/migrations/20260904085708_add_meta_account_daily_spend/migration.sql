@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `metaaccount` ADD COLUMN `spendHistorySyncedThrough` DATE NULL;
+ALTER TABLE `MetaAccount` ADD COLUMN `spendHistorySyncedThrough` DATE NULL;
 
 -- CreateTable
 CREATE TABLE `MetaAccountDailySpend` (
