@@ -73,8 +73,9 @@ model Campaign {
   metaAccountId Int
   metaAccount   MetaAccount @relation(fields: [metaAccountId], references: [id])
 
-  dailyMetrics        CampaignDailyMetric[]
-  commissionCoverages ShopeeCommissionCoverage[]
+  dailyMetrics         CampaignDailyMetric[]
+  dailyBudgetSnapshots CampaignDailyBudgetSnapshot[]
+  commissionCoverages  ShopeeCommissionCoverage[]
 
   @@index([metaAccountId])
   @@index([metaStatus, effectiveDailyBudget])
@@ -95,6 +96,20 @@ model CampaignDailyMetric {
 
   campaignId Int
   campaign   Campaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([campaignId, date])
+  @@index([date])
+}
+
+model CampaignDailyBudgetSnapshot {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @db.Date
+  dailyBudget Decimal  @db.Decimal(18, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaignId Int
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, date])
   @@index([date])

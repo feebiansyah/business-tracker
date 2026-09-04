@@ -6,6 +6,7 @@ import type { MetaAdSet } from "@/lib/meta/types";
 import { resolveEffectiveDailyBudget, isHistorySyncCampaign } from "@/lib/filter/rules";
 import { persistInsightChunk, upsertCampaignMetadata } from "@/lib/filter/persistence";
 import { checkpointUpdatesForSuccessfulChunk, planCampaignCoverage } from "@/lib/filter/sync-planning";
+import { upsertCampaignDailyBudgetSnapshot } from "@/lib/dashboard/budget-snapshots";
 
 export type FilterSyncSummary = {
   wlTotal: number;
@@ -84,6 +85,7 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
           budgetSource: budget.source,
         });
         storedCampaigns.push(stored);
+        if (budget.amount !== null) await upsertCampaignDailyBudgetSnapshot(prisma, stored.id, today, budget.amount);
       }
       summary.campaignsProcessed += storedCampaigns.length;
 
