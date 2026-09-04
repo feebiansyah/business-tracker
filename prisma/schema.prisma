@@ -73,7 +73,8 @@ model Campaign {
   metaAccountId Int
   metaAccount   MetaAccount @relation(fields: [metaAccountId], references: [id])
 
-  dailyMetrics CampaignDailyMetric[]
+  dailyMetrics        CampaignDailyMetric[]
+  commissionCoverages ShopeeCommissionCoverage[]
 
   @@index([metaAccountId])
   @@index([metaStatus, effectiveDailyBudget])
@@ -132,6 +133,17 @@ model ShopeeCommissionImportUnmatched {
   import   ShopeeCommissionImport @relation(fields: [importId], references: [id], onDelete: Cascade)
 
   @@index([importId, date])
+}
+
+model ShopeeCommissionCoverage {
+  id        Int      @id @default(autoincrement())
+  date      DateTime @db.Date
+  createdAt DateTime @default(now())
+
+  campaignId Int
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, date])
 }
 
 model ShopeeClickImport {
