@@ -39,7 +39,7 @@ export function SidebarNavigationPanel({ pathname, shopeeAccounts, onNavigate, o
     <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-800 px-4">
       <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500 text-[11px] font-bold tracking-wide text-white shadow-sm shadow-blue-950/30">BT</div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold tracking-tight text-white">Business Tracker</p>
+        <p className="truncate text-sm font-semibold tracking-tight text-white">Ads Business Tracker</p>
         <p className="text-[11px] text-slate-400">Operations workspace</p>
       </div>
       {onClose && <button type="button" aria-label="Tutup navigasi" onClick={onClose} className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white"><X className="size-4"/></button>}
