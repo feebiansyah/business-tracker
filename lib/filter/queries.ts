@@ -2,10 +2,9 @@ import "server-only";
 
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { buildDailyMetricView, type DailyMetricSource } from "@/lib/filter/view-model";
+import { buildDailyMetricView, isCommissionImportDateCovered, type DailyMetricSource } from "@/lib/filter/view-model";
 import type { FilterParams, FilterSortKey, HistoryParams, HistorySortKey } from "@/lib/filter/server-pagination";
 import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-modes";
-import { createCommissionCoverageLookup, hasCommissionCoverage } from "@/lib/filter/commission-coverage";
 
 export type FilterCampaignRow = { id: number; name: string; wlName: string; budget: number; days: number; totalSpend: number; costWithFee: number; totalCommission: number | null; profit: number | null; profitPercent: number | null };
 export type PageInfo = { page: number; pageSize: 25 | 50 | 100; total: number; pageCount: number };
@@ -98,9 +97,10 @@ export async function getCampaignWorkspaceDetail(shopeeAccountId: number, mode: 
     select: { id: true, name: true, metaStatus: true, startTime: true, effectiveDailyBudget: true, metaAccount: { select: { name: true } } },
   });
   if (!campaign) return null;
-  const [total, spendAggregate] = await Promise.all([
+  const [total, spendAggregate, commissionImports] = await Promise.all([
     prisma.campaignDailyMetric.count({ where: { campaignId } }),
     prisma.campaignDailyMetric.aggregate({ where: { campaignId }, _sum: { spend: true } }),
+    prisma.shopeeCommissionImport.findMany({ where: { shopeeAccountId }, select: { dateFrom: true, dateTo: true } }),
   ]);
   const pagination = pageInfo(total, params.page, params.pageSize);
   const orderColumn = Prisma.raw(historyOrderColumns[params.sort]);
@@ -119,14 +119,10 @@ export async function getCampaignWorkspaceDetail(shopeeAccountId: number, mode: 
     ORDER BY ${orderColumn} IS NULL ASC, ${orderColumn} ${orderDirection}, metric.id ASC
     LIMIT ${pagination.pageSize} OFFSET ${(pagination.page - 1) * pagination.pageSize}
   `);
-  const coverageRows = rows.length === 0 ? [] : await prisma.shopeeCommissionCoverage.findMany({
-    where: { campaignId, date: { in: rows.map((metric) => metric.date) } },
-    select: { campaignId: true, date: true },
-  });
-  const coverage = createCommissionCoverageLookup(coverageRows.map((row) => ({ campaignId: row.campaignId, date: dateString(row.date) })));
+  const importedRanges = commissionImports.map((item) => ({ from: dateString(item.dateFrom), to: dateString(item.dateTo) }));
   const sources: DailyMetricSource[] = rows.map((metric) => ({
     id: metric.id, date: dateString(metric.date), spend: Number(metric.spendValue), commission: numberValue(metric.commission),
-    commissionImported: hasCommissionCoverage(coverage, campaignId, dateString(metric.date)),
+    commissionImported: isCommissionImportDateCovered(dateString(metric.date), importedRanges),
     clickFp: metric.clickFp, shopeeClicks: metric.shopeeClicks, cpcFp: numberValue(metric.cpcFp), note: metric.note, completed: Boolean(metric.completed),
   }));
   return {

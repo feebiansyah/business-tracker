@@ -17,6 +17,10 @@ export function dailyCommissionDisplay(commission: number | null, commissionImpo
   return commissionImported ? "Rp 0" : "Belum Import";
 }
 
+export function isCommissionImportDateCovered(date: string, ranges: readonly { from: string; to: string }[]) {
+  return ranges.some((range) => range.from <= date && date <= range.to);
+}
+
 export function buildDailyMetricView(metric: DailyMetricSource) {
   const financial = calculateFinancialMetrics(metric.spend, metric.commission, metric.clickFp, metric.shopeeClicks);
   return { ...metric, costWithFee: financial.costWithFee, profit: financial.profit, profitPercent: financial.profitPercent, clickPercent: financial.clickPercent, cpcShopee: financial.cpcShopee };
