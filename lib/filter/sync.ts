@@ -7,6 +7,8 @@ import { resolveEffectiveDailyBudget, isHistorySyncCampaign } from "@/lib/filter
 import { persistInsightChunk, upsertCampaignMetadata } from "@/lib/filter/persistence";
 import { checkpointUpdatesForSuccessfulChunk, planCampaignCoverage } from "@/lib/filter/sync-planning";
 import { upsertCampaignDailyBudgetSnapshot } from "@/lib/dashboard/budget-snapshots";
+import { persistMetaAccountDailySpend } from "@/lib/dashboard/account-spend";
+import { buildMonthlyChunks } from "@/lib/filter/date-ranges";
 
 export type FilterSyncSummary = {
   wlTotal: number;
@@ -40,7 +42,7 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
   if (!Number.isInteger(shopeeAccountId) || shopeeAccountId <= 0) throw new FilterSyncError("Akun Shopee tidak valid.");
   const account = await prisma.shopeeAccount.findUnique({
     where: { id: shopeeAccountId },
-    select: { id: true, metaAccounts: { select: { id: true, name: true, accountId: true }, orderBy: { name: "asc" } } },
+    select: { id: true, metaAccounts: { select: { id: true, name: true, accountId: true, spendHistorySyncedThrough: true }, orderBy: { name: "asc" } } },
   });
   if (!account) throw new FilterSyncError("Akun Shopee tidak ditemukan.");
 
@@ -88,6 +90,24 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
         if (budget.amount !== null) await upsertCampaignDailyBudgetSnapshot(prisma, stored.id, today, budget.amount);
       }
       summary.campaignsProcessed += storedCampaigns.length;
+
+      const earliestStart = storedCampaigns.reduce<string | null>((earliest, campaign) => {
+        if (!campaign.startTime) return earliest;
+        const value = indonesiaDate(campaign.startTime);
+        return earliest === null || value < earliest ? value : earliest;
+      }, null);
+      {
+        const checkpoint = wl.spendHistorySyncedThrough ? indonesiaDate(wl.spendHistorySyncedThrough) : null;
+        const next = checkpoint && checkpoint < today
+          ? new Date(`${checkpoint}T00:00:00.000Z`)
+          : null;
+        if (next) next.setUTCDate(next.getUTCDate() + 1);
+        const since = checkpoint === today ? today : next?.toISOString().slice(0, 10) ?? earliestStart ?? today;
+        for (const range of buildMonthlyChunks(since, today)) {
+          const spendRows = await client.getAccountDailySpend(wl.accountId, range);
+          await prisma.$transaction((tx) => persistMetaAccountDailySpend(tx, wl.id, spendRows, range.until));
+        }
+      }
 
       const historyCampaigns = storedCampaigns.filter((campaign) => isHistorySyncCampaign({
         status: campaign.metaStatus,

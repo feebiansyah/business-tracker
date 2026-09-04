@@ -22,3 +22,11 @@ export function campaignInsightsRequest(accountId: string, range: MetaInsightRan
     params: { level: "campaign", time_increment: "1", time_range: JSON.stringify(range) },
   };
 }
+
+export function accountDailySpendRequest(accountId: string, range: MetaInsightRange) {
+  return {
+    path: `/${normalizeMetaAccountPath(accountId)}/insights`,
+    fields: ["spend", "date_start", "date_stop"],
+    params: { level: "account", time_increment: "1", time_range: JSON.stringify(range) },
+  };
+}

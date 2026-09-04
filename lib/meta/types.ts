@@ -38,6 +38,8 @@ export type MetaCampaignInsight = {
   date_stop: string;
 };
 
+export type MetaAccountDailySpend = { spend?: string; date_start: string; date_stop: string };
+
 export type MetaSyncSummary = {
   metaAccountsFromApi: number;
   uniqueMetaAccounts: number;

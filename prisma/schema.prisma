@@ -36,18 +36,33 @@ model ShopeeAccount {
 }
 
 model MetaAccount {
-  id        Int      @id @default(autoincrement())
-  name      String
-  accountId String   @unique
-  status    String   @default("ACTIVE")
-  createdAt DateTime @default(now())
+  id                        Int       @id @default(autoincrement())
+  name                      String
+  accountId                 String    @unique
+  status                    String    @default("ACTIVE")
+  createdAt                 DateTime  @default(now())
+  spendHistorySyncedThrough DateTime? @db.Date
 
   businessManagerId Int?
   shopeeAccountId   Int?
 
-  businessManager BusinessManager? @relation(fields: [businessManagerId], references: [id])
-  shopeeAccount   ShopeeAccount?   @relation(fields: [shopeeAccountId], references: [id])
+  businessManager BusinessManager?        @relation(fields: [businessManagerId], references: [id])
+  shopeeAccount   ShopeeAccount?          @relation(fields: [shopeeAccountId], references: [id])
   campaigns       Campaign[]
+  dailySpends     MetaAccountDailySpend[]
+}
+
+model MetaAccountDailySpend {
+  id            Int         @id @default(autoincrement())
+  date          DateTime    @db.Date
+  spend         Decimal     @db.Decimal(18, 2)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  metaAccountId Int
+  metaAccount   MetaAccount @relation(fields: [metaAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([metaAccountId, date])
+  @@index([date])
 }
 
 model MetaBusinessMappingProgress {

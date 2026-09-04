@@ -22,12 +22,12 @@ function dailyCte(shopeeAccountId: number, from: string, to: string) {
     WITH scoped_campaigns AS (
       SELECT c.id FROM Campaign c INNER JOIN MetaAccount ma ON ma.id = c.metaAccountId WHERE ma.shopeeAccountId = ${shopeeAccountId}
     ), dashboard_dates AS (
-      SELECT s.date FROM CampaignDailyBudgetSnapshot s INNER JOIN scoped_campaigns c ON c.id = s.campaignId
+      SELECT s.date FROM MetaAccountDailySpend s INNER JOIN MetaAccount ma ON ma.id = s.metaAccountId WHERE ma.shopeeAccountId = ${shopeeAccountId}
       UNION
       SELECT dm.date FROM CampaignDailyMetric dm INNER JOIN scoped_campaigns c ON c.id = dm.campaignId
     ), daily_base AS (
       SELECT d.date,
-        (SELECT SUM(s.dailyBudget) FROM CampaignDailyBudgetSnapshot s INNER JOIN scoped_campaigns c ON c.id = s.campaignId WHERE s.date = d.date) AS budget,
+        (SELECT SUM(s.spend) FROM MetaAccountDailySpend s INNER JOIN MetaAccount ma ON ma.id = s.metaAccountId WHERE ma.shopeeAccountId = ${shopeeAccountId} AND s.date = d.date) AS budget,
         (SELECT SUM(dm.commission) FROM CampaignDailyMetric dm INNER JOIN scoped_campaigns c ON c.id = dm.campaignId WHERE dm.date = d.date) AS storedCommission,
         EXISTS (SELECT 1 FROM ShopeeCommissionImport i WHERE i.shopeeAccountId = ${shopeeAccountId} AND d.date BETWEEN i.dateFrom AND i.dateTo) AS commissionCovered
       FROM dashboard_dates d

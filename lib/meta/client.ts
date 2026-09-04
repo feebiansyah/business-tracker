@@ -2,8 +2,8 @@ import "server-only";
 
 import { createHmac } from "node:crypto";
 import { getMetaConfig, type MetaConfig } from "@/lib/meta/config";
-import { adSetsRequest, campaignInsightsRequest, campaignsRequest } from "@/lib/meta/campaign-requests";
-import type { MetaAdAccount, MetaAdSet, MetaBusiness, MetaCampaign, MetaCampaignInsight, MetaInsightRange } from "@/lib/meta/types";
+import { accountDailySpendRequest, adSetsRequest, campaignInsightsRequest, campaignsRequest } from "@/lib/meta/campaign-requests";
+import type { MetaAccountDailySpend, MetaAdAccount, MetaAdSet, MetaBusiness, MetaCampaign, MetaCampaignInsight, MetaInsightRange } from "@/lib/meta/types";
 
 type MetaPage<T> = {
   data?: T[];
@@ -78,6 +78,11 @@ export class MetaGraphClient {
   getCampaignInsights(accountId: string, range: MetaInsightRange) {
     const request = campaignInsightsRequest(accountId, range);
     return this.getAllPages<MetaCampaignInsight>(request.path, request.fields, request.params);
+  }
+
+  getAccountDailySpend(accountId: string, range: MetaInsightRange) {
+    const request = accountDailySpendRequest(accountId, range);
+    return this.getAllPages<MetaAccountDailySpend>(request.path, request.fields, request.params);
   }
 
   async waitBetweenBusinesses() {
