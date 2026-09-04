@@ -1,9 +1,9 @@
-export const filterSortKeys = ["name", "wlName", "budget", "days", "totalSpend", "costWithFee", "totalCommission", "profit", "profitPercent"] as const;
+export const filterSortKeys = ["name", "wlName", "startTime", "budget", "days", "totalSpend", "costWithFee", "totalCommission", "profit", "profitPercent"] as const;
 export const historySortKeys = ["date", "spend", "costWithFee", "commission", "profit", "profitPercent", "clickFp", "shopeeClicks", "clickPercent", "cpcFp", "cpcShopee", "note", "completed"] as const;
 export type FilterSortKey = typeof filterSortKeys[number];
 export type HistorySortKey = typeof historySortKeys[number];
 export type Direction = "asc" | "desc";
-export type FilterParams = { q: string; from: string; to: string; sort: FilterSortKey; dir: Direction; page: number; pageSize: 25 | 50 | 100 };
+export type FilterParams = { q: string; wl: number | null; from: string; to: string; sort: FilterSortKey; dir: Direction; page: number; pageSize: 25 | 50 | 100 };
 export type HistoryParams = { sort: HistorySortKey; dir: Direction; page: number; pageSize: 25 | 50 | 100 };
 type RawParams = Record<string, string | string[] | undefined>;
 
@@ -21,6 +21,7 @@ export function parseFilterParams(raw: RawParams): FilterParams {
   const sortValue = scalar(raw.sort);
   return {
     q: (scalar(raw.q) ?? "").trim().slice(0, 191),
+    wl: positiveInteger(scalar(raw.wl), 0) || null,
     from: date(scalar(raw.from)),
     to: date(scalar(raw.to)),
     sort: filterSortKeys.includes(sortValue as FilterSortKey) ? sortValue as FilterSortKey : "totalSpend",
@@ -41,18 +42,18 @@ export function parseHistoryParams(raw: RawParams): HistoryParams {
 }
 
 export function withFilterChange(current: FilterParams, change: Partial<FilterParams>): FilterParams {
-  const resetsPage = ["q", "from", "to", "sort", "dir", "pageSize"].some((key) => key in change);
+  const resetsPage = ["q", "wl", "from", "to", "sort", "dir", "pageSize"].some((key) => key in change);
   return { ...current, ...change, page: resetsPage ? 1 : change.page ?? current.page };
 }
 
 export function filterParamsToSearch(params: FilterParams) {
-  return new URLSearchParams({ q: params.q, from: params.from, to: params.to, sort: params.sort, dir: params.dir, page: String(params.page), pageSize: String(params.pageSize) });
+  return new URLSearchParams({ q: params.q, ...(params.wl ? { wl: String(params.wl) } : {}), from: params.from, to: params.to, sort: params.sort, dir: params.dir, page: String(params.page), pageSize: String(params.pageSize) });
 }
 
 export function dateInFilterRange(value: string, from: string, to: string) { return (!from || value >= from) && (!to || value <= to); }
 
 export function resetFilterParams(current: FilterParams): FilterParams {
-  return { q: "", from: "", to: "", sort: "totalSpend", dir: "desc", page: 1, pageSize: current.pageSize };
+  return { q: "", wl: null, from: "", to: "", sort: "totalSpend", dir: "desc", page: 1, pageSize: current.pageSize };
 }
 
 export function withHistoryChange(current: HistoryParams, change: Partial<HistoryParams>): HistoryParams {

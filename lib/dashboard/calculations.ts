@@ -7,8 +7,9 @@ export function calculateDashboardFinancials(budget: number | null, commission: 
 }
 
 export function summarizeDashboardDays(days: readonly DashboardFinancials[]): DashboardFinancials {
-  if (days.length === 0) return calculateDashboardFinancials(null, null);
-  const budget = days.every((day) => day.budget !== null) ? days.reduce((sum, day) => sum + day.budget!, 0) : null;
-  const commission = days.every((day) => day.commission !== null) ? days.reduce((sum, day) => sum + day.commission!, 0) : null;
+  const complete = days.filter((day) => day.budget !== null && day.commission !== null);
+  if (complete.length === 0) return calculateDashboardFinancials(null, null);
+  const budget = complete.reduce((sum, day) => sum + day.budget!, 0);
+  const commission = complete.reduce((sum, day) => sum + day.commission!, 0);
   return calculateDashboardFinancials(budget, commission);
 }

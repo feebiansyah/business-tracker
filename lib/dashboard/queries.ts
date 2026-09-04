@@ -9,7 +9,7 @@ export type DashboardData = { accounts: DashboardAccountData[]; state: Dashboard
 
 type RawParams = Record<string, string | string[] | undefined>;
 type DashboardDb = Pick<Prisma.TransactionClient, "shopeeAccount" | "$queryRaw">;
-type SummaryRow = { total: bigint; budgetKnown: bigint; budgetTotal: Prisma.Decimal | null; commissionKnown: bigint; commissionTotal: Prisma.Decimal | null };
+type SummaryRow = { pageTotal: bigint; completeTotal: bigint; budgetKnown: bigint; budgetTotal: Prisma.Decimal | null; commissionKnown: bigint; commissionTotal: Prisma.Decimal | null };
 type DayRow = { date: Date; budget: Prisma.Decimal | null; costWithFee: Prisma.Decimal | null; commission: Prisma.Decimal | null; profit: Prisma.Decimal | null; profitPercent: Prisma.Decimal | null };
 
 const orderColumns: Record<DashboardSortKey, string> = { date: "date", budget: "budget", costWithFee: "costWithFee", commission: "commission", profit: "profit", profitPercent: "profitPercent" };
@@ -44,9 +44,9 @@ function dailyCte(shopeeAccountId: number, from: string, to: string) {
 
 async function loadAccount(db: DashboardDb, account: { id: number; name: string; _count: { metaAccounts: number } }, state: DashboardAccountParams, from: string, to: string): Promise<DashboardAccountData> {
   const summaryRows = await db.$queryRaw<SummaryRow[]>(Prisma.sql`${dailyCte(account.id, from, to)}
-    SELECT COUNT(*) AS total, COUNT(budget) AS budgetKnown, SUM(budget) AS budgetTotal, COUNT(commission) AS commissionKnown, SUM(commission) AS commissionTotal FROM daily_metrics`);
+    SELECT (SELECT COUNT(*) FROM daily_metrics) AS pageTotal, COUNT(*) AS completeTotal, COUNT(budget) AS budgetKnown, SUM(budget) AS budgetTotal, COUNT(commission) AS commissionKnown, SUM(commission) AS commissionTotal FROM daily_metrics WHERE budget IS NOT NULL AND commission IS NOT NULL`);
   const totals = summaryRows[0];
-  const total = Number(totals?.total ?? 0);
+  const total = Number(totals?.pageTotal ?? 0);
   const pagination = pageInfo(total, state.page, state.pageSize);
   const order = Prisma.raw(orderColumns[state.sort]);
   const direction = Prisma.raw(state.dir === "asc" ? "ASC" : "DESC");
@@ -54,8 +54,9 @@ async function loadAccount(db: DashboardDb, account: { id: number; name: string;
     SELECT date, budget, costWithFee, commission, profit, profitPercent FROM daily_metrics
     ORDER BY ${order} IS NULL ASC, ${order} ${direction}, date DESC
     LIMIT ${pagination.pageSize} OFFSET ${(pagination.page - 1) * pagination.pageSize}`);
-  const budget = total > 0 && Number(totals.budgetKnown) === total ? number(totals.budgetTotal) : null;
-  const commission = total > 0 && Number(totals.commissionKnown) === total ? number(totals.commissionTotal) : null;
+  const completeTotal = Number(totals?.completeTotal ?? 0);
+  const budget = completeTotal > 0 ? number(totals.budgetTotal) : null;
+  const commission = completeTotal > 0 ? number(totals.commissionTotal) : null;
   return { id: account.id, name: account.name, wlCount: account._count.metaAccounts, summary: calculateDashboardFinancials(budget, commission), days: pageRows.map((row) => ({ date: day(row.date), budget: number(row.budget), costWithFee: number(row.costWithFee), commission: number(row.commission), profit: number(row.profit), profitPercent: number(row.profitPercent) })), pagination, state: { ...state, page: pagination.page } };
 }
 
