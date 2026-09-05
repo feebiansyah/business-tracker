@@ -135,7 +135,8 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
       }
 
       summary.wlSucceeded += 1;
-    } catch {
+    } catch (error) {
+      console.error(`[Sync Meta] WL gagal: ${wl.name} (${wl.accountId})`, error);
       summary.wlFailed += 1;
       summary.failedWlNames.push(wl.name);
     }
