@@ -7,10 +7,12 @@ import { campaignModeWhere, getCampaignWorkspaceDetail } from "@/lib/filter/quer
 import type { HistoryParams } from "@/lib/filter/server-pagination";
 import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-modes";
 import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/auth/session";
 
 export type FilterSyncActionState = { success: boolean; message: string; summary?: FilterSyncSummary };
 
 export async function syncFilterAction(shopeeAccountId: number, previousState: FilterSyncActionState): Promise<FilterSyncActionState> {
+  await requireUser();
   void previousState;
   try {
     const summary = await syncFilter(shopeeAccountId);
@@ -28,6 +30,7 @@ export async function syncFilterAction(shopeeAccountId: number, previousState: F
 export type ManualMetricActionState = { success: boolean; message: string };
 
 export async function getFilterCampaignDetailAction(shopeeAccountId: number, mode: CampaignMode, campaignId: number, params: HistoryParams) {
+  await requireUser();
   try {
     const data = await getCampaignWorkspaceDetail(shopeeAccountId, mode, campaignId, params);
     return data
@@ -46,6 +49,7 @@ export async function updateDailyMetricManualAction(
   note: string,
   completed: boolean,
 ): Promise<ManualMetricActionState> {
+  await requireUser();
   if (![shopeeAccountId, campaignId, metricId].every((value) => Number.isInteger(value) && value > 0) || typeof note !== "string" || typeof completed !== "boolean") {
     return { success: false, message: "Data Note/Selesai tidak valid." };
   }

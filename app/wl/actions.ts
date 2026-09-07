@@ -5,11 +5,13 @@ import { MetaApiError } from "@/lib/meta/client";
 import { syncMetaBusinessMappings } from "@/lib/meta/business-mapping-sync";
 import { syncMetaAccounts } from "@/lib/meta/sync";
 import type { MetaBusinessMappingSummary, MetaSyncSummary } from "@/lib/meta/types";
+import { requireUser } from "@/lib/auth/session";
 
 export type MetaSyncActionState = { success: boolean; message: string; summary?: MetaSyncSummary };
 export type MetaBusinessMappingActionState = { success: boolean; message: string; summary?: MetaBusinessMappingSummary };
 
 export async function syncMetaAction(): Promise<MetaSyncActionState> {
+  await requireUser();
   try {
     const summary = await syncMetaAccounts();
     revalidatePath("/wl");
@@ -25,6 +27,7 @@ export async function syncMetaAction(): Promise<MetaSyncActionState> {
 }
 
 export async function syncMetaBusinessMappingsAction(): Promise<MetaBusinessMappingActionState> {
+  await requireUser();
   try {
     const summary = await syncMetaBusinessMappings();
     revalidatePath("/wl");

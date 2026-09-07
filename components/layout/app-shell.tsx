@@ -2,8 +2,10 @@ import type { ReactNode } from "react";
 import { prisma } from "@/lib/prisma";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
+import { requireUser } from "@/lib/auth/session";
 
 export async function AppShell({ children }: { children: ReactNode }) {
+  await requireUser();
   const shopeeAccounts = await prisma.shopeeAccount.findMany({
     where: { status: "ACTIVE" },
     select: { id: true, name: true },

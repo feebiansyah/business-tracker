@@ -1,7 +1,8 @@
 "use client";
 
 import { useReducer } from "react";
-import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { ChevronDown, ChevronRight, LogOut, X } from "lucide-react";
+import { logoutAction } from "@/app/auth-actions";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -91,6 +92,9 @@ export function SidebarNavigationPanel({ pathname, shopeeAccounts, onNavigate, o
 
       <div className="border-t border-slate-800 pt-4"><StaticNavigationLink item={settingsNavigation} pathname={pathname} onNavigate={onNavigate}/></div>
     </nav>
+    <form action={logoutAction} className="shrink-0 border-t border-slate-800 p-2.5">
+      <button type="submit" className={`${rootLinkClass} ${inactiveRootClass} w-full`}><LogOut className="size-4" aria-hidden="true"/><span>Keluar</span></button>
+    </form>
   </>;
 }
 

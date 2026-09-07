@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/auth/session";
 
 function getRequiredText(formData: FormData, field: string) {
   const value = formData.get(field);
@@ -13,6 +14,7 @@ function getRequiredText(formData: FormData, field: string) {
 function getStatus(formData: FormData) { return formData.get("status") === "INACTIVE" ? "INACTIVE" : "ACTIVE"; }
 
 export async function createShopeeAccount(formData: FormData) {
+  await requireUser();
   const shopIdValue = formData.get("shopId");
   const shopId = typeof shopIdValue === "string" && shopIdValue.trim() ? shopIdValue.trim() : null;
   await prisma.shopeeAccount.create({ data: { name: getRequiredText(formData, "name"), shopId, status: getStatus(formData) } });
@@ -21,6 +23,7 @@ export async function createShopeeAccount(formData: FormData) {
 }
 
 export async function createMetaAccount(formData: FormData) {
+  await requireUser();
   const businessManagerId = Number(formData.get("businessManagerId"));
   const shopeeAccountIdValue = formData.get("shopeeAccountId");
   const shopeeAccountId = typeof shopeeAccountIdValue === "string" && shopeeAccountIdValue ? Number(shopeeAccountIdValue) : null;
@@ -34,6 +37,7 @@ export async function createMetaAccount(formData: FormData) {
 }
 
 export async function updateMetaAccountShopeeConnection(formData: FormData) {
+  await requireUser();
   const metaAccountId = Number(formData.get("metaAccountId"));
   const value = formData.get("shopeeAccountId");
   const shopeeAccountId = typeof value === "string" && value ? Number(value) : null;
