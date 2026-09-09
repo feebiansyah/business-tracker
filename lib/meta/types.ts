@@ -32,8 +32,8 @@ export type MetaCampaignInsight = {
   campaign_id: string;
   campaign_name?: string;
   spend?: string;
-  clicks?: string;
-  cpc?: string;
+  inline_link_clicks?: string;
+  cost_per_inline_link_click?: string;
   date_start: string;
   date_stop: string;
 };

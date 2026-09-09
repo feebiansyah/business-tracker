@@ -96,17 +96,18 @@ model MetaBusinessMappingProgress {
 }
 
 model Campaign {
-  id                   Int       @id @default(autoincrement())
-  metaCampaignId       String    @unique
-  name                 String
-  startTime            DateTime?
-  metaStatus           String?
-  effectiveStatus      String?
-  effectiveDailyBudget Decimal?  @db.Decimal(18, 2)
-  budgetSource         String
-  historySyncedThrough DateTime? @db.Date
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                        Int       @id @default(autoincrement())
+  metaCampaignId            String    @unique
+  name                      String
+  startTime                 DateTime?
+  metaStatus                String?
+  effectiveStatus           String?
+  effectiveDailyBudget      Decimal?  @db.Decimal(18, 2)
+  budgetSource              String
+  historySyncedThrough      DateTime? @db.Date
+  metaMetricSemanticVersion Int       @default(1)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   metaAccountId Int
   metaAccount   MetaAccount @relation(fields: [metaAccountId], references: [id])
@@ -124,7 +125,7 @@ model CampaignDailyMetric {
   date         DateTime @db.Date
   spend        Decimal? @db.Decimal(18, 2)
   clickFp      Int?
-  cpcFp        Decimal? @db.Decimal(18, 4)
+  cpcFp        Decimal? @db.Decimal(20, 6)
   commission   Decimal? @db.Decimal(21, 5)
   shopeeClicks Int?
   note         String?  @db.Text

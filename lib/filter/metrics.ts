@@ -13,3 +13,17 @@ export function calculateFinancialMetrics(spend: number, commission: number | nu
 export function dailyMetricMetaUpdate(row: { spend: string | null; clickFp: number | null; cpcFp: string | null }) {
   return { spend: row.spend, clickFp: row.clickFp, cpcFp: row.cpcFp };
 }
+
+function optionalInteger(value: string | undefined) {
+  if (value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+export function metaFieldsFromInsight(row: { spend?: string; inline_link_clicks?: string; cost_per_inline_link_click?: string }) {
+  return dailyMetricMetaUpdate({
+    spend: row.spend ?? null,
+    clickFp: optionalInteger(row.inline_link_clicks),
+    cpcFp: row.cost_per_inline_link_click ?? null,
+  });
+}

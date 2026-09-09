@@ -1,19 +1,23 @@
 import { buildMonthlyChunks, getRequiredHistoryStart } from "./date-ranges.ts";
 
-export type CoverageCampaign = { id: number; startDate: string | null; historySyncedThrough: string | null };
+export type CoverageCampaign = { id: number; startDate: string | null; historySyncedThrough: string | null; metricSemanticVersion?: number };
 export type CoverageChunk = { since: string; until: string; campaignIds: number[] };
 
 export function planCampaignCoverage(campaigns: CoverageCampaign[], today: string) {
   const chunksByRange = new Map<string, CoverageChunk>();
   const missingStartCampaignIds: number[] = [];
+  const semanticBackfillCampaignIds: number[] = [];
 
   for (const campaign of campaigns) {
-    const start = getRequiredHistoryStart({ ...campaign, today });
+    const needsSemanticBackfill = (campaign.metricSemanticVersion ?? 2) < 2;
+    const start = needsSemanticBackfill ? campaign.startDate : getRequiredHistoryStart({ ...campaign, today });
     if (!start) {
       missingStartCampaignIds.push(campaign.id);
       continue;
     }
-    for (const range of buildMonthlyChunks(start, today)) {
+    const ranges = buildMonthlyChunks(start, today);
+    if (needsSemanticBackfill && ranges.length > 0) semanticBackfillCampaignIds.push(campaign.id);
+    for (const range of ranges) {
       const key = range.until;
       const chunk = chunksByRange.get(key) ?? { ...range, campaignIds: [] };
       if (range.since < chunk.since) chunk.since = range.since;
@@ -25,6 +29,7 @@ export function planCampaignCoverage(campaigns: CoverageCampaign[], today: strin
   return {
     chunks: [...chunksByRange.values()].sort((a, b) => a.since.localeCompare(b.since)),
     missingStartCampaignIds,
+    semanticBackfillCampaignIds,
   };
 }
 

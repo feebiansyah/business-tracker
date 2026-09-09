@@ -18,7 +18,7 @@ export function adSetsRequest(accountId: string) {
 export function campaignInsightsRequest(accountId: string, range: MetaInsightRange) {
   return {
     path: `/${normalizeMetaAccountPath(accountId)}/insights`,
-    fields: ["campaign_id", "campaign_name", "spend", "clicks", "cpc", "date_start", "date_stop"],
+    fields: ["campaign_id", "campaign_name", "spend", "inline_link_clicks", "cost_per_inline_link_click", "date_start", "date_stop"],
     params: { level: "campaign", time_increment: "1", time_range: JSON.stringify(range) },
   };
 }

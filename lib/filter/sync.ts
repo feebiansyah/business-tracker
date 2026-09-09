@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { MetaGraphClient } from "@/lib/meta/client";
 import type { MetaAdSet } from "@/lib/meta/types";
 import { resolveEffectiveDailyBudget, isHistorySyncCampaign } from "@/lib/filter/rules";
-import { persistInsightChunk, upsertCampaignMetadata } from "@/lib/filter/persistence";
+import { markCampaignMetricSemanticBackfillComplete, persistInsightChunk, upsertCampaignMetadata } from "@/lib/filter/persistence";
 import { checkpointUpdatesForSuccessfulChunk, planCampaignCoverage } from "@/lib/filter/sync-planning";
 import { upsertCampaignDailyBudgetSnapshot } from "@/lib/dashboard/budget-snapshots";
 import { persistMetaAccountDailySpend } from "@/lib/dashboard/account-spend";
@@ -117,6 +117,7 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
         id: campaign.id,
         startDate: campaign.startTime ? indonesiaDate(campaign.startTime) : null,
         historySyncedThrough: campaign.historySyncedThrough ? indonesiaDate(campaign.historySyncedThrough) : null,
+        metricSemanticVersion: campaign.metaMetricSemanticVersion,
       })), today);
       summary.missingStartDates += coverage.missingStartCampaignIds.length;
 
@@ -133,6 +134,7 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
           chunk.until,
         );
       }
+      await markCampaignMetricSemanticBackfillComplete(coverage.semanticBackfillCampaignIds);
 
       summary.wlSucceeded += 1;
     } catch (error) {
