@@ -16,8 +16,6 @@ export type CampaignMetadataInput = {
   budgetSource: BudgetSource;
 };
 
-export const CURRENT_META_METRIC_SEMANTIC_VERSION = 2;
-
 export async function upsertCampaignMetadata(input: CampaignMetadataInput) {
   const metadata = {
     name: input.name,
@@ -30,7 +28,7 @@ export async function upsertCampaignMetadata(input: CampaignMetadataInput) {
   };
   return prisma.campaign.upsert({
     where: { metaCampaignId: input.metaCampaignId },
-    create: { metaCampaignId: input.metaCampaignId, metaMetricSemanticVersion: CURRENT_META_METRIC_SEMANTIC_VERSION, ...metadata },
+    create: { metaCampaignId: input.metaCampaignId, ...metadata },
     update: metadata,
   });
 }
@@ -68,12 +66,4 @@ export async function persistInsightChunk(
     data: { historySyncedThrough: checkpointDate },
   });
   return relevantInsights.length;
-}
-
-export async function markCampaignMetricSemanticBackfillComplete(campaignIds: number[]) {
-  if (campaignIds.length === 0) return;
-  await prisma.campaign.updateMany({
-    where: { id: { in: campaignIds }, metaMetricSemanticVersion: { lt: CURRENT_META_METRIC_SEMANTIC_VERSION } },
-    data: { metaMetricSemanticVersion: CURRENT_META_METRIC_SEMANTIC_VERSION },
-  });
 }

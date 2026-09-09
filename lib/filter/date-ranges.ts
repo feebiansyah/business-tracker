@@ -31,5 +31,5 @@ export function buildMonthlyChunks(start: string, end: string): DateChunk[] {
 export function getRequiredHistoryStart({ startDate, historySyncedThrough, today }: { startDate: string | null; historySyncedThrough: string | null; today: string }) {
   if (!historySyncedThrough) return startDate;
   const yesterday = addDays(today, -1);
-  return historySyncedThrough < yesterday ? addDays(historySyncedThrough, 1) : yesterday;
+  return historySyncedThrough < yesterday ? historySyncedThrough : yesterday;
 }
