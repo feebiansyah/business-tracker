@@ -56,8 +56,6 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
     missingStartDates: 0,
     failedWlNames: [],
   };
-  if (account.metaAccounts.length === 0) return summary;
-
   const client = new MetaGraphClient();
   const today = indonesiaDate(new Date());
 
@@ -142,5 +140,9 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
     if (wlIndex < account.metaAccounts.length - 1) await client.waitBetweenAccounts();
   }
 
+  await prisma.shopeeAccount.update({
+    where: { id: shopeeAccountId },
+    data: { lastMetaSyncAt: new Date() },
+  });
   return summary;
 }

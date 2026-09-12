@@ -65,3 +65,13 @@ export async function getDashboardData(raw: RawParams, db: DashboardDb): Promise
   const state = parseDashboardParams(raw, accounts.map((account) => account.id));
   return { state, accounts: await Promise.all(accounts.map((account) => loadAccount(db, account, state.accounts[account.id], state.from, state.to))) };
 }
+
+export async function getShopeeDashboardData(shopeeAccountId: number, raw: RawParams, db: DashboardDb): Promise<DashboardData | null> {
+  const account = await db.shopeeAccount.findUnique({
+    where: { id: shopeeAccountId },
+    select: { id: true, name: true, _count: { select: { metaAccounts: true } } },
+  });
+  if (!account) return null;
+  const state = parseDashboardParams(raw, [account.id]);
+  return { state, accounts: [await loadAccount(db, account, state.accounts[account.id], state.from, state.to)] };
+}

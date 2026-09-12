@@ -16,6 +16,7 @@ export async function syncFilterAction(shopeeAccountId: number, previousState: F
   void previousState;
   try {
     const summary = await syncFilter(shopeeAccountId);
+    revalidatePath(`/shopee/${shopeeAccountId}`);
     revalidatePath(`/shopee/${shopeeAccountId}/filter`);
     return {
       success: summary.wlFailed === 0,
