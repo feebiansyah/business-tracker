@@ -6,15 +6,9 @@ import { ShopeePerformanceCard } from "@/components/dashboard/shopee-performance
 import { Button } from "@/components/ui/button";
 import { getShopeeDashboardData } from "@/lib/dashboard/queries";
 import { prisma } from "@/lib/prisma";
+import { formatShopeeActivityTime } from "@/lib/shopee/activity-time";
 
 export const dynamic = "force-dynamic";
-
-function lastSync(value: Date | null) {
-  if (!value) return "Belum pernah Sync Meta";
-  const parts = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(value);
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
-  return `Terakhir Sync Meta: ${part("day")} ${part("month")} ${part("year")}, ${part("hour")}:${part("minute")}`;
-}
 
 export default async function ShopeeAccountDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
@@ -22,7 +16,11 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
   if (!Number.isInteger(shopeeAccountId)) notFound();
   const account = await prisma.shopeeAccount.findUnique({
     where: { id: shopeeAccountId },
-    include: { metaAccounts: { include: { businessManager: true }, orderBy: { name: "asc" } } },
+    include: {
+      metaAccounts: { include: { businessManager: true }, orderBy: { name: "asc" } },
+      commissionImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
+      clickImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
+    },
   });
   if (!account) notFound();
   const dashboard = await getShopeeDashboardData(shopeeAccountId, await searchParams, prisma);
@@ -32,7 +30,7 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
   return (
     <section className="min-w-0 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><Link href="/shopee" className="text-sm text-slate-500 hover:text-slate-900">← Akun Shopee</Link><div className="mt-3 flex items-center gap-3"><h2 className="text-2xl font-semibold tracking-tight text-slate-950">{account.name}</h2><StatusBadge status={account.status} /></div><p className="mt-2 text-sm text-slate-500">{lastSync(account.lastMetaSyncAt)}</p></div>
+        <div><Link href="/shopee" className="text-sm text-slate-500 hover:text-slate-900">← Akun Shopee</Link><div className="mt-3 flex items-center gap-3"><h2 className="text-2xl font-semibold tracking-tight text-slate-950">{account.name}</h2><StatusBadge status={account.status} /></div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500"><span>{account.lastMetaSyncAt ? `Terakhir Sync Meta: ${formatShopeeActivityTime(account.lastMetaSyncAt)}` : "Belum pernah Sync Meta"}</span><span>{account.commissionImports[0] ? `Terakhir Import Komisi: ${formatShopeeActivityTime(account.commissionImports[0].createdAt)}` : "Belum pernah Import Komisi"}</span><span>{account.clickImports[0] ? `Terakhir Import Klik: ${formatShopeeActivityTime(account.clickImports[0].createdAt)}` : "Belum pernah Import Klik"}</span></div></div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto"><SyncMetaButton shopeeAccountId={account.id} /><Button variant="ghost" asChild><Link href={`/shopee/${account.id}/import`}>Import Shopee</Link></Button><Button asChild><Link href={`/meta/new?shopeeAccountId=${account.id}`}>Tambah WL</Link></Button></div>
       </div>
       <div className="space-y-4">
