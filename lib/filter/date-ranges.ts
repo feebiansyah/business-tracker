@@ -33,3 +33,9 @@ export function getRequiredHistoryStart({ startDate, historySyncedThrough, today
   const yesterday = addDays(today, -1);
   return historySyncedThrough < yesterday ? historySyncedThrough : yesterday;
 }
+
+export function getAccountSpendHistoryStart({ earliestStart, spendHistorySyncedThrough, today }: { earliestStart: string | null; spendHistorySyncedThrough: string | null; today: string }) {
+  if (!spendHistorySyncedThrough) return earliestStart && earliestStart <= today ? earliestStart : today;
+  const yesterday = addDays(today, -1);
+  return spendHistorySyncedThrough < yesterday ? spendHistorySyncedThrough : yesterday;
+}

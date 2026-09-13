@@ -8,7 +8,7 @@ import { persistInsightChunk, upsertCampaignMetadata } from "@/lib/filter/persis
 import { checkpointUpdatesForSuccessfulChunk, planCampaignCoverage } from "@/lib/filter/sync-planning";
 import { upsertCampaignDailyBudgetSnapshot } from "@/lib/dashboard/budget-snapshots";
 import { persistMetaAccountDailySpend } from "@/lib/dashboard/account-spend";
-import { buildMonthlyChunks } from "@/lib/filter/date-ranges";
+import { buildMonthlyChunks, getAccountSpendHistoryStart } from "@/lib/filter/date-ranges";
 
 export type FilterSyncSummary = {
   wlTotal: number;
@@ -96,11 +96,7 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
       }, null);
       {
         const checkpoint = wl.spendHistorySyncedThrough ? indonesiaDate(wl.spendHistorySyncedThrough) : null;
-        const next = checkpoint && checkpoint < today
-          ? new Date(`${checkpoint}T00:00:00.000Z`)
-          : null;
-        if (next) next.setUTCDate(next.getUTCDate() + 1);
-        const since = checkpoint === today ? today : next?.toISOString().slice(0, 10) ?? earliestStart ?? today;
+        const since = getAccountSpendHistoryStart({ earliestStart, spendHistorySyncedThrough: checkpoint, today });
         for (const range of buildMonthlyChunks(since, today)) {
           const spendRows = await client.getAccountDailySpend(wl.accountId, range);
           await prisma.$transaction((tx) => persistMetaAccountDailySpend(tx, wl.id, spendRows, range.until));
