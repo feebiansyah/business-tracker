@@ -4,11 +4,36 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "../../../../lib/auth/session";
 import { prisma } from "../../../../lib/prisma";
 import { publicClickaduConfigMessage } from "../../../../lib/clickadu-roi/config-input";
+import { buildClickaduRoiAnalysis, publicClickaduAnalysisMessage } from "../../../../lib/clickadu-roi/analyze";
+import { getClickaduClient } from "../../../../lib/clickadu-roi/config";
+import { readCsvUpload } from "../../../../lib/shopee-import/upload";
 import {
   deleteClickaduConfig,
+  getClickaduConfigById,
   getClickaduConfigPageData,
   saveClickaduConfig,
 } from "../../../../lib/clickadu-roi/config-repository";
+
+export async function analyzeClickaduRoiAction(shopeeAccountId: number, formData: FormData) {
+  await requireUser();
+  try {
+    const upload = await readCsvUpload(shopeeAccountId, formData);
+    const analysis = await buildClickaduRoiAnalysis({
+      shopeeAccountId,
+      configId: formData.get("configId"),
+      dateFrom: formData.get("dateFrom"),
+      dateTill: formData.get("dateTill"),
+      fxRate: formData.get("fxRate"),
+      ...upload,
+    }, {
+      loadConfig: (accountId, configId) => getClickaduConfigById(prisma, accountId, configId),
+      getStatistics: (input) => getClickaduClient().getZoneStatistics(input),
+    });
+    return { success: true as const, analysis };
+  } catch (error) {
+    return { success: false as const, message: publicClickaduAnalysisMessage(error) };
+  }
+}
 
 export async function listClickaduConfigsAction(shopeeAccountId: number) {
   await requireUser();

@@ -36,6 +36,19 @@ export async function getClickaduConfigPageData(db: ClickaduConfigDb, accountIdV
   return { account: { id: account.id, name: account.name }, configs: account.clickaduCampaignConfigs };
 }
 
+export async function getClickaduConfigById(
+  db: ClickaduConfigDb,
+  accountIdValue: unknown,
+  configIdValue: unknown,
+) {
+  const shopeeAccountId = parseShopeeAccountId(accountIdValue);
+  const id = parseClickaduConfigId(configIdValue);
+  return db.clickaduCampaignConfig.findFirst({
+    where: { id, shopeeAccountId },
+    select: configSelect,
+  });
+}
+
 export async function saveClickaduConfig(
   db: ClickaduConfigDb,
   accountIdValue: unknown,
