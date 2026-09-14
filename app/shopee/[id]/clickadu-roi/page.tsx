@@ -22,12 +22,16 @@ export default async function ClickaduRoiPage({ params }: { params: Promise<{ id
         <Link href={`/shopee/${data.account.id}`} className="text-sm text-slate-500 hover:text-slate-900">
           ← {data.account.name}
         </Link>
-        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Clickadu ROI</h2>
-        <p className="mt-1 text-sm text-slate-500">Konfigurasi campaign Clickadu untuk sumber Shopee account ini.</p>
+        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
+          Clickadu ROI — {data.account.name}
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Analisa statistik Clickadu dan CSV komisi Shopee untuk akun ini.
+        </p>
       </div>
-      <ClickaduCredentialForm shopeeAccountId={data.account.id} connected={data.clickaduConnected} />
+      <ClickaduCredentialForm shopeeAccountId={data.account.id} shopeeAccountName={data.account.name} connected={data.clickaduConnected} />
       <ClickaduConfigForm shopeeAccountId={data.account.id} configs={data.configs} />
-      <ClickaduAnalysisWorkflow shopeeAccountId={data.account.id} configs={data.configs} connected={data.clickaduConnected} />
+      <ClickaduAnalysisWorkflow shopeeAccountId={data.account.id} shopeeAccountName={data.account.name} configs={data.configs} connected={data.clickaduConnected} />
     </section>
   );
 }
