@@ -5,13 +5,19 @@ import type { ClickaduStatisticsInput, ClickaduZoneStatistic } from "./types.ts"
 const CLICKADU_STATISTICS_URL = "https://ssp.clickadu.com/v1.0/api/client/statistics/";
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 1_000;
+const MAX_ATTEMPTS_PER_PAGE = 3;
+const INITIAL_RETRY_DELAY_MS = 500;
+const MAX_RETRY_DELAY_MS = 10_000;
+const INTER_PAGE_DELAY_MS = 150;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+type SleepImplementation = (milliseconds: number) => Promise<void>;
 
 type ClickaduClientOptions = {
   token: string;
   fetchImpl?: FetchImplementation;
+  sleepImpl?: SleepImplementation;
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -25,12 +31,14 @@ export class ClickaduApiError extends Error {
 export class ClickaduClient {
   private readonly token: string;
   private readonly fetchImpl: FetchImplementation;
+  private readonly sleepImpl: SleepImplementation;
 
-  constructor({ token, fetchImpl = fetch }: ClickaduClientOptions) {
+  constructor({ token, fetchImpl = fetch, sleepImpl = sleep }: ClickaduClientOptions) {
     const normalizedToken = token.trim();
     if (!normalizedToken) throw new ClickaduApiError("Token Clickadu belum dikonfigurasi.");
     this.token = normalizedToken;
     this.fetchImpl = fetchImpl;
+    this.sleepImpl = sleepImpl;
   }
 
   async getZoneStatistics(input: ClickaduStatisticsInput): Promise<ClickaduZoneStatistic[]> {
@@ -45,6 +53,7 @@ export class ClickaduClient {
       items.push(...payload.items);
       totalPages = payload.totalPages;
       page += 1;
+      if (page <= totalPages) await this.sleepImpl(INTER_PAGE_DELAY_MS);
     } while (page <= totalPages);
 
     return items;
@@ -60,28 +69,52 @@ export class ClickaduClient {
     url.searchParams.set("limit", String(PAGE_LIMIT));
     url.searchParams.set("withTestExpenses", "0");
 
-    let response: Response;
-    try {
-      response = await this.fetchImpl(url, {
-        method: "GET",
-        headers: { Authorization: this.token },
-        cache: "no-store",
-      });
-    } catch {
-      throw new ClickaduApiError("Tidak dapat menghubungi Clickadu API.");
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PAGE; attempt += 1) {
+      let response: Response;
+      try {
+        response = await this.fetchImpl(url, {
+          method: "GET",
+          headers: { Authorization: this.token },
+          cache: "no-store",
+        });
+      } catch {
+        throw new ClickaduApiError("Tidak dapat menghubungi Clickadu API.");
+      }
+
+      if (response.status === 429) {
+        if (attempt === MAX_ATTEMPTS_PER_PAGE) {
+          throw new ClickaduApiError("Rate limit Clickadu tercapai. Coba lagi beberapa saat.");
+        }
+        await this.sleepImpl(getRetryDelayMs(response.headers.get("Retry-After"), attempt));
+        continue;
+      }
+
+      if (!response.ok) throw new ClickaduApiError(`Request Clickadu gagal (HTTP ${response.status}).`);
+
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch {
+        throw new ClickaduApiError("Clickadu API mengembalikan respons tidak valid.");
+      }
+
+      return parsePage(body, page);
     }
 
-    if (!response.ok) throw new ClickaduApiError(`Request Clickadu gagal (HTTP ${response.status}).`);
-
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      throw new ClickaduApiError("Clickadu API mengembalikan respons tidak valid.");
-    }
-
-    return parsePage(body, page);
+    throw new ClickaduApiError("Rate limit Clickadu tercapai. Coba lagi beberapa saat.");
   }
+}
+
+function sleep(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function getRetryDelayMs(retryAfter: string | null, attempt: number) {
+  if (retryAfter !== null && /^\d+(?:\.\d+)?$/.test(retryAfter.trim())) {
+    const milliseconds = Number(retryAfter) * 1_000;
+    if (Number.isFinite(milliseconds)) return Math.min(milliseconds, MAX_RETRY_DELAY_MS);
+  }
+  return INITIAL_RETRY_DELAY_MS * 2 ** (attempt - 1);
 }
 
 function validateInput(input: ClickaduStatisticsInput) {
