@@ -14,6 +14,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum TrafficProvider {
+  CLICKADU
+}
+
 model User {
   id           Int       @id @default(autoincrement())
   email        String    @unique @db.VarChar(191)
@@ -58,6 +62,20 @@ model ShopeeAccount {
   commissionImports       ShopeeCommissionImport[]
   clickImports            ShopeeClickImport[]
   clickaduCampaignConfigs ClickaduCampaignConfig[]
+  trafficCredentials      TrafficCredential[]
+}
+
+model TrafficCredential {
+  id              Int             @id @default(autoincrement())
+  provider        TrafficProvider
+  encryptedSecret String          @db.Text
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  shopeeAccountId Int
+  shopeeAccount   ShopeeAccount   @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([shopeeAccountId, provider])
+  @@index([shopeeAccountId])
 }
 
 model ClickaduCampaignConfig {

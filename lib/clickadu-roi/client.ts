@@ -28,7 +28,7 @@ export class ClickaduClient {
 
   constructor({ token, fetchImpl = fetch }: ClickaduClientOptions) {
     const normalizedToken = token.trim();
-    if (!normalizedToken) throw new ClickaduApiError("CLICKADU_API_TOKEN belum dikonfigurasi.");
+    if (!normalizedToken) throw new ClickaduApiError("Token Clickadu belum dikonfigurasi.");
     this.token = normalizedToken;
     this.fetchImpl = fetchImpl;
   }

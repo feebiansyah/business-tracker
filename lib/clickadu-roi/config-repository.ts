@@ -30,10 +30,15 @@ export async function getClickaduConfigPageData(db: ClickaduConfigDb, accountIdV
         select: configSelect,
         orderBy: [{ label: "asc" }, { id: "asc" }],
       },
+      trafficCredentials: {
+        where: { provider: "CLICKADU" },
+        select: { id: true },
+        take: 1,
+      },
     },
   });
   if (!account) return null;
-  return { account: { id: account.id, name: account.name }, configs: account.clickaduCampaignConfigs };
+  return { account: { id: account.id, name: account.name }, configs: account.clickaduCampaignConfigs, clickaduConnected: account.trafficCredentials.length === 1 };
 }
 
 export async function getClickaduConfigById(

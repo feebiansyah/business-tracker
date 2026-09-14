@@ -5,6 +5,7 @@ import { getClickaduConfigPageData } from "@/lib/clickadu-roi/config-repository"
 import { prisma } from "@/lib/prisma";
 import { ClickaduAnalysisWorkflow } from "@/components/clickadu-roi/analysis-workflow";
 import { ClickaduConfigForm } from "@/components/clickadu-roi/config-form";
+import { ClickaduCredentialForm } from "@/components/clickadu-roi/credential-form";
 
 export const dynamic = "force-dynamic";
 
@@ -24,8 +25,9 @@ export default async function ClickaduRoiPage({ params }: { params: Promise<{ id
         <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Clickadu ROI</h2>
         <p className="mt-1 text-sm text-slate-500">Konfigurasi campaign Clickadu untuk sumber Shopee account ini.</p>
       </div>
+      <ClickaduCredentialForm shopeeAccountId={data.account.id} connected={data.clickaduConnected} />
       <ClickaduConfigForm shopeeAccountId={data.account.id} configs={data.configs} />
-      <ClickaduAnalysisWorkflow shopeeAccountId={data.account.id} configs={data.configs} />
+      <ClickaduAnalysisWorkflow shopeeAccountId={data.account.id} configs={data.configs} connected={data.clickaduConnected} />
     </section>
   );
 }
