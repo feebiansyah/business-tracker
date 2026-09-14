@@ -49,6 +49,7 @@ test("identifies every Shopee workflow route and keeps nested detail routes acti
   assert.equal(getShopeeNavigationState("/shopee/3/fix", 3).activeWorkflow, "fix");
   assert.equal(getShopeeNavigationState("/shopee/3/off-filter", 3).activeWorkflow, "off-filter");
   assert.equal(getShopeeNavigationState("/shopee/3/off-fix", 3).activeWorkflow, "off-fix");
+  assert.equal(getShopeeNavigationState("/shopee/3/clickadu-roi", 3).activeWorkflow, "clickadu-roi");
 });
 
 test("allows the Shopee parent to collapse on an active Shopee route", () => {

@@ -1,7 +1,7 @@
-export type ShopeeWorkflowSlug = "import" | "filter" | "fix" | "off-filter" | "off-fix";
+export type ShopeeWorkflowSlug = "import" | "filter" | "fix" | "off-filter" | "off-fix" | "clickadu-roi";
 export type ShopeeNavigationKey = "overview" | ShopeeWorkflowSlug;
 
-const workflowSlugs = new Set<ShopeeWorkflowSlug>(["import", "filter", "fix", "off-filter", "off-fix"]);
+const workflowSlugs = new Set<ShopeeWorkflowSlug>(["import", "filter", "fix", "off-filter", "off-fix", "clickadu-roi"]);
 
 export type SidebarExpansionState = { shopeeExpanded: boolean; expandedAccountId: number | null };
 export type SidebarExpansionAction = { type: "TOGGLE_SHOPEE" } | { type: "TOGGLE_ACCOUNT"; accountId: number };
