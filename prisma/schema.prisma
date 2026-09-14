@@ -54,9 +54,24 @@ model ShopeeAccount {
   createdAt      DateTime  @default(now())
   lastMetaSyncAt DateTime?
 
-  metaAccounts      MetaAccount[]
-  commissionImports ShopeeCommissionImport[]
-  clickImports      ShopeeClickImport[]
+  metaAccounts            MetaAccount[]
+  commissionImports       ShopeeCommissionImport[]
+  clickImports            ShopeeClickImport[]
+  clickaduCampaignConfigs ClickaduCampaignConfig[]
+}
+
+model ClickaduCampaignConfig {
+  id              Int           @id @default(autoincrement())
+  campaignId      String        @db.VarChar(64)
+  label           String?       @db.VarChar(191)
+  sourceTag       String        @db.VarChar(64)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  shopeeAccountId Int
+  shopeeAccount   ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([shopeeAccountId, campaignId])
+  @@index([shopeeAccountId])
 }
 
 model MetaAccount {
