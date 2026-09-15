@@ -215,7 +215,15 @@ function parsePage(body: unknown, expectedPage: number): { items: ClickaduZoneSt
   }
   if (!Array.isArray(result.items)) throw new ClickaduApiError("Clickadu API mengembalikan items tidak valid.");
 
-  return { items: result.items.map(parseStatistic), totalPages };
+  return {
+    items: result.items.filter(hasStatisticZone).map(parseStatistic),
+    totalPages,
+  };
+}
+
+function hasStatisticZone(value: unknown) {
+  const item = asRecord(value, "item");
+  return item.zone !== null && item.zone !== undefined && String(item.zone).trim() !== "";
 }
 
 function parseStatistic(value: unknown): ClickaduZoneStatistic {
