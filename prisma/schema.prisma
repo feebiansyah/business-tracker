@@ -16,6 +16,7 @@ datasource db {
 
 enum TrafficProvider {
   CLICKADU
+  ADSTERRA
 }
 
 model User {
@@ -62,6 +63,7 @@ model ShopeeAccount {
   commissionImports       ShopeeCommissionImport[]
   clickImports            ShopeeClickImport[]
   clickaduCampaignConfigs ClickaduCampaignConfig[]
+  adsterraCampaignConfigs AdsterraCampaignConfig[]
   trafficCredentials      TrafficCredential[]
 }
 
@@ -79,6 +81,20 @@ model TrafficCredential {
 }
 
 model ClickaduCampaignConfig {
+  id              Int           @id @default(autoincrement())
+  campaignId      String        @db.VarChar(64)
+  label           String?       @db.VarChar(191)
+  sourceTag       String        @db.VarChar(64)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  shopeeAccountId Int
+  shopeeAccount   ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([shopeeAccountId, campaignId])
+  @@index([shopeeAccountId])
+}
+
+model AdsterraCampaignConfig {
   id              Int           @id @default(autoincrement())
   campaignId      String        @db.VarChar(64)
   label           String?       @db.VarChar(191)

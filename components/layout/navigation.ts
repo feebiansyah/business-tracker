@@ -22,6 +22,7 @@ export const shopeeWorkflows: { key: ShopeeNavigationKey; href: "" | ShopeeWorkf
   { key: "off-filter", href: "off-filter", label: "OFF Filter" },
   { key: "off-fix", href: "off-fix", label: "OFF Fix" },
   { key: "clickadu-roi", href: "clickadu-roi", label: "Clickadu ROI" },
+  { key: "adsterra-roi", href: "adsterra-roi", label: "Adsterra ROI" },
 ];
 
 export const mobileNavigationItems: NavigationItem[] = [
