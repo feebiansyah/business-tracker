@@ -3,6 +3,7 @@ import Decimal from "decimal.js";
 import type { ClickaduStatisticsInput, ClickaduZoneStatistic } from "./types.ts";
 
 const CLICKADU_STATISTICS_URL = "https://ssp.clickadu.com/v1.0/api/client/statistics/";
+const CLICKADU_BASE_URL = "https://ssp.clickadu.com";
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 1_000;
 const MAX_ATTEMPTS_PER_PAGE = 3;
@@ -26,6 +27,12 @@ export class ClickaduApiError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ClickaduApiError";
+  }
+}
+export class ClickaduAmbiguousWriteError extends Error {
+  constructor() {
+    super("Status update Clickadu tidak dapat dipastikan.");
+    this.name = "ClickaduAmbiguousWriteError";
   }
 }
 export class ClickaduClient {
@@ -57,6 +64,59 @@ export class ClickaduClient {
     } while (page <= totalPages);
 
     return items;
+  }
+
+  async getCampaign(campaignId: string): Promise<UnknownRecord> {
+    const body = await this.fetchJson(this.campaignUrl(campaignId), "GET");
+    const response = asRecord(body, "response");
+    return "result" in response ? asRecord(response.result, "campaign") : response;
+  }
+
+  async getBlockedZones(campaignId: string): Promise<string[]> {
+    const body = await this.fetchJson(`${CLICKADU_BASE_URL}/v1.0/api/client/campaigns/${encodeURIComponent(validateCampaignId(campaignId))}/blocked/zone/`, "GET");
+    return parseBlockedZones(body);
+  }
+
+  async updateCampaign(campaignId: string, payload: UnknownRecord): Promise<void> {
+    try {
+      await this.fetchJson(this.campaignUrl(campaignId), "PUT", payload, false);
+    } catch (error) {
+      if (error instanceof ClickaduApiError) throw error;
+      throw new ClickaduAmbiguousWriteError();
+    }
+  }
+
+  private campaignUrl(campaignId: string) {
+    return `${CLICKADU_BASE_URL}/api/v2/campaigns/${encodeURIComponent(validateCampaignId(campaignId))}/`;
+  }
+
+  private async fetchJson(url: string, method: "GET" | "PUT", payload?: UnknownRecord, retry429 = true): Promise<unknown> {
+    const attempts = retry429 ? MAX_ATTEMPTS_PER_PAGE : 1;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      let response: Response;
+      try {
+        response = await this.fetchImpl(url, {
+          method,
+          headers: { Authorization: this.token, ...(payload ? { "Content-Type": "application/json" } : {}) },
+          body: payload ? JSON.stringify(payload) : undefined,
+          cache: "no-store",
+        });
+      } catch {
+        if (method === "PUT") throw new ClickaduAmbiguousWriteError();
+        throw new ClickaduApiError("Tidak dapat menghubungi Clickadu API.");
+      }
+      if (response.status === 429 && retry429) {
+        if (attempt === attempts) throw new ClickaduApiError("Rate limit Clickadu tercapai. Coba lagi beberapa saat.");
+        await this.sleepImpl(getRetryDelayMs(response.headers.get("Retry-After"), attempt));
+        continue;
+      }
+      if (!response.ok) throw new ClickaduApiError(`Request Clickadu gagal (HTTP ${response.status}).`);
+      if (method === "PUT") return {};
+      if (response.status === 204) return {};
+      try { return await response.json(); }
+      catch { throw new ClickaduApiError("Clickadu API mengembalikan respons tidak valid."); }
+    }
+    throw new ClickaduApiError("Request Clickadu gagal.");
   }
 
   private async fetchPage(input: ClickaduStatisticsInput, page: number) {
@@ -103,6 +163,26 @@ export class ClickaduClient {
 
     throw new ClickaduApiError("Rate limit Clickadu tercapai. Coba lagi beberapa saat.");
   }
+}
+
+function validateCampaignId(value: string) {
+  const campaignId = value.trim();
+  if (!campaignId) throw new ClickaduApiError("Campaign Clickadu tidak valid.");
+  return campaignId;
+}
+
+function parseBlockedZones(body: unknown) {
+  const response = asRecord(body, "response");
+  const result = "result" in response ? response.result : response;
+  const record = result && typeof result === "object" && !Array.isArray(result) ? result as UnknownRecord : null;
+  const list = Array.isArray(result) ? result : Array.isArray(record?.items) ? record.items : Array.isArray(record?.zones) ? record.zones : [];
+  return list.map((item) => {
+    if (typeof item === "string" || typeof item === "number") return String(item).trim();
+    const value = asRecord(item, "blocked zone");
+    const zone = value.zone ?? value.id;
+    if (typeof zone !== "string" && typeof zone !== "number") throw new ClickaduApiError("Clickadu API mengembalikan blocked zone tidak valid.");
+    return String(zone).trim();
+  }).filter(Boolean);
 }
 
 function sleep(milliseconds: number) {

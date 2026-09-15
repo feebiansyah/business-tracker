@@ -6,6 +6,7 @@ import { prisma } from "../../../../lib/prisma";
 import { publicClickaduConfigMessage } from "../../../../lib/clickadu-roi/config-input";
 import { buildClickaduRoiAnalysis, ClickaduAnalysisError, publicClickaduAnalysisMessage } from "../../../../lib/clickadu-roi/analyze";
 import { getClickaduClient } from "../../../../lib/clickadu-roi/config";
+import { BlacklistReplacementError, replaceClickaduBlacklist } from "../../../../lib/clickadu-roi/blacklist";
 import { readCsvUpload } from "../../../../lib/shopee-import/upload";
 import { TrafficProvider } from "../../../../lib/generated/prisma/client";
 import { decryptTrafficSecret, encryptTrafficSecret } from "../../../../lib/traffic-credentials/crypto";
@@ -39,6 +40,32 @@ export async function analyzeClickaduRoiAction(shopeeAccountId: number, formData
     return { success: true as const, analysis };
   } catch (error) {
     return { success: false as const, message: publicClickaduAnalysisMessage(error) };
+  }
+}
+
+export async function replaceClickaduBlacklistAction(shopeeAccountId: number, formData: FormData) {
+  await requireUser();
+  try {
+    const upload = await readCsvUpload(shopeeAccountId, formData);
+    const credential = await getEncryptedTrafficCredential(prisma, shopeeAccountId, TrafficProvider.CLICKADU);
+    if (!credential) throw new ClickaduAnalysisError("Koneksi Clickadu belum dikonfigurasi.");
+    const client = getClickaduClient(decryptTrafficSecret(credential.encryptedSecret));
+    const analysis = await buildClickaduRoiAnalysis({
+      shopeeAccountId,
+      configId: formData.get("configId"),
+      dateFrom: formData.get("dateFrom"),
+      dateTill: formData.get("dateTill"),
+      fxRate: formData.get("fxRate"),
+      ...upload,
+    }, {
+      loadConfig: (accountId, configId) => getClickaduConfigById(prisma, accountId, configId),
+      getStatistics: (input) => client.getZoneStatistics(input),
+    });
+    const result = await replaceClickaduBlacklist(analysis.config.campaignId, analysis.analysis.candidateZones, client);
+    return { success: true as const, blockedZoneCount: result.blockedZoneCount };
+  } catch (error) {
+    const message = error instanceof BlacklistReplacementError ? error.message : publicClickaduAnalysisMessage(error);
+    return { success: false as const, message };
   }
 }
 
