@@ -172,8 +172,12 @@ function validateCampaignId(value: string) {
 }
 
 function parseBlockedZones(body: unknown) {
-  const response = asRecord(body, "response");
-  const result = "result" in response ? response.result : response;
+  const result = Array.isArray(body)
+    ? body
+    : (() => {
+        const response = asRecord(body, "response");
+        return "result" in response ? response.result : response;
+      })();
   const record = result && typeof result === "object" && !Array.isArray(result) ? result as UnknownRecord : null;
   const list = Array.isArray(result) ? result : Array.isArray(record?.items) ? record.items : Array.isArray(record?.zones) ? record.zones : [];
   return list.map((item) => {
