@@ -44,7 +44,7 @@ export async function buildClickaduRoiAnalysis(input: BuildClickaduAnalysisInput
   if (!config || config.shopeeAccountId !== shopeeAccountId) {
     throw new ClickaduAnalysisError("Konfigurasi Clickadu tidak ditemukan.");
   }
-  const csv = aggregateZoneCommissions(decodeClickaduShopeeCsv(input.bytes), config.sourceTag);
+  const csv = aggregateZoneCommissions(decodeClickaduShopeeCsv(input.bytes), config.sourceTag, dateFrom, dateTill);
   const statistics = await deps.getStatistics({ campaignIds: [config.campaignId], dateFrom, dateTill });
   return {
     originalFilename: input.originalFilename,

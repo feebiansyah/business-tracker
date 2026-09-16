@@ -19,6 +19,7 @@ export type ClickaduZoneStatistic = {
 
 export type ClickaduShopeeCsvRow = {
   logicalRow: number;
+  date: string;
   tagLink1: string;
   tagLink3: string;
   commission: string;

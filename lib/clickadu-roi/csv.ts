@@ -2,9 +2,10 @@ import { parse } from "csv-parse/sync";
 
 import { MAX_CSV_BYTES, MAX_CSV_ROWS } from "../shopee-import/constants.ts";
 import { ShopeeImportError } from "../shopee-import/errors.ts";
+import { parseShopeeDate } from "../shopee-import/date.ts";
 import type { ClickaduShopeeCsvRow } from "./types.ts";
 
-const REQUIRED_HEADERS = ["Tag_link1", "Tag_link3", "Komisi Bersih Affiliate (Rp)"] as const;
+const REQUIRED_HEADERS = ["Waktu Pemesanan", "Tag_link1", "Tag_link3", "Komisi Bersih Affiliate (Rp)"] as const;
 
 type ParsedRecord = {
   record: string[];
@@ -78,8 +79,9 @@ export function decodeClickaduShopeeCsv(bytes: Uint8Array): ClickaduShopeeCsvRow
   const indexes = REQUIRED_HEADERS.map((header) => candidate.headers.indexOf(header));
   return candidate.records.map(({ record, info }, index) => ({
     logicalRow: info.lines || index + 2,
-    tagLink1: record[indexes[0]] ?? "",
-    tagLink3: record[indexes[1]] ?? "",
-    commission: record[indexes[2]] ?? "",
+    date: parseShopeeDate(record[indexes[0]] ?? "", info.lines || index + 2),
+    tagLink1: record[indexes[1]] ?? "",
+    tagLink3: record[indexes[2]] ?? "",
+    commission: record[indexes[3]] ?? "",
   }));
 }

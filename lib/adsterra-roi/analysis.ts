@@ -7,8 +7,9 @@ const THRESHOLD = new Decimal(30);
 export function normalizeAdsterraSource(value: string) { return value.trim().toUpperCase(); }
 export function aggregateAdsterraCommissions(rows: AdsterraShopeeCsvRow[], sourceTag: string, dateFrom: string, dateTill: string) {
   const source = normalizeAdsterraSource(sourceTag); if (!source) throw new ShopeeImportError("INVALID_SOURCE_TAG", "Source Tag Adsterra tidak valid.");
+  const periodRows = rows.filter((row) => row.date >= dateFrom && row.date <= dateTill); if (!periodRows.length) throw new ShopeeImportError("CSV_NO_ROWS_IN_PERIOD", "CSV Shopee tidak memiliki data pada periode yang dipilih.");
   const grouped = new Map<string, { commission: Decimal; rowCount: number }>();
-  for (const row of rows) { const placement = row.tagLink3.trim(); if (row.date < dateFrom || row.date > dateTill || normalizeAdsterraSource(row.tagLink1) !== source || !placement) continue; const amount = parseCommission(row.commission, row.logicalRow); const current = grouped.get(placement); if (current) { current.commission = current.commission.plus(amount); current.rowCount += 1; } else grouped.set(placement, { commission: amount, rowCount: 1 }); }
+  for (const row of periodRows) { const placement = row.tagLink3.trim(); if (normalizeAdsterraSource(row.tagLink1) !== source || !placement) continue; const amount = parseCommission(row.commission, row.logicalRow); const current = grouped.get(placement); if (current) { current.commission = current.commission.plus(amount); current.rowCount += 1; } else grouped.set(placement, { commission: amount, rowCount: 1 }); }
   return { placements: [...grouped.entries()].map(([placement, value]) => ({ placement, commission: canonicalCommission(value.commission), rowCount: value.rowCount })).sort((a, b) => a.placement.localeCompare(b.placement)) };
 }
 export function analyzeAdsterraRoi(statistics: AdsterraPlacementStatistic[], commissions: PlacementCommission[], fxRateValue: string): AdsterraRoiAnalysis {

@@ -11,14 +11,18 @@ export function normalizeClickaduSource(value: string) {
 export function aggregateZoneCommissions(
   rows: ClickaduShopeeCsvRow[],
   sourceTag: string,
+  dateFrom: string,
+  dateTill: string,
 ): ZoneCommissionAggregation {
   const normalizedSource = normalizeClickaduSource(sourceTag);
   if (!normalizedSource) throw new ShopeeImportError("INVALID_SOURCE_TAG", "Source Tag Clickadu tidak valid.");
 
+  const periodRows = rows.filter((row) => row.date >= dateFrom && row.date <= dateTill);
+  if (!periodRows.length) throw new ShopeeImportError("CSV_NO_ROWS_IN_PERIOD", "CSV Shopee tidak memiliki data pada periode yang dipilih.");
   const grouped = new Map<string, { commission: Decimal; rowCount: number }>();
   let processedRowCount = 0;
 
-  for (const row of rows) {
+  for (const row of periodRows) {
     const zone = row.tagLink3.trim();
     if (normalizeClickaduSource(row.tagLink1) !== normalizedSource || !zone) continue;
 
