@@ -19,7 +19,7 @@ test("test mode requires the exact campaign and explicit confirmation", () => {
 test("replace payload uses only the guarded campaign and normalized placements", () => {
   assert.deepEqual(buildReplacePayload([" 100 ", 200, "100"]), {
     campaign_id: 1463724,
-    placement_ids: ["100", "200"],
+    placement_ids: [100, 200],
   });
 });
 
