@@ -2,9 +2,11 @@ import Decimal from "decimal.js";
 import type { AdsterraPlacementStatistic, AdsterraStatisticsInput } from "./types.ts";
 
 const STATS_URL = "https://api3.adsterratools.com/advertiser/stats.json";
+const API_BASE_URL = "https://api3.adsterratools.com/advertiser";
 type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export class AdsterraApiError extends Error { constructor(message: string) { super(message); this.name = "AdsterraApiError"; } }
+export class AdsterraAmbiguousWriteError extends Error { constructor() { super("Status update Adsterra tidak dapat dipastikan."); this.name = "AdsterraAmbiguousWriteError"; } }
 
 export class AdsterraClient {
   private readonly apiKey: string;
@@ -25,6 +27,54 @@ export class AdsterraClient {
     try { body = await response.json(); } catch { throw new AdsterraApiError("Adsterra API mengembalikan respons tidak valid."); }
     return parseResponse(body);
   }
+  async getBlacklist(campaignIdValue: string) {
+    const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
+    const body = await this.fetchJson(`${API_BASE_URL}/campaign/${campaignId}/linking/blacklist.json`, "GET");
+    return parseBlacklist(body);
+  }
+  async replaceBlacklist(campaignIdValue: string, placementIdValues: readonly unknown[]) {
+    const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
+    const placementIds = normalizePlacementIds(placementIdValues);
+    try {
+      await this.fetchJson(`${API_BASE_URL}/linking/blacklist.json`, "PUT", { campaign_id: campaignId, placement_ids: placementIds });
+    } catch (error) {
+      if (error instanceof AdsterraApiError) throw error;
+      throw new AdsterraAmbiguousWriteError();
+    }
+  }
+  private async fetchJson(url: string, method: "GET" | "PUT", payload?: Record<string, unknown>) {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, { method, headers: { "X-API-Key": this.apiKey, ...(payload ? { "Content-Type": "application/json" } : {}) }, body: payload ? JSON.stringify(payload) : undefined, cache: "no-store" });
+    } catch {
+      if (method === "PUT") throw new AdsterraAmbiguousWriteError();
+      throw new AdsterraApiError("Tidak dapat menghubungi Adsterra API.");
+    }
+    if (!response.ok) throw new AdsterraApiError(`Request Adsterra gagal (HTTP ${response.status}).`);
+    if (method === "PUT") return {};
+    if (response.status === 204) return [];
+    try { return await response.json(); } catch { throw new AdsterraApiError("Adsterra API mengembalikan respons tidak valid."); }
+  }
+}
+
+export function normalizePlacementIds(values: readonly unknown[]) {
+  const result: number[] = []; const seen = new Set<number>();
+  for (const value of values) { const placement = positiveInteger(value, "Placement ID"); if (!seen.has(placement)) { seen.add(placement); result.push(placement); } }
+  return result;
+}
+
+function parseBlacklist(body: unknown) {
+  if (Array.isArray(body)) return normalizePlacementIds(body);
+  if (!body || typeof body !== "object") throw new AdsterraApiError("Adsterra API mengembalikan respons blacklist tidak valid.");
+  const placementIds = (body as Record<string, unknown>).placement_ids;
+  if (!Array.isArray(placementIds)) throw new AdsterraApiError("Adsterra API mengembalikan respons blacklist tidak valid.");
+  return normalizePlacementIds(placementIds);
+}
+
+function positiveInteger(value: unknown, label: string) {
+  const parsed = typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value.trim()) : value;
+  if (!Number.isSafeInteger(parsed) || (parsed as number) <= 0) throw new AdsterraApiError(`${label} Adsterra tidak valid.`);
+  return parsed as number;
 }
 
 function parseResponse(body: unknown): AdsterraPlacementStatistic[] {
