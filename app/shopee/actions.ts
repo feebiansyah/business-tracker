@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
+import {
+  deleteShopeeAccount,
+  renameShopeeAccount,
+  ShopeeAccountManagementError,
+} from "@/lib/shopee/account-management";
 
 function getRequiredText(formData: FormData, field: string) {
   const value = formData.get(field);
@@ -50,4 +55,46 @@ export async function updateMetaAccountShopeeConnection(formData: FormData) {
   revalidatePath("/wl");
   revalidatePath("/shopee");
   redirect("/wl");
+}
+
+type ShopeeAccountActionResult = { success: true } | { success: false; message: string };
+
+function revalidateShopeeAccountViews(shopeeAccountId?: number) {
+  revalidatePath("/", "layout");
+  revalidatePath("/shopee");
+  if (shopeeAccountId) revalidatePath(`/shopee/${shopeeAccountId}`);
+}
+
+export async function renameShopeeAccountAction(
+  shopeeAccountId: number,
+  formData: FormData,
+): Promise<ShopeeAccountActionResult> {
+  await requireUser();
+  const value = formData.get("name");
+  const name = typeof value === "string" ? value : "";
+  try {
+    await renameShopeeAccount(prisma, shopeeAccountId, name);
+    revalidateShopeeAccountViews(shopeeAccountId);
+    return { success: true };
+  } catch (error) {
+    if (error instanceof ShopeeAccountManagementError) return { success: false, message: error.message };
+    console.error("[Shopee Account Rename]", error);
+    return { success: false, message: "Gagal menyimpan nama Akun Shopee." };
+  }
+}
+
+export async function deleteShopeeAccountAction(
+  shopeeAccountId: number,
+  confirmationName: string,
+): Promise<ShopeeAccountActionResult> {
+  await requireUser();
+  try {
+    await deleteShopeeAccount(prisma, shopeeAccountId, confirmationName);
+    revalidateShopeeAccountViews(shopeeAccountId);
+    return { success: true };
+  } catch (error) {
+    if (error instanceof ShopeeAccountManagementError) return { success: false, message: error.message };
+    console.error("[Shopee Account Delete]", error);
+    return { success: false, message: "Gagal menghapus Akun Shopee." };
+  }
 }

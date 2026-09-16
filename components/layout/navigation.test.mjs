@@ -34,6 +34,7 @@ test("maps Shopee Overview and workflows to existing routes", () => {
     { href: "off-filter", label: "OFF Filter" },
     { href: "off-fix", label: "OFF Fix" },
     { href: "clickadu-roi", label: "Clickadu ROI" },
+    { href: "adsterra-roi", label: "Adsterra ROI" },
   ]);
 });
 

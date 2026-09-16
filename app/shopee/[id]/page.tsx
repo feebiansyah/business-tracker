@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { getShopeeDashboardData } from "@/lib/dashboard/queries";
 import { prisma } from "@/lib/prisma";
 import { formatShopeeActivityTime } from "@/lib/shopee/activity-time";
+import { ShopeeAccountManagement } from "@/components/shopee/account-management";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
         <div><Link href="/shopee" className="text-sm text-slate-500 hover:text-slate-900">← Akun Shopee</Link><div className="mt-3 flex items-center gap-3"><h2 className="text-2xl font-semibold tracking-tight text-slate-950">{account.name}</h2><StatusBadge status={account.status} /></div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500"><span>{account.lastMetaSyncAt ? `Terakhir Sync Meta: ${formatShopeeActivityTime(account.lastMetaSyncAt)}` : "Belum pernah Sync Meta"}</span><span>{account.commissionImports[0] ? `Terakhir Import Komisi: ${formatShopeeActivityTime(account.commissionImports[0].createdAt)}` : "Belum pernah Import Komisi"}</span><span>{account.clickImports[0] ? `Terakhir Import Klik: ${formatShopeeActivityTime(account.clickImports[0].createdAt)}` : "Belum pernah Import Klik"}</span></div></div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto"><SyncMetaButton shopeeAccountId={account.id} /><Button variant="ghost" asChild><Link href={`/shopee/${account.id}/import`}>Import Shopee</Link></Button><Button asChild><Link href={`/meta/new?shopeeAccountId=${account.id}`}>Tambah WL</Link></Button></div>
       </div>
+      <ShopeeAccountManagement accountId={account.id} accountName={account.name} />
       <div className="space-y-4">
         <form method="get" className="grid gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex sm:flex-wrap sm:items-end">
           <label className="grid gap-1 text-xs font-medium text-slate-600">Tanggal Mulai<input type="date" name="from" defaultValue={dashboard.state.from} className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal" /></label>
