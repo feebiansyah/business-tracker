@@ -17,6 +17,7 @@ const configSelect = {
   label: true,
   sourceTag: true,
   shopeeAccountId: true,
+  lastBlacklistReplacedAt: true,
 } as const;
 
 export async function getClickaduConfigPageData(db: ClickaduConfigDb, accountIdValue: unknown) {

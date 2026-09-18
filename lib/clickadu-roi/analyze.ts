@@ -15,7 +15,7 @@ export class ClickaduAnalysisError extends Error {
 }
 
 export type ClickaduAnalysisConfig = {
-  id: number; campaignId: string; label: string | null; sourceTag: string; shopeeAccountId: number;
+  id: number; campaignId: string; label: string | null; sourceTag: string; shopeeAccountId: number; lastBlacklistReplacedAt: Date | null;
 };
 
 export type BuildClickaduAnalysisInput = {

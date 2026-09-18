@@ -87,6 +87,7 @@ model ClickaduCampaignConfig {
   sourceTag       String        @db.VarChar(64)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  lastBlacklistReplacedAt DateTime?
   shopeeAccountId Int
   shopeeAccount   ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
 
@@ -101,6 +102,7 @@ model AdsterraCampaignConfig {
   sourceTag       String        @db.VarChar(64)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  lastBlacklistReplacedAt DateTime?
   shopeeAccountId Int
   shopeeAccount   ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
 

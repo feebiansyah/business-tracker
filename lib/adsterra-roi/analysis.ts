@@ -2,8 +2,8 @@ import Decimal from "decimal.js";
 import { canonicalCommission, parseCommission } from "../shopee-import/commission.ts";
 import { ShopeeImportError } from "../shopee-import/errors.ts";
 import type { AdsterraPlacementStatistic, AdsterraRoiAnalysis, AdsterraShopeeCsvRow, PlacementCommission } from "./types.ts";
+import { BLACKLIST_ROI_THRESHOLD, hasMinimumDecisionCost } from "../traffic-roi/decision.ts";
 
-const THRESHOLD = new Decimal(30);
 export function normalizeAdsterraSource(value: string) { return value.trim().toUpperCase(); }
 export function aggregateAdsterraCommissions(rows: AdsterraShopeeCsvRow[], sourceTag: string, dateFrom: string, dateTill: string) {
   const source = normalizeAdsterraSource(sourceTag); if (!source) throw new ShopeeImportError("INVALID_SOURCE_TAG", "Source Tag Adsterra tidak valid.");
@@ -17,7 +17,7 @@ export function analyzeAdsterraRoi(statistics: AdsterraPlacementStatistic[], com
   const grouped = new Map<string, AdsterraPlacementStatistic>();
   for (const row of statistics) { const current = grouped.get(row.placement); if (current) { current.impressions += row.impressions; current.clicks += row.clicks; current.spent = decimal(current.spent).plus(row.spent).toString(); } else grouped.set(row.placement, { ...row }); }
   const commissionMap = new Map(commissions.map((row) => [row.placement, decimal(row.commission)]));
-  const rows = [...grouped.values()].map((row) => { const spent = decimal(row.spent); const cost = spent.times(fx); const commission = commissionMap.get(row.placement) ?? new Decimal(0); const profit = commission.minus(cost); const roi = cost.isZero() ? null : profit.div(cost).times(100); return { ...row, spentUsd: spent.toString(), costIdr: cost.toString(), commission: commission.toString(), profit: profit.toString(), roi: roi?.toString() ?? null, isBlacklistCandidate: cost.greaterThan(0) && roi !== null && roi.lessThan(THRESHOLD) }; }).sort((a, b) => decimal(b.spentUsd).comparedTo(a.spentUsd) || a.placement.localeCompare(b.placement));
+  const rows = [...grouped.values()].map((row) => { const spent = decimal(row.spent); const cost = spent.times(fx); const commission = commissionMap.get(row.placement) ?? new Decimal(0); const profit = commission.minus(cost); const roi = cost.isZero() ? null : profit.div(cost).times(100); return { ...row, spentUsd: spent.toString(), costIdr: cost.toString(), commission: commission.toString(), profit: profit.toString(), roi: roi?.toString() ?? null, isBlacklistCandidate: hasMinimumDecisionCost(cost) && roi !== null && roi.lessThan(BLACKLIST_ROI_THRESHOLD) }; }).sort((a, b) => decimal(b.spentUsd).comparedTo(a.spentUsd) || a.placement.localeCompare(b.placement));
   const totals = rows.reduce((total, row) => ({ spent: total.spent.plus(row.spentUsd), cost: total.cost.plus(row.costIdr), commission: total.commission.plus(row.commission), profit: total.profit.plus(row.profit) }), { spent: new Decimal(0), cost: new Decimal(0), commission: new Decimal(0), profit: new Decimal(0) });
   return { rows, candidatePlacements: rows.filter((row) => row.isBlacklistCandidate).map((row) => row.placement), totalSpentUsd: totals.spent.toString(), totalCostIdr: totals.cost.toString(), totalCommission: totals.commission.toString(), totalProfit: totals.profit.toString(), roi: totals.cost.isZero() ? null : totals.profit.div(totals.cost).times(100).toString() };
 }

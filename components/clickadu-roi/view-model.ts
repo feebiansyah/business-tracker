@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import { hasMinimumDecisionCost } from "../../lib/traffic-roi/decision.ts";
 
 export function formatIdr(value: string) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(new Decimal(value).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).toNumber());
@@ -16,6 +17,6 @@ export function formatAnalysisDate(value: string) {
 }
 export function roiStatusLabel(row: { isBlacklistCandidate: boolean; profit: string; costIdr: string }) {
   if (row.isBlacklistCandidate) return "Kandidat Blacklist (ROI < 30%)";
-  if (new Decimal(row.costIdr).isZero()) return "Tanpa Biaya";
+  if (!hasMinimumDecisionCost(row.costIdr)) return "Belum Cukup Spend";
   return "Aman (ROI ≥ 30%)";
 }

@@ -62,7 +62,10 @@ export async function replaceClickaduBlacklist(
 ) {
   const candidates = normalizeZoneIds(candidateZoneIds);
   const campaign = await deps.getCampaign(campaignId);
-  await deps.getBlockedZones(campaignId);
+  const existing = await deps.getBlockedZones(campaignId);
+  if (zoneSetsEqual(candidates, existing)) {
+    return { status: "NO_CHANGE" as const, blockedZoneCount: candidates.length, candidateZoneIds: candidates };
+  }
   const payload = buildCampaignBlacklistUpdate(campaign, candidates);
 
   try {
@@ -73,14 +76,14 @@ export async function replaceClickaduBlacklist(
     if (!zoneSetsEqual(candidates, actual)) {
       throw new BlacklistReplacementError("Status update Clickadu tidak dapat dipastikan dan verifikasi blacklist tidak cocok.");
     }
-    return { blockedZoneCount: candidates.length, candidateZoneIds: candidates };
+    return { status: "UPDATED" as const, blockedZoneCount: candidates.length, candidateZoneIds: candidates };
   }
 
   const actual = await deps.getBlockedZones(campaignId);
   if (!zoneSetsEqual(candidates, actual)) {
     throw new BlacklistReplacementError("Verifikasi blacklist Clickadu gagal: daftar zone tidak cocok.");
   }
-  return { blockedZoneCount: candidates.length, candidateZoneIds: candidates };
+  return { status: "UPDATED" as const, blockedZoneCount: candidates.length, candidateZoneIds: candidates };
 }
 
 function asRecord(value: unknown, message: string): UnknownRecord {

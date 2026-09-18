@@ -11,6 +11,7 @@ import { readCsvUpload } from "../../../../lib/shopee-import/upload";
 import { TrafficProvider } from "../../../../lib/generated/prisma/client";
 import { decryptTrafficSecret, encryptTrafficSecret } from "../../../../lib/traffic-credentials/crypto";
 import { deleteTrafficCredential, getEncryptedTrafficCredential, saveTrafficCredential } from "../../../../lib/traffic-credentials/repository";
+import { markBlacklistReplaced, runVerifiedBlacklistReplacement } from "../../../../lib/traffic-roi/replacement-timestamp";
 import {
   deleteClickaduConfig,
   getClickaduConfigById,
@@ -61,8 +62,12 @@ export async function replaceClickaduBlacklistAction(shopeeAccountId: number, fo
       loadConfig: (accountId, configId) => getClickaduConfigById(prisma, accountId, configId),
       getStatistics: (input) => client.getZoneStatistics(input),
     });
-    const result = await replaceClickaduBlacklist(analysis.config.campaignId, analysis.analysis.candidateZones, client);
-    return { success: true as const, blockedZoneCount: result.blockedZoneCount };
+    const result = await runVerifiedBlacklistReplacement(
+      () => replaceClickaduBlacklist(analysis.config.campaignId, analysis.analysis.candidateZones, client),
+      (at) => markBlacklistReplaced(prisma, "CLICKADU", shopeeAccountId, analysis.config.id, at),
+    );
+    if (result.status === "UPDATED") revalidatePath(`/shopee/${shopeeAccountId}/clickadu-roi`);
+    return { success: true as const, status: result.status, blockedZoneCount: result.blockedZoneCount, lastBlacklistReplacedAt: result.lastBlacklistReplacedAt };
   } catch (error) {
     const message = error instanceof BlacklistReplacementError ? error.message : publicClickaduAnalysisMessage(error);
     return { success: false as const, message };

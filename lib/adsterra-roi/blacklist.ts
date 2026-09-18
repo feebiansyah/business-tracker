@@ -2,6 +2,7 @@ import Decimal from "decimal.js";
 
 import { AdsterraAmbiguousWriteError } from "./client.ts";
 import type { AdsterraRoiRow } from "./types.ts";
+import { BLACKLIST_ROI_THRESHOLD, hasMinimumDecisionCost } from "../traffic-roi/decision.ts";
 
 type AnalyzedPlacement = Pick<AdsterraRoiRow, "placement" | "costIdr" | "roi">;
 
@@ -25,10 +26,10 @@ export function buildAdsterraBlacklistTarget(existingValues: readonly unknown[],
   const relevant = new Set<number>();
   for (const row of rows) {
     const cost = nonNegativeDecimal(row.costIdr);
-    if (!cost.greaterThan(0)) continue;
+    if (!hasMinimumDecisionCost(cost)) continue;
     const placement = placementId(row.placement);
     relevant.add(placement);
-    const isLoss = row.roi !== null && decimal(row.roi).lessThan(30);
+    const isLoss = row.roi !== null && decimal(row.roi).lessThan(BLACKLIST_ROI_THRESHOLD);
     if (isLoss) target.add(placement); else target.delete(placement);
   }
   const targetPlacementIds = [...target].sort((a, b) => a - b);

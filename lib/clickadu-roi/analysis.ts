@@ -6,8 +6,7 @@ import type {
   ClickaduZoneStatistic,
   ZoneCommission,
 } from "./types.ts";
-
-const BLACKLIST_ROI_THRESHOLD = new Decimal(30);
+import { BLACKLIST_ROI_THRESHOLD, hasMinimumDecisionCost } from "../traffic-roi/decision.ts";
 
 export function analyzeClickaduRoi(
   statistics: ClickaduZoneStatistic[],
@@ -34,7 +33,7 @@ export function analyzeClickaduRoi(
       commission: commission.toString(),
       profit: profit.toString(),
       roi: roi?.toString() ?? null,
-      isBlacklistCandidate: !costIdr.isZero() && roi !== null && roi.lessThan(BLACKLIST_ROI_THRESHOLD),
+      isBlacklistCandidate: hasMinimumDecisionCost(costIdr) && roi !== null && roi.lessThan(BLACKLIST_ROI_THRESHOLD),
     };
   });
 
