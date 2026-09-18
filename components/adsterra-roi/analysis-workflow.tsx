@@ -43,14 +43,14 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
 
   async function replaceBlacklist() {
     if (analysisInFlight.current || replaceInFlight.current || !result || !lastAnalysisForm.current) return;
-    if (!window.confirm(`Blacklist campaign Adsterra akan diperbarui berdasarkan hasil analisis terbaru. ${result.analysis.candidatePlacements.length} kandidat dengan biaya minimal Rp1.000 dan ROI < 30% akan dibuat OFF; Placement profitable dengan biaya minimal Rp1.000 akan dibuat ON; blacklist tanpa data atau biaya yang cukup tetap dipertahankan. Lanjutkan?`)) return;
+    if (!window.confirm(`Blacklist campaign Adsterra akan diganti berdasarkan hasil analisis terbaru. ${result.analysis.candidatePlacements.length} Placement dengan Biaya Iklan minimal Rp1.000 dan ROI < 30% akan dibuat OFF. Placement yang tidak memenuhi kondisi akan dibuat ON dan dikeluarkan dari blacklist. Lanjutkan?`)) return;
     replaceInFlight.current = true;
     setReplacing(true); setError(""); setSuccess("");
     try {
       const response = await replaceAdsterraBlacklistAction(shopeeAccountId, cloneFormData(lastAnalysisForm.current));
       if (!response.success) setError(response.message);
       else if (response.status === "NO_CHANGE") setSuccess(`Blacklist sudah sesuai. Tidak ada write API dilakukan (${response.finalCount} Placement).`);
-      else { if (response.lastBlacklistReplacedAt) setLastBlacklistReplacedAt(response.lastBlacklistReplacedAt); setSuccess(`Blacklist berhasil diperbarui dan diverifikasi: ${response.finalCount} Placement; ${response.addedCount} ditambahkan, ${response.removedCount} dikeluarkan, ${response.preservedWithoutDataCount} tanpa data dipertahankan.`); }
+      else { if (response.lastBlacklistReplacedAt) setLastBlacklistReplacedAt(response.lastBlacklistReplacedAt); setSuccess(`Blacklist berhasil diperbarui dan diverifikasi: ${response.finalCount} Placement; ${response.addedCount} ditambahkan dan ${response.removedCount} dikeluarkan.`); }
     } finally { replaceInFlight.current = false; setReplacing(false); }
   }
 
@@ -67,7 +67,7 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
     </form>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {success && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{success}</p>}
-    {result && <><div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-slate-700"><p className="font-medium text-slate-900">Aturan Kandidat Blacklist</p><p className="mt-1">Placement menjadi Kandidat Blacklist jika Biaya Iklan ≥ Rp1.000 dan ROI &lt; 30%.</p><p>Placement dengan biaya di bawah Rp1.000 belum cukup spend untuk keputusan dan status blacklist existing dipertahankan.</p></div><AnalysisResult key={analysisVersion} result={result} shopeeName={shopeeAccountName} lastBlacklistReplacedAt={lastBlacklistReplacedAt}/><div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-sm text-slate-700">Replace menghitung ulang analisis di server, mempertahankan blacklist tanpa data relevan, dan memverifikasi daftar final secara exact.</p><Button type="button" variant="destructive" className="mt-3" disabled={busy || replacing} onClick={replaceBlacklist}>{replacing ? "Memperbarui blacklist..." : "Replace Blacklist Adsterra"}</Button></div></>}
+    {result && <><div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-slate-700"><p className="font-medium text-slate-900">Aturan Kandidat Blacklist</p><p className="mt-1">Replace Blacklist akan membuat blacklist hanya dari Placement dengan Biaya Iklan ≥ Rp1.000 dan ROI &lt; 30% pada periode analisis.</p><p>Placement lainnya akan dikeluarkan dari blacklist.</p></div><AnalysisResult key={analysisVersion} result={result} shopeeName={shopeeAccountName} lastBlacklistReplacedAt={lastBlacklistReplacedAt}/><div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-sm text-slate-700">Replace menghitung ulang analisis di server, mengganti blacklist secara penuh, dan memverifikasi daftar final secara exact.</p><Button type="button" variant="destructive" className="mt-3" disabled={busy || replacing} onClick={replaceBlacklist}>{replacing ? "Memperbarui blacklist..." : "Replace Blacklist Adsterra"}</Button></div></>}
   </section>;
 }
 

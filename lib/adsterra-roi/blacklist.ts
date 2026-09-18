@@ -22,15 +22,13 @@ export function placementSetsEqual(left: readonly unknown[], right: readonly unk
 
 export function buildAdsterraBlacklistTarget(existingValues: readonly unknown[], rows: readonly AnalyzedPlacement[]) {
   const existing = normalizeForTarget(existingValues);
-  const target = new Set(existing);
-  const relevant = new Set<number>();
+  const target = new Set<number>();
   for (const row of rows) {
     const cost = nonNegativeDecimal(row.costIdr);
     if (!hasMinimumDecisionCost(cost)) continue;
     const placement = placementId(row.placement);
-    relevant.add(placement);
     const isLoss = row.roi !== null && decimal(row.roi).lessThan(BLACKLIST_ROI_THRESHOLD);
-    if (isLoss) target.add(placement); else target.delete(placement);
+    if (isLoss) target.add(placement);
   }
   const targetPlacementIds = [...target].sort((a, b) => a - b);
   return {
@@ -38,7 +36,6 @@ export function buildAdsterraBlacklistTarget(existingValues: readonly unknown[],
     targetPlacementIds,
     addedPlacementIds: targetPlacementIds.filter((placement) => !existing.includes(placement)),
     removedPlacementIds: existing.filter((placement) => !target.has(placement)),
-    preservedWithoutDataPlacementIds: existing.filter((placement) => !relevant.has(placement)),
   };
 }
 
