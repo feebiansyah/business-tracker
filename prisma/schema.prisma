@@ -90,9 +90,24 @@ model ClickaduCampaignConfig {
   lastBlacklistReplacedAt DateTime?
   shopeeAccountId Int
   shopeeAccount   ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
+  dailyMetrics    ClickaduCampaignDailyMetric[]
 
   @@unique([shopeeAccountId, campaignId])
   @@index([shopeeAccountId])
+}
+
+model ClickaduCampaignDailyMetric {
+  id                       Int                    @id @default(autoincrement())
+  date                     DateTime               @db.Date
+  spendUsd                 Decimal?               @db.Decimal(20, 6)
+  dailyBudget              Decimal?               @db.Decimal(20, 6)
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  clickaduCampaignConfigId Int
+  clickaduCampaignConfig   ClickaduCampaignConfig @relation(fields: [clickaduCampaignConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([clickaduCampaignConfigId, date])
+  @@index([date])
 }
 
 model AdsterraCampaignConfig {

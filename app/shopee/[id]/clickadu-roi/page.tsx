@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { ClickaduAnalysisWorkflow } from "@/components/clickadu-roi/analysis-workflow";
 import { ClickaduConfigForm } from "@/components/clickadu-roi/config-form";
 import { ClickaduCredentialForm } from "@/components/clickadu-roi/credential-form";
+import { ClickaduCampaignReportList } from "@/components/clickadu-roi/campaign-report-list";
+import { indonesiaToday } from "@/lib/clickadu-history/daily-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,7 @@ export default async function ClickaduRoiPage({ params }: { params: Promise<{ id
       </div>
       <ClickaduCredentialForm shopeeAccountId={data.account.id} shopeeAccountName={data.account.name} connected={data.clickaduConnected} />
       <ClickaduConfigForm shopeeAccountId={data.account.id} configs={data.configs} />
+      <ClickaduCampaignReportList shopeeAccountId={data.account.id} campaigns={data.configs} defaultDate={indonesiaToday()} connected={data.clickaduConnected} />
       <ClickaduAnalysisWorkflow shopeeAccountId={data.account.id} shopeeAccountName={data.account.name} configs={data.configs} connected={data.clickaduConnected} />
     </section>
   );
