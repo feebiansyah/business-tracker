@@ -12,9 +12,11 @@ import {
   isNavigationItemActive,
   metaAdsNavigation,
   settingsNavigation,
+  shopeeDirectWorkflows,
   shopeeNavigation,
-  shopeeWorkflows,
+  shopeeWorkflowGroups,
   type NavigationItem,
+  type ShopeeWorkflowItem,
 } from "./navigation";
 
 export type SidebarShopeeAccount = { id: number; name: string };
@@ -79,9 +81,19 @@ export function SidebarNavigationPanel({ pathname, shopeeAccounts, onNavigate, o
                 </button>
               </div>
               {showWorkflows && <div className="ml-2.5 mt-1 space-y-0.5 border-l border-slate-700/50 pl-2.5">
-                {shopeeWorkflows.map((workflow) => {
-                  const href = workflow.href ? `/shopee/${account.id}/${workflow.href}` : `/shopee/${account.id}`;
-                  return <Link key={workflow.key} href={href} onClick={onNavigate} className={cn("relative block rounded-md px-2.5 py-1 text-[13px] transition-colors before:absolute before:-left-2.5 before:top-1/2 before:w-1.5 before:border-t before:border-slate-700/60", state.activeWorkflow === workflow.key ? "bg-blue-500/15 font-medium text-blue-200" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100")}>{workflow.label}</Link>;
+                {shopeeDirectWorkflows.map((workflow) => <ShopeeWorkflowLink key={workflow.key} accountId={account.id} workflow={workflow} activeWorkflow={state.activeWorkflow} onNavigate={onNavigate}/>)}
+                {shopeeWorkflowGroups.map((group) => {
+                  const groupExpanded = expansion.expandedSubgroups.includes(group.key);
+                  const groupActive = group.items.some((workflow) => workflow.key === state.activeWorkflow);
+                  return <div key={group.key} className="pt-0.5">
+                    <button type="button" aria-expanded={groupExpanded} onClick={() => dispatchExpansion({ type: "TOGGLE_SUBGROUP", subgroup: group.key })} className={cn("flex w-full items-center gap-1 rounded-md px-2.5 py-1 text-left text-[13px] font-medium transition-colors", groupActive ? "text-blue-200" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100")}>
+                      <span className="min-w-0 flex-1 truncate">{group.label}</span>
+                      {groupExpanded ? <ChevronDown className="size-3.5 shrink-0"/> : <ChevronRight className="size-3.5 shrink-0"/>}
+                    </button>
+                    {groupExpanded && <div className="ml-2 mt-0.5 space-y-0.5 border-l border-slate-700/40 pl-2">
+                      {group.items.map((workflow) => <ShopeeWorkflowLink key={workflow.key} accountId={account.id} workflow={workflow} activeWorkflow={state.activeWorkflow} onNavigate={onNavigate}/>)}
+                    </div>}
+                  </div>;
                 })}
               </div>}
             </div>;
@@ -96,6 +108,11 @@ export function SidebarNavigationPanel({ pathname, shopeeAccounts, onNavigate, o
       <button type="submit" className={`${rootLinkClass} ${inactiveRootClass} w-full`}><LogOut className="size-4" aria-hidden="true"/><span>Keluar</span></button>
     </form>
   </>;
+}
+
+function ShopeeWorkflowLink({ accountId, workflow, activeWorkflow, onNavigate }: { accountId: number; workflow: ShopeeWorkflowItem; activeWorkflow: string | null; onNavigate?: () => void }) {
+  const href = workflow.href ? `/shopee/${accountId}/${workflow.href}` : `/shopee/${accountId}`;
+  return <Link href={href} onClick={onNavigate} className={cn("relative block rounded-md px-2.5 py-1 text-[13px] transition-colors before:absolute before:-left-2.5 before:top-1/2 before:w-1.5 before:border-t before:border-slate-700/60", activeWorkflow === workflow.key ? "bg-blue-500/15 font-medium text-blue-200" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100")}>{workflow.label}</Link>;
 }
 
 function NavigationGroup({ label, children }: { label: string; children: React.ReactNode }) {

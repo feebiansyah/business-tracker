@@ -7,7 +7,9 @@ import {
   metaAdsNavigation,
   mobileNavigationItems,
   settingsNavigation,
+  shopeeDirectWorkflows,
   shopeeNavigation,
+  shopeeWorkflowGroups,
   shopeeWorkflows,
 } from "./navigation.ts";
 
@@ -25,7 +27,39 @@ test("renders only the approved application navigation", () => {
   for (const hidden of ["/adu", "/terra", "/roi-tracker", "/meta"]) assert.equal(visibleHrefs.includes(hidden), false);
 });
 
-test("maps Shopee Overview and workflows to existing routes", () => {
+test("keeps Overview and Import Data as direct account workflows", () => {
+  assert.deepEqual(shopeeDirectWorkflows.map(({ href, label }) => ({ href, label })), [
+    { href: "", label: "Overview" },
+    { href: "import", label: "Import Data" },
+  ]);
+});
+
+test("groups Meta Ads and Traffic workflows without changing routes", () => {
+  assert.deepEqual(shopeeWorkflowGroups.map(({ key, label, items }) => ({
+    key,
+    label,
+    items: items.map(({ href, label: itemLabel }) => ({ href, label: itemLabel })),
+  })), [
+    {
+      key: "meta-ads",
+      label: "Meta Ads",
+      items: [
+        { href: "filter", label: "Filter" },
+        { href: "fix", label: "Fix" },
+        { href: "off-filter", label: "OFF Filter" },
+        { href: "off-fix", label: "OFF Fix" },
+      ],
+    },
+    {
+      key: "traffic",
+      label: "Traffic",
+      items: [
+        { href: "clickadu-roi", label: "Clickadu" },
+        { href: "adsterra-roi", label: "Adsterra" },
+      ],
+    },
+  ]);
+
   assert.deepEqual(shopeeWorkflows.map(({ href, label }) => ({ href, label })), [
     { href: "", label: "Overview" },
     { href: "import", label: "Import Data" },
@@ -33,8 +67,8 @@ test("maps Shopee Overview and workflows to existing routes", () => {
     { href: "fix", label: "Fix" },
     { href: "off-filter", label: "OFF Filter" },
     { href: "off-fix", label: "OFF Fix" },
-    { href: "clickadu-roi", label: "Clickadu ROI" },
-    { href: "adsterra-roi", label: "Adsterra ROI" },
+    { href: "clickadu-roi", label: "Clickadu" },
+    { href: "adsterra-roi", label: "Adsterra" },
   ]);
 });
 

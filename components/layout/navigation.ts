@@ -1,5 +1,5 @@
 import { LayoutDashboard, Layers3, Megaphone, Settings, ShoppingBag, type LucideIcon } from "lucide-react";
-import type { ShopeeNavigationKey, ShopeeWorkflowSlug } from "./navigation-state";
+import type { ShopeeNavigationKey, ShopeeWorkflowGroupKey, ShopeeWorkflowSlug } from "./navigation-state";
 
 export type NavigationItem = { href: string; label: string; icon: LucideIcon };
 
@@ -14,15 +14,38 @@ export const metaAdsNavigation = {
 
 export const shopeeNavigation: NavigationItem = { href: "/shopee", label: "Shopee", icon: ShoppingBag };
 
-export const shopeeWorkflows: { key: ShopeeNavigationKey; href: "" | ShopeeWorkflowSlug; label: string }[] = [
+export type ShopeeWorkflowItem = { key: ShopeeNavigationKey; href: "" | ShopeeWorkflowSlug; label: string };
+export type ShopeeWorkflowGroup = { key: ShopeeWorkflowGroupKey; label: string; items: ShopeeWorkflowItem[] };
+
+export const shopeeDirectWorkflows: ShopeeWorkflowItem[] = [
   { key: "overview", href: "", label: "Overview" },
   { key: "import", href: "import", label: "Import Data" },
-  { key: "filter", href: "filter", label: "Filter" },
-  { key: "fix", href: "fix", label: "Fix" },
-  { key: "off-filter", href: "off-filter", label: "OFF Filter" },
-  { key: "off-fix", href: "off-fix", label: "OFF Fix" },
-  { key: "clickadu-roi", href: "clickadu-roi", label: "Clickadu ROI" },
-  { key: "adsterra-roi", href: "adsterra-roi", label: "Adsterra ROI" },
+];
+
+export const shopeeWorkflowGroups: ShopeeWorkflowGroup[] = [
+  {
+    key: "meta-ads",
+    label: "Meta Ads",
+    items: [
+      { key: "filter", href: "filter", label: "Filter" },
+      { key: "fix", href: "fix", label: "Fix" },
+      { key: "off-filter", href: "off-filter", label: "OFF Filter" },
+      { key: "off-fix", href: "off-fix", label: "OFF Fix" },
+    ],
+  },
+  {
+    key: "traffic",
+    label: "Traffic",
+    items: [
+      { key: "clickadu-roi", href: "clickadu-roi", label: "Clickadu" },
+      { key: "adsterra-roi", href: "adsterra-roi", label: "Adsterra" },
+    ],
+  },
+];
+
+export const shopeeWorkflows: ShopeeWorkflowItem[] = [
+  ...shopeeDirectWorkflows,
+  ...shopeeWorkflowGroups.flatMap((group) => group.items),
 ];
 
 export const mobileNavigationItems: NavigationItem[] = [

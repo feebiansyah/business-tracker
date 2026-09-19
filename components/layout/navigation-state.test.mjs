@@ -55,6 +55,7 @@ test("identifies every Shopee workflow route and keeps nested detail routes acti
 test("allows the Shopee parent to collapse on an active Shopee route", () => {
   const initial = createSidebarExpansionState("/shopee/3/filter");
   assert.equal(initial.shopeeExpanded, true);
+  assert.deepEqual(initial.expandedSubgroups, ["meta-ads"]);
   assert.equal(reduceSidebarExpansion(initial, { type: "TOGGLE_SHOPEE" }).shopeeExpanded, false);
 });
 
@@ -70,4 +71,25 @@ test("keeps at most one Shopee account expanded", () => {
   const second = reduceSidebarExpansion(first, { type: "TOGGLE_ACCOUNT", accountId: 4 });
   assert.equal(first.expandedAccountId, 3);
   assert.equal(second.expandedAccountId, 4);
+  assert.deepEqual(second.expandedSubgroups, []);
+});
+
+test("auto-expands the subgroup for the active workflow", () => {
+  assert.deepEqual(createSidebarExpansionState("/shopee/3/filter").expandedSubgroups, ["meta-ads"]);
+  assert.deepEqual(createSidebarExpansionState("/shopee/3/fix").expandedSubgroups, ["meta-ads"]);
+  assert.deepEqual(createSidebarExpansionState("/shopee/3/off-filter").expandedSubgroups, ["meta-ads"]);
+  assert.deepEqual(createSidebarExpansionState("/shopee/3/off-fix").expandedSubgroups, ["meta-ads"]);
+  assert.deepEqual(createSidebarExpansionState("/shopee/3/clickadu-roi").expandedSubgroups, ["traffic"]);
+  assert.deepEqual(createSidebarExpansionState("/shopee/3/adsterra-roi").expandedSubgroups, ["traffic"]);
+  assert.deepEqual(createSidebarExpansionState("/shopee/3/import").expandedSubgroups, []);
+});
+
+test("allows Meta Ads and Traffic subgroups to toggle manually", () => {
+  const initial = createSidebarExpansionState("/shopee/3/filter");
+  const metaClosed = reduceSidebarExpansion(initial, { type: "TOGGLE_SUBGROUP", subgroup: "meta-ads" });
+  const trafficOpened = reduceSidebarExpansion(metaClosed, { type: "TOGGLE_SUBGROUP", subgroup: "traffic" });
+  const bothOpened = reduceSidebarExpansion(trafficOpened, { type: "TOGGLE_SUBGROUP", subgroup: "meta-ads" });
+  assert.deepEqual(metaClosed.expandedSubgroups, []);
+  assert.deepEqual(trafficOpened.expandedSubgroups, ["traffic"]);
+  assert.deepEqual(bothOpened.expandedSubgroups, ["traffic", "meta-ads"]);
 });
