@@ -7,6 +7,8 @@ type FetchImplementation = (input: string | URL | Request, init?: RequestInit) =
 
 export class AdsterraApiError extends Error { constructor(message: string) { super(message); this.name = "AdsterraApiError"; } }
 export class AdsterraAmbiguousWriteError extends Error { constructor() { super("Status update Adsterra tidak dapat dipastikan."); this.name = "AdsterraAmbiguousWriteError"; } }
+export type AdsterraCampaignStatus = "INACTIVE" | "LIMITED" | "ACTIVE" | "NOT_IN_USE";
+export type AdsterraCampaignStatusResult = { campaignId: number; activeCode: 1 | 2 | 3 | 4; status: AdsterraCampaignStatus };
 
 export class AdsterraClient {
   private readonly apiKey: string;
@@ -32,6 +34,16 @@ export class AdsterraClient {
     const body = await this.fetchJson(`${API_BASE_URL}/campaign/${campaignId}/linking/blacklist.json`, "GET");
     return parseBlacklist(body);
   }
+  async getCampaignStatus(campaignIdValue: string): Promise<AdsterraCampaignStatusResult> {
+    const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
+    const body = await this.fetchJson(`${API_BASE_URL}/campaign/${campaignId}.json`, "GET", undefined, true);
+    return parseCampaignStatus(campaignId, body);
+  }
+  async setCampaignActive(campaignIdValue: string, active: boolean) {
+    const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
+    if (typeof active !== "boolean") throw new AdsterraApiError("Status campaign Adsterra tidak valid.");
+    await this.fetchJson(`${API_BASE_URL}/campaign/${campaignId}.json`, "PATCH", { active }, true);
+  }
   async replaceBlacklist(campaignIdValue: string, placementIdValues: readonly unknown[]) {
     const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
     const placementIds = normalizePlacementIds(placementIdValues);
@@ -42,19 +54,27 @@ export class AdsterraClient {
       throw new AdsterraAmbiguousWriteError();
     }
   }
-  private async fetchJson(url: string, method: "GET" | "PUT", payload?: Record<string, unknown>) {
+  private async fetchJson(url: string, method: "GET" | "PUT" | "PATCH", payload?: Record<string, unknown>, acceptJson = false) {
     let response: Response;
     try {
-      response = await this.fetchImpl(url, { method, headers: { "X-API-Key": this.apiKey, ...(payload ? { "Content-Type": "application/json" } : {}) }, body: payload ? JSON.stringify(payload) : undefined, cache: "no-store" });
+      response = await this.fetchImpl(url, { method, headers: { "X-API-Key": this.apiKey, ...(acceptJson ? { Accept: "application/json" } : {}), ...(payload ? { "Content-Type": "application/json" } : {}) }, body: payload ? JSON.stringify(payload) : undefined, cache: "no-store" });
     } catch {
-      if (method === "PUT") throw new AdsterraAmbiguousWriteError();
+      if (method === "PUT" || method === "PATCH") throw new AdsterraAmbiguousWriteError();
       throw new AdsterraApiError("Tidak dapat menghubungi Adsterra API.");
     }
     if (!response.ok) throw new AdsterraApiError(`Request Adsterra gagal (HTTP ${response.status}).`);
-    if (method === "PUT") return {};
+    if (method === "PUT" || method === "PATCH") return {};
     if (response.status === 204) return [];
     try { return await response.json(); } catch { throw new AdsterraApiError("Adsterra API mengembalikan respons tidak valid."); }
   }
+}
+
+function parseCampaignStatus(campaignId: number, body: unknown): AdsterraCampaignStatusResult {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new AdsterraApiError("Adsterra API mengembalikan status campaign tidak valid.");
+  const active = (body as Record<string, unknown>).active;
+  const statuses: Record<number, AdsterraCampaignStatus> = { 1: "INACTIVE", 2: "LIMITED", 3: "ACTIVE", 4: "NOT_IN_USE" };
+  if (typeof active !== "number" || !Number.isInteger(active) || !(active in statuses)) throw new AdsterraApiError("Adsterra API mengembalikan status campaign tidak valid.");
+  return { campaignId, activeCode: active as 1 | 2 | 3 | 4, status: statuses[active] };
 }
 
 export function normalizePlacementIds(values: readonly unknown[]) {
