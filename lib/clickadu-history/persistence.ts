@@ -6,7 +6,7 @@ type DailyMetricDb = Pick<PrismaClient, "clickaduCampaignDailyMetric"> | Pick<Pr
 export function buildDailyMetricUpsert(input: ClickaduDailyMetricInput) {
   const date = new Date(`${input.date}T00:00:00.000Z`);
   const available = {
-    ...(input.spendUsd !== null ? { spendUsd: input.spendUsd } : {}),
+    spendUsd: input.spendUsd,
     ...(input.dailyBudget !== null ? { dailyBudget: input.dailyBudget } : {}),
   };
   return {
