@@ -121,11 +121,28 @@ model AdsterraCampaignConfig {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   lastBlacklistReplacedAt DateTime?
+  historySyncedThrough DateTime? @db.Date
   shopeeAccountId Int
   shopeeAccount   ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
+  dailyMetrics    AdsterraCampaignDailyMetric[]
 
   @@unique([shopeeAccountId, campaignId])
+  @@unique([shopeeAccountId, sourceTag])
   @@index([shopeeAccountId])
+}
+
+model AdsterraCampaignDailyMetric {
+  id                        Int                     @id @default(autoincrement())
+  date                      DateTime                @db.Date
+  spendUsd                  Decimal?                @db.Decimal(20, 6)
+  commissionIdr             Decimal?                @db.Decimal(21, 5)
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+  adsterraCampaignConfigId  Int
+  adsterraCampaignConfig    AdsterraCampaignConfig @relation(fields: [adsterraCampaignConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([adsterraCampaignConfigId, date])
+  @@index([date])
 }
 
 model MetaAccount {

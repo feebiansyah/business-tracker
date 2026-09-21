@@ -36,7 +36,7 @@ export function ClickaduCampaignReportList({ shopeeAccountId, campaigns, connect
 
   return <section className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h3 className="font-semibold text-slate-950">Laporan Harian Clickadu</h3><p className="mt-1 text-sm text-slate-500">Pilih campaign untuk melihat Budget, Spend, Komisi, dan Profit harian.</p></div>
+      <div><h3 className="font-semibold text-slate-950">Laporan Harian Clickadu</h3><p className="mt-1 text-sm text-slate-500">Pilih campaign untuk melihat Spend, Komisi, dan Profit harian.</p></div>
       <form onSubmit={sync}>
         <Button disabled={busy || !connected || campaigns.length === 0}>{busy ? "Menyinkronkan..." : "Sync Clickadu"}</Button>
       </form>
