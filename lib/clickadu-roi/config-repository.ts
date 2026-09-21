@@ -63,6 +63,35 @@ export async function saveClickaduConfig(
   const shopeeAccountId = parseShopeeAccountId(accountIdValue);
   const parsed = parseClickaduConfigInput(input);
   await requireShopeeAccount(db, shopeeAccountId);
+  if (parsed.id !== undefined) {
+    const owned = await db.clickaduCampaignConfig.findFirst({
+      where: { id: parsed.id, shopeeAccountId },
+      select: { id: true },
+    });
+    if (!owned) throw new ClickaduConfigError("Konfigurasi Clickadu tidak ditemukan.");
+  }
+  const campaignOwner = await db.clickaduCampaignConfig.findFirst({
+    where: {
+      shopeeAccountId,
+      campaignId: parsed.campaignId,
+      ...(parsed.id === undefined ? {} : { id: { not: parsed.id } }),
+    },
+    select: { id: true },
+  });
+  if (campaignOwner) {
+    throw new ClickaduConfigError("Campaign Clickadu tersebut sudah ada pada akun Shopee ini.");
+  }
+  const sourceTagOwner = await db.clickaduCampaignConfig.findFirst({
+    where: {
+      shopeeAccountId,
+      sourceTag: parsed.sourceTag,
+      ...(parsed.id === undefined ? {} : { id: { not: parsed.id } }),
+    },
+    select: { id: true },
+  });
+  if (sourceTagOwner) {
+    throw new ClickaduConfigError("Source Tag Clickadu sudah digunakan campaign lain pada akun Shopee ini.");
+  }
 
   try {
     if (parsed.id === undefined) {
@@ -89,10 +118,21 @@ export async function saveClickaduConfig(
   } catch (error) {
     if (error instanceof ClickaduConfigError) throw error;
     if (isUniqueConstraintError(error)) {
+      if (isSourceTagConstraint(error)) {
+        throw new ClickaduConfigError("Source Tag Clickadu sudah digunakan campaign lain pada akun Shopee ini.");
+      }
       throw new ClickaduConfigError("Campaign Clickadu tersebut sudah ada pada akun Shopee ini.");
     }
     throw error;
   }
+}
+
+function isSourceTagConstraint(error: unknown) {
+  if (!error || typeof error !== "object" || !("meta" in error)) return false;
+  const target = (error as { meta?: { target?: unknown } }).meta?.target;
+  return Array.isArray(target)
+    ? target.includes("sourceTag")
+    : String(target ?? "").includes("sourceTag");
 }
 
 export async function deleteClickaduConfig(

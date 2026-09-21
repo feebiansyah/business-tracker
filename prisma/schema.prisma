@@ -93,6 +93,7 @@ model ClickaduCampaignConfig {
   dailyMetrics    ClickaduCampaignDailyMetric[]
 
   @@unique([shopeeAccountId, campaignId])
+  @@unique([shopeeAccountId, sourceTag])
   @@index([shopeeAccountId])
 }
 
@@ -101,6 +102,7 @@ model ClickaduCampaignDailyMetric {
   date                     DateTime               @db.Date
   spendUsd                 Decimal?               @db.Decimal(20, 6)
   dailyBudget              Decimal?               @db.Decimal(20, 6)
+  commissionIdr            Decimal?               @db.Decimal(21, 5)
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
   clickaduCampaignConfigId Int

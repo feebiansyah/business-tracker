@@ -30,7 +30,7 @@ export async function getClickaduDailyHistory(
   const page = Math.min(Math.max(1, params.page), pageCount);
   const rows = await db.clickaduCampaignDailyMetric.findMany({
     where,
-    select: { id: true, date: true, spendUsd: true, dailyBudget: true },
+    select: { id: true, date: true, spendUsd: true, dailyBudget: true, commissionIdr: true },
     orderBy: [{ date: params.dir }, { id: "asc" }],
     skip: (page - 1) * params.pageSize,
     take: params.pageSize,
@@ -42,6 +42,7 @@ export async function getClickaduDailyHistory(
       date: row.date.toISOString().slice(0, 10),
       spendUsd: row.spendUsd?.toString() ?? null,
       dailyBudget: row.dailyBudget?.toString() ?? null,
+      commissionIdr: row.commissionIdr?.toString() ?? null,
     })),
     pagination: { page, pageSize: params.pageSize, total, pageCount },
     state: { ...params, page },

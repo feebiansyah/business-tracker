@@ -3,8 +3,18 @@ import type Decimal from "decimal.js";
 export type CsvRecord = {
   logicalRow: number;
   orderedAt: string;
+  tagLink1?: string;
   tagLink2: string;
+  tagLink3?: string;
   commission: string;
+};
+
+export type ClickaduConfigCandidate = { id: number; sourceTag: string };
+export type ClickaduCommissionAggregate = {
+  clickaduCampaignConfigId: number;
+  date: string;
+  commission: Decimal;
+  rowCount: number;
 };
 
 export type ParsedCommissionRow = {
@@ -81,7 +91,7 @@ export type CsvUpload = { originalFilename: string; bytes: Uint8Array };
 export type PreviewActionResult =
   | { success: true; preview: ShopeeCommissionPreview }
   | { success: false; message: string };
-export type PersistImportInput = MatchResult & { shopeeAccountId:number; originalFilename:string; fileSha256:string; dateFrom:string; dateTo:string; csvRowCount:number; tagCount:number };
+export type PersistImportInput = MatchResult & { shopeeAccountId:number; originalFilename:string; fileSha256:string; dateFrom:string; dateTo:string; csvRowCount:number; tagCount:number; clickaduCommissions:ClickaduCommissionAggregate[] };
 export type ImportReceipt = { importId:number; matchedCount:number; unmatchedCount:number; matchedCommission:string; unmatchedCommission:string; createdAt:string };
 export type ImportHistoryRow = { id:number; originalFilename:string; dateFrom:string; dateTo:string; csvRowCount:number; tagCount:number; matchedCount:number; unmatchedCount:number; matchedCommission:string; unmatchedCommission:string; createdAt:string };
 export type ShopeeImportPageData = { shopeeAccount:{id:number;name:string}; history:ImportHistoryRow[] };
