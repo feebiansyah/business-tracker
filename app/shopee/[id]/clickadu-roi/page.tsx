@@ -7,6 +7,7 @@ import { ClickaduAnalysisWorkflow } from "@/components/clickadu-roi/analysis-wor
 import { ClickaduConfigForm } from "@/components/clickadu-roi/config-form";
 import { ClickaduCredentialForm } from "@/components/clickadu-roi/credential-form";
 import { ClickaduCampaignReportList } from "@/components/clickadu-roi/campaign-report-list";
+import { ClickaduWorkspaceTabs } from "@/components/clickadu-roi/clickadu-workspace-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +31,14 @@ export default async function ClickaduRoiPage({ params }: { params: Promise<{ id
           Analisa statistik Clickadu dan CSV komisi Shopee untuk akun ini.
         </p>
       </div>
-      <ClickaduCredentialForm shopeeAccountId={data.account.id} shopeeAccountName={data.account.name} connected={data.clickaduConnected} />
-      <ClickaduConfigForm shopeeAccountId={data.account.id} configs={data.configs} />
-      <ClickaduCampaignReportList shopeeAccountId={data.account.id} campaigns={data.configs} connected={data.clickaduConnected} />
-      <ClickaduAnalysisWorkflow shopeeAccountId={data.account.id} shopeeAccountName={data.account.name} configs={data.configs} connected={data.clickaduConnected} />
+      <ClickaduWorkspaceTabs
+        campaign={<ClickaduCampaignReportList shopeeAccountId={data.account.id} campaigns={data.configs} connected={data.clickaduConnected} />}
+        zone={<ClickaduAnalysisWorkflow shopeeAccountId={data.account.id} shopeeAccountName={data.account.name} configs={data.configs} connected={data.clickaduConnected} />}
+        settings={<div className="space-y-6">
+          <ClickaduCredentialForm shopeeAccountId={data.account.id} shopeeAccountName={data.account.name} connected={data.clickaduConnected} />
+          <ClickaduConfigForm shopeeAccountId={data.account.id} configs={data.configs} />
+        </div>}
+      />
     </section>
   );
 }
