@@ -24,3 +24,18 @@ export function buildDailyMetricUpsert(input: ClickaduDailyMetricInput) {
 export function upsertClickaduDailyMetric(db: DailyMetricDb, input: ClickaduDailyMetricInput) {
   return db.clickaduCampaignDailyMetric.upsert(buildDailyMetricUpsert(input));
 }
+
+export async function persistClickaduDailyMetricAndCheckpoint(db: PrismaClient, input: ClickaduDailyMetricInput) {
+  return db.$transaction(async (tx) => {
+    const metric = await upsertClickaduDailyMetric(tx, input);
+    const checkpoint = new Date(`${input.date}T00:00:00.000Z`);
+    await tx.clickaduCampaignConfig.updateMany({
+      where: {
+        id: input.clickaduCampaignConfigId,
+        OR: [{ historySyncedThrough: null }, { historySyncedThrough: { lt: checkpoint } }],
+      },
+      data: { historySyncedThrough: checkpoint },
+    });
+    return metric;
+  });
+}

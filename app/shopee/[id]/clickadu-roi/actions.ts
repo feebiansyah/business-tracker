@@ -19,27 +19,29 @@ import {
   saveClickaduConfig,
 } from "../../../../lib/clickadu-roi/config-repository";
 import { ClickaduDailySyncError, indonesiaToday, syncClickaduDailyMetrics } from "../../../../lib/clickadu-history/daily-sync";
-import { upsertClickaduDailyMetric } from "../../../../lib/clickadu-history/persistence";
-import { getClickaduCampaignList, getClickaduDailyHistory, type ClickaduHistoryParams } from "../../../../lib/clickadu-history/queries";
+import { persistClickaduDailyMetricAndCheckpoint } from "../../../../lib/clickadu-history/persistence";
+import { getClickaduDailyHistory, getClickaduDailySyncConfigs } from "../../../../lib/clickadu-history/queries";
+import { parseClickaduHistoryParams, type ClickaduHistoryParams } from "../../../../lib/clickadu-history/server-pagination";
 import { ClickaduApiError } from "../../../../lib/clickadu-roi/client";
 
-export async function syncClickaduDailyAction(shopeeAccountId: number, targetDate: string) {
+export async function syncClickaduDailyAction(shopeeAccountId: number) {
   await requireUser();
   try {
     const credential = await getEncryptedTrafficCredential(prisma, shopeeAccountId, TrafficProvider.CLICKADU);
     if (!credential) throw new ClickaduDailySyncError("Koneksi Clickadu belum dikonfigurasi.");
     const client = getClickaduClient(decryptTrafficSecret(credential.encryptedSecret));
     const result = await syncClickaduDailyMetrics(
-      { shopeeAccountId, targetDate, today: indonesiaToday() },
+      { shopeeAccountId, today: indonesiaToday() },
       {
-        loadConfigs: (accountId) => getClickaduCampaignList(prisma, accountId),
+        loadConfigs: (accountId) => getClickaduDailySyncConfigs(prisma, accountId),
         getStatistics: (input) => client.getZoneStatistics(input),
         getCampaign: (campaignId) => client.getCampaign(campaignId),
-        persist: (input) => upsertClickaduDailyMetric(prisma, input),
+        persistDay: (input) => persistClickaduDailyMetricAndCheckpoint(prisma, input),
       },
     );
     revalidatePath(`/shopee/${shopeeAccountId}/clickadu-roi`);
-    return { success: true as const, message: `${result.configCount} campaign Clickadu disinkronkan untuk ${result.targetDate}.` };
+    const coverage = result.from && result.through ? ` (${result.from}–${result.through})` : "";
+    return { success: true as const, message: `${result.configCount} campaign, ${result.dateCount} tanggal berhasil disinkronkan${coverage}.` };
   } catch (error) {
     const message = error instanceof ClickaduDailySyncError || error instanceof ClickaduApiError
       ? error.message
@@ -54,11 +56,7 @@ export async function getClickaduDailyHistoryAction(
   params: ClickaduHistoryParams,
 ) {
   await requireUser();
-  const safeParams: ClickaduHistoryParams = {
-    page: Number.isSafeInteger(params.page) && params.page > 0 ? params.page : 1,
-    pageSize: [25, 50, 100].includes(params.pageSize) ? params.pageSize : 25,
-    dir: params.dir === "asc" ? "asc" : "desc",
-  };
+  const safeParams = parseClickaduHistoryParams(params);
   try {
     const data = await getClickaduDailyHistory(prisma, shopeeAccountId, configId, safeParams);
     return data

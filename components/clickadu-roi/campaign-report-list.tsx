@@ -9,10 +9,9 @@ import { ClickaduCampaignHistoryModal } from "./campaign-history-modal";
 
 type Campaign = Pick<ClickaduAnalysisConfig, "id" | "campaignId" | "label" | "sourceTag">;
 
-export function ClickaduCampaignReportList({ shopeeAccountId, campaigns, defaultDate, connected }: {
+export function ClickaduCampaignReportList({ shopeeAccountId, campaigns, connected }: {
   shopeeAccountId: number;
   campaigns: Campaign[];
-  defaultDate: string;
   connected: boolean;
 }) {
   const [selected, setSelected] = useState<Campaign | null>(null);
@@ -27,8 +26,7 @@ export function ClickaduCampaignReportList({ shopeeAccountId, campaigns, default
     syncInFlight.current = true;
     setBusy(true); setMessage(""); setError("");
     try {
-      const data = new FormData(event.currentTarget);
-      const result = await syncClickaduDailyAction(shopeeAccountId, String(data.get("date") ?? ""));
+      const result = await syncClickaduDailyAction(shopeeAccountId);
       if (result.success) setMessage(result.message); else setError(result.message);
     } finally {
       syncInFlight.current = false;
@@ -38,10 +36,9 @@ export function ClickaduCampaignReportList({ shopeeAccountId, campaigns, default
 
   return <section className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div><h3 className="font-semibold text-slate-950">Laporan Harian Clickadu</h3><p className="mt-1 text-sm text-slate-500">Pilih campaign untuk melihat snapshot Budget dan Spend harian.</p></div>
-      <form onSubmit={sync} className="flex flex-wrap items-end gap-2">
-        <label className="text-sm font-medium text-slate-700">Tanggal snapshot<input type="date" name="date" defaultValue={defaultDate} required disabled={busy} className="mt-1 block h-9 rounded-lg border border-slate-200 px-3 text-sm font-normal" /></label>
-        <Button disabled={busy || !connected || campaigns.length === 0}>{busy ? "Menyinkronkan..." : "Sync Laporan"}</Button>
+      <div><h3 className="font-semibold text-slate-950">Laporan Harian Clickadu</h3><p className="mt-1 text-sm text-slate-500">Pilih campaign untuk melihat Budget, Spend, Komisi, dan Profit harian.</p></div>
+      <form onSubmit={sync}>
+        <Button disabled={busy || !connected || campaigns.length === 0}>{busy ? "Menyinkronkan..." : "Sync Clickadu"}</Button>
       </form>
     </div>
     {!connected && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Koneksi Clickadu belum dikonfigurasi.</p>}
