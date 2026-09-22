@@ -12,8 +12,8 @@
     "lint": "eslint",
     "test": "node --test components/**/*.test.mjs lib/**/*.test.mjs",
     "user:create": "node --env-file-if-exists=.env scripts/create-user.mjs",
-    "adsterra:schedule:on": "tsx --conditions=react-server scripts/run-adsterra-scheduler.ts ON",
-    "adsterra:schedule:off": "tsx --conditions=react-server scripts/run-adsterra-scheduler.ts OFF"
+    "adsterra:schedule:on": "tsx --env-file-if-exists=.env --conditions=react-server scripts/run-adsterra-scheduler.ts ON",
+    "adsterra:schedule:off": "tsx --env-file-if-exists=.env --conditions=react-server scripts/run-adsterra-scheduler.ts OFF"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
