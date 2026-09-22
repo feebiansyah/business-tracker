@@ -19,6 +19,19 @@ enum TrafficProvider {
   ADSTERRA
 }
 
+enum AdsterraScheduleAction {
+  ON
+  OFF
+}
+
+enum AdsterraScheduleRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  NO_CHANGE
+  SKIPPED_SPECIAL_DAY
+}
+
 model User {
   id           Int       @id @default(autoincrement())
   email        String    @unique @db.VarChar(191)
@@ -114,21 +127,41 @@ model ClickaduCampaignDailyMetric {
 }
 
 model AdsterraCampaignConfig {
-  id              Int           @id @default(autoincrement())
-  campaignId      String        @db.VarChar(64)
-  label           String?       @db.VarChar(191)
-  sourceTag       String        @db.VarChar(64)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                      Int           @id @default(autoincrement())
+  campaignId              String        @db.VarChar(64)
+  label                   String?       @db.VarChar(191)
+  sourceTag               String        @db.VarChar(64)
+  autoScheduleEnabled     Boolean       @default(false)
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
   lastBlacklistReplacedAt DateTime?
-  historySyncedThrough DateTime? @db.Date
-  shopeeAccountId Int
-  shopeeAccount   ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
-  dailyMetrics    AdsterraCampaignDailyMetric[]
+  historySyncedThrough    DateTime?     @db.Date
+  shopeeAccountId         Int
+  shopeeAccount           ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
+  dailyMetrics            AdsterraCampaignDailyMetric[]
+  scheduleRuns            AdsterraCampaignScheduleRun[]
 
   @@unique([shopeeAccountId, campaignId])
   @@unique([shopeeAccountId, sourceTag])
   @@index([shopeeAccountId])
+}
+
+model AdsterraCampaignScheduleRun {
+  id                       Int                        @id @default(autoincrement())
+  businessDate             DateTime                   @db.Date
+  action                   AdsterraScheduleAction
+  status                   AdsterraScheduleRunStatus
+  actualStatus             String?                    @db.VarChar(32)
+  errorMessage             String?                    @db.VarChar(500)
+  startedAt                DateTime?
+  finishedAt               DateTime?
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  adsterraCampaignConfigId Int
+  adsterraCampaignConfig   AdsterraCampaignConfig     @relation(fields: [adsterraCampaignConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([adsterraCampaignConfigId, businessDate, action], map: "AdsterraScheduleRun_config_date_action_key")
+  @@index([businessDate])
 }
 
 model AdsterraCampaignDailyMetric {

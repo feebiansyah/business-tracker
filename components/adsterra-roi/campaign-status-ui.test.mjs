@@ -5,7 +5,7 @@ import test from "node:test";
 const source = await readFile(new URL("./campaign-report-list.tsx", import.meta.url), "utf8");
 
 test("Adsterra campaign list exposes the correct action for every API status", () => {
-  for (const label of ["Status", "Aksi", "Active", "Inactive", "Limit", "Not in use", "Refresh Status"]) {
+  for (const label of ["Status", "Manual", "Active", "Inactive", "Limit", "Not in use", "Refresh Status"]) {
     assert.match(source, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.match(source, /status === "ACTIVE" \|\| status === "INACTIVE" \|\| status === "LIMITED"/);

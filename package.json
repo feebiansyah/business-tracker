@@ -2,13 +2,18 @@
   "name": "project-tracker",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "^20.19.0 || ^22.12.0 || >=24.11.1 <25"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "node --test components/**/*.test.mjs lib/**/*.test.mjs",
-    "user:create": "node --env-file-if-exists=.env scripts/create-user.mjs"
+    "user:create": "node --env-file-if-exists=.env scripts/create-user.mjs",
+    "adsterra:schedule:on": "tsx --conditions=react-server scripts/run-adsterra-scheduler.ts ON",
+    "adsterra:schedule:off": "tsx --conditions=react-server scripts/run-adsterra-scheduler.ts OFF"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -23,7 +28,9 @@
     "prisma": "^6.19.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "tailwind-merge": "^3.6.0"
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^3.6.0",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

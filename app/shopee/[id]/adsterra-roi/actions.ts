@@ -8,7 +8,7 @@ import { deleteTrafficCredential, getEncryptedTrafficCredential, saveTrafficCred
 import { getAdsterraClient } from "../../../../lib/adsterra-roi/config";
 import { buildAdsterraRoiAnalysis, AdsterraAnalysisError, publicAdsterraAnalysisMessage } from "../../../../lib/adsterra-roi/analyze";
 import { AdsterraBlacklistError, replaceAdsterraBlacklist } from "../../../../lib/adsterra-roi/blacklist";
-import { deleteAdsterraConfig, getAdsterraConfigById, saveAdsterraConfig } from "../../../../lib/adsterra-roi/config-repository";
+import { deleteAdsterraConfig, getAdsterraConfigById, saveAdsterraConfig, setAdsterraAutoScheduleEnabled } from "../../../../lib/adsterra-roi/config-repository";
 import { publicAdsterraConfigMessage } from "../../../../lib/adsterra-roi/config-input";
 import { readCsvUpload } from "../../../../lib/shopee-import/upload";
 import { markBlacklistReplaced, runVerifiedBlacklistReplacement } from "../../../../lib/traffic-roi/replacement-timestamp";
@@ -66,6 +66,17 @@ export async function setAdsterraCampaignActiveAction(shopeeAccountId: number, c
     return { success: true as const, campaignStatus: result.actual };
   } catch (error) {
     return { success: false as const, message: error instanceof AdsterraApiError ? error.message : "Status campaign Adsterra gagal diperbarui." };
+  }
+}
+
+export async function setAdsterraAutoScheduleEnabledAction(shopeeAccountId: number, configId: number, enabled: boolean) {
+  await requireUser();
+  try {
+    const result = await setAdsterraAutoScheduleEnabled(prisma, shopeeAccountId, configId, enabled);
+    revalidatePath(`/shopee/${shopeeAccountId}/adsterra-roi`);
+    return { success: true as const, ...result };
+  } catch (error) {
+    return { success: false as const, message: publicAdsterraConfigMessage(error) };
   }
 }
 
