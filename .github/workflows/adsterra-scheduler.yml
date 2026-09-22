@@ -1,0 +1,49 @@
+name: Adsterra campaign scheduler
+
+on:
+  schedule:
+    - cron: "5 1 * * *"
+    - cron: "50 14 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Scheduler action"
+        required: true
+        type: choice
+        options:
+          - "ON"
+          - "OFF"
+
+permissions:
+  contents: read
+
+jobs:
+  schedule-on:
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '5 1 * * *') ||
+      (github.event_name == 'workflow_dispatch' && inputs.action == 'ON')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Adsterra ON
+        run: >-
+          curl --fail-with-body --silent --show-error
+          --request POST
+          --header "Authorization: Bearer ${{ secrets.ADSTERRA_SCHEDULER_CRON_SECRET }}"
+          --header "Content-Type: application/json"
+          --data '{"action":"ON"}'
+          "${{ secrets.BUSINESS_TRACKER_SCHEDULER_URL }}"
+
+  schedule-off:
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '50 14 * * *') ||
+      (github.event_name == 'workflow_dispatch' && inputs.action == 'OFF')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Adsterra OFF
+        run: >-
+          curl --fail-with-body --silent --show-error
+          --request POST
+          --header "Authorization: Bearer ${{ secrets.ADSTERRA_SCHEDULER_CRON_SECRET }}"
+          --header "Content-Type: application/json"
+          --data '{"action":"OFF"}'
+          "${{ secrets.BUSINESS_TRACKER_SCHEDULER_URL }}"
