@@ -114,7 +114,7 @@ export async function getCampaignWorkspaceDetail(shopeeAccountId: number, mode: 
         CASE WHEN dm.commission IS NULL THEN NULL ELSE dm.commission - COALESCE(dm.spend, 0) * 1.05 END AS profit,
         CASE WHEN dm.commission IS NULL OR COALESCE(dm.spend, 0) = 0 THEN NULL ELSE (dm.commission - COALESCE(dm.spend, 0) * 1.05) / (COALESCE(dm.spend, 0) * 1.05) * 100 END AS profitPercent,
         CASE WHEN dm.shopeeClicks IS NULL OR dm.clickFp IS NULL OR dm.clickFp = 0 THEN NULL ELSE dm.shopeeClicks / dm.clickFp * 100 END AS clickPercent,
-        CASE WHEN dm.shopeeClicks IS NULL OR dm.shopeeClicks = 0 THEN NULL ELSE COALESCE(dm.spend, 0) / dm.shopeeClicks END AS cpcShopee
+        CASE WHEN dm.commission IS NULL OR dm.shopeeClicks IS NULL OR dm.shopeeClicks = 0 THEN NULL ELSE dm.commission / dm.shopeeClicks END AS cpcShopee
       FROM CampaignDailyMetric dm WHERE dm.campaignId = ${campaignId}
     ) metric
     ORDER BY ${orderColumn} IS NULL ASC, ${orderColumn} ${orderDirection}, metric.id ASC

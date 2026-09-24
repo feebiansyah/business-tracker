@@ -6,7 +6,7 @@ export function calculateFinancialMetrics(spend: number, commission: number | nu
     profit,
     profitPercent: profit === null || costWithFee === 0 ? null : (profit / costWithFee) * 100,
     clickPercent: shopeeClicks === null || !clickFp ? null : (shopeeClicks / clickFp) * 100,
-    cpcShopee: shopeeClicks === null || shopeeClicks === 0 ? null : spend / shopeeClicks,
+    cpcShopee: commission === null || shopeeClicks === null || shopeeClicks === 0 ? null : commission / shopeeClicks,
   };
 }
 
