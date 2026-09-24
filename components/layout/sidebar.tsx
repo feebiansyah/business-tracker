@@ -41,7 +41,7 @@ export function SidebarNavigationPanel({ pathname, shopeeAccounts, onNavigate, o
 
   return <>
     <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-800 px-4">
-      <Image src="/logo.png" alt="" width={34} height={34} className="size-[34px] shrink-0 rounded-lg object-contain"/>
+      <Image src="/logo.png" alt="" width={34} height={34} unoptimized className="size-[34px] shrink-0 rounded-lg object-contain"/>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold tracking-tight text-white">Business Tracker</p>
         <p className="text-[11px] text-slate-400">Operations workspace</p>
