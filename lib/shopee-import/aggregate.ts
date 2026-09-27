@@ -17,9 +17,12 @@ export function aggregateCommissionRows(records: CsvRecord[]): AggregationResult
   let totalCommission = new Decimal(0);
 
   for (const record of records) {
+    const date = parseShopeeDate(record.orderedAt, record.logicalRow);
+    if (!dateFrom || date < dateFrom) dateFrom = date;
+    if (!dateTo || date > dateTo) dateTo = date;
+
     if (!record.tagLink2.trim()) continue;
 
-    const date = parseShopeeDate(record.orderedAt, record.logicalRow);
     const tag = normalizeTag(record.tagLink2, record.logicalRow);
     const commission = parseCommission(record.commission, record.logicalRow);
     const key = `${date}\u0000${tag.normalized}`;
@@ -40,8 +43,6 @@ export function aggregateCommissionRows(records: CsvRecord[]): AggregationResult
 
     tags.add(tag.normalized);
     totalCommission = totalCommission.plus(commission);
-    if (!dateFrom || date < dateFrom) dateFrom = date;
-    if (!dateTo || date > dateTo) dateTo = date;
   }
 
   const aggregates = [...grouped.values()].sort(
