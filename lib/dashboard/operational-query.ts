@@ -1,5 +1,5 @@
 import type { Prisma } from "../generated/prisma/client.ts";
-import { buildOperationalDashboard, getJakartaPreviousDate } from "./operational.ts";
+import { buildOperationalDashboard, getJakartaDate, getJakartaPreviousDate } from "./operational.ts";
 
 type OperationalDb = Pick<Prisma.TransactionClient, "shopeeAccount">;
 
@@ -27,8 +27,11 @@ export async function getOperationalDashboard(now: Date, db: OperationalDb) {
         select: { id: true },
         take: 1,
       },
+      clickaduCampaignConfigs: {
+        select: { lastBlacklistReplacedAt: true },
+      },
       adsterraCampaignConfigs: {
-        select: { id: true, campaignId: true, label: true },
+        select: { id: true, campaignId: true, label: true, lastBlacklistReplacedAt: true },
       },
     },
   });
@@ -38,12 +41,14 @@ export async function getOperationalDashboard(now: Date, db: OperationalDb) {
     metaAccounts: account.metaAccounts.map((wl) => ({ spendHistorySyncedThrough: wl.spendHistorySyncedThrough, activeCampaignCount: wl._count.campaigns })),
     commissionCovered: account.commissionImports.length > 0,
     clickCovered: account.clickImports.length > 0,
-  })), targetDate);
+    clickaduCampaignConfigs: account.clickaduCampaignConfigs,
+    adsterraCampaignConfigs: account.adsterraCampaignConfigs,
+  })), targetDate, getJakartaDate(now));
   return {
     ...dashboard,
     accounts: dashboard.accounts.map((account, index) => ({
       ...account,
-      adsterraCampaigns: accounts[index].adsterraCampaignConfigs,
+      adsterraCampaigns: accounts[index].adsterraCampaignConfigs.map(({ id, campaignId, label }) => ({ id, campaignId, label })),
     })),
   };
 }
