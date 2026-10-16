@@ -61,8 +61,8 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
           <Link href={`/shopee/${account.id}`} className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</Link>
         </form>
         <ShopeePerformanceCard account={performance} dashboardState={dashboard.state} />
-        <ShopeeAdsterraOverview overview={adsterraOverview} dashboardState={dashboard.state} />
-        <ShopeeClickaduOverview overview={clickaduOverview} dashboardState={dashboard.state} />
+        <ShopeeAdsterraOverview overview={adsterraOverview} dashboardState={dashboard.state} clickaduState={clickaduOverview.state} />
+        <ShopeeClickaduOverview overview={clickaduOverview} dashboardState={dashboard.state} adsterraState={adsterraOverview.state} />
       </div>
       <div><h3 className="text-lg font-semibold text-slate-950">WL terhubung</h3><p className="mt-1 text-sm text-slate-500">Ad account Meta yang terhubung ke akun Shopee ini.</p></div>
       <div className="max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
