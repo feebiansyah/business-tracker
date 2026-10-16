@@ -1,4 +1,5 @@
 import { dashboardParamsToSearch, type DashboardParams } from "./params.ts";
+import type { AdsterraOverviewParams } from "./adsterra-overview-params.ts";
 
 export const clickaduOverviewSortKeys = ["date", "spendUsd", "spendIdr", "commission", "profit", "profitPercent"] as const;
 export type ClickaduOverviewSortKey = typeof clickaduOverviewSortKeys[number];
@@ -16,8 +17,14 @@ export function parseClickaduOverviewParams(raw: RawParams): ClickaduOverviewPar
   return { sort: clickaduOverviewSortKeys.includes(sort as ClickaduOverviewSortKey) ? sort as ClickaduOverviewSortKey : "date", dir: scalar(raw.clickaduDir) === "asc" ? "asc" : "desc", page: page(scalar(raw.clickaduPage)), pageSize: pageSize(scalar(raw.clickaduPageSize)) };
 }
 
-export function clickaduOverviewParamsToSearch(dashboard: DashboardParams, state: ClickaduOverviewParams) {
+export function clickaduOverviewParamsToSearch(dashboard: DashboardParams, state: ClickaduOverviewParams, adsterraState?: AdsterraOverviewParams) {
   const params = dashboardParamsToSearch(dashboard);
+  if (adsterraState) {
+    params.set("adsterraSort", adsterraState.sort);
+    params.set("adsterraDir", adsterraState.dir);
+    params.set("adsterraPage", String(adsterraState.page));
+    params.set("adsterraPageSize", String(adsterraState.pageSize));
+  }
   params.set("clickaduSort", state.sort);
   params.set("clickaduDir", state.dir);
   params.set("clickaduPage", String(state.page));
