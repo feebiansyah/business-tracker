@@ -1,7 +1,7 @@
 export type OperationalAccountInput = {
   id: number;
   name: string;
-  metaAccounts: { spendHistorySyncedThrough: Date | null; activeCampaignCount: number }[];
+  metaAccounts: { status?: string; spendHistorySyncedThrough: Date | null; activeCampaignCount: number }[];
   commissionCovered: boolean;
   clickCovered: boolean;
   clickaduCampaignConfigs: { lastBlacklistReplacedAt: Date | null }[];
@@ -42,8 +42,11 @@ export function getJakartaPreviousDate(now = new Date()) {
 
 export function buildOperationalDashboard(accounts: OperationalAccountInput[], targetDate: string, todayDate = getJakartaDate(new Date())) {
   const statuses: OperationalAccountStatus[] = accounts.map((account) => {
-    const coveredWlCount = account.metaAccounts.filter((wl) => wl.spendHistorySyncedThrough !== null && dateKey(wl.spendHistorySyncedThrough) >= targetDate).length;
-    const metaComplete = account.metaAccounts.length > 0 && coveredWlCount === account.metaAccounts.length;
+    // WL yang sudah terkonfirmasi nonaktif/tidak tersedia tidak ditagih histori D-1.
+    // WL aktif tetap mengikuti aturan kelengkapan yang sudah ada.
+    const eligibleWl = account.metaAccounts.filter((wl) => wl.status === undefined || wl.status === "ACTIVE");
+    const coveredWlCount = eligibleWl.filter((wl) => wl.spendHistorySyncedThrough !== null && dateKey(wl.spendHistorySyncedThrough) >= targetDate).length;
+    const metaComplete = account.metaAccounts.length > 0 && coveredWlCount === eligibleWl.length;
     const clickaduPendingReplacementCount = account.clickaduCampaignConfigs.filter((config) => config.lastBlacklistReplacedAt === null || getJakartaDate(config.lastBlacklistReplacedAt) !== todayDate).length;
     const adsterraPendingReplacementCount = account.adsterraCampaignConfigs.filter((config) => config.lastBlacklistReplacedAt === null || getJakartaDate(config.lastBlacklistReplacedAt) !== todayDate).length;
     const complete = metaComplete && account.commissionCovered && account.clickCovered;
@@ -51,7 +54,7 @@ export function buildOperationalDashboard(accounts: OperationalAccountInput[], t
       id: account.id,
       name: account.name,
       wlCount: account.metaAccounts.length,
-      meta: { complete: metaComplete, coveredWlCount, totalWlCount: account.metaAccounts.length },
+      meta: { complete: metaComplete, coveredWlCount, totalWlCount: eligibleWl.length },
       commissionComplete: account.commissionCovered,
       clickComplete: account.clickCovered,
       complete,
@@ -66,7 +69,7 @@ export function buildOperationalDashboard(accounts: OperationalAccountInput[], t
     summary: {
       totalShopee: statuses.length,
       totalWl: accounts.reduce((sum, account) => sum + account.metaAccounts.length, 0),
-      activeCampaigns: accounts.reduce((sum, account) => sum + account.metaAccounts.reduce((wlSum, wl) => wlSum + wl.activeCampaignCount, 0), 0),
+      activeCampaigns: accounts.reduce((sum, account) => sum + account.metaAccounts.reduce((wlSum, wl) => wlSum + (wl.status === undefined || wl.status === "ACTIVE" ? wl.activeCampaignCount : 0), 0), 0),
       needsAttention: statuses.filter((account) => account.needsAttention).length,
     },
   };
