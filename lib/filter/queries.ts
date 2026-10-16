@@ -23,7 +23,9 @@ type FilterSqlRow = { id: number; name: string; wlName: string; startTime: Date 
 export function campaignModeWhere(mode: CampaignMode) {
   const config = campaignModeConfig[mode];
   return {
-    ...(config.active ? { metaStatus: "ACTIVE" } : { OR: [{ metaStatus: { not: "ACTIVE" } }, { metaStatus: null }] }),
+    ...(config.active
+      ? { metaStatus: "ACTIVE", AND: [{ metaAccount: { status: "ACTIVE" } }] }
+      : { OR: [{ metaStatus: { not: "ACTIVE" } }, { metaStatus: null }, { metaAccount: { status: { not: "ACTIVE" } } }] }),
     effectiveDailyBudget: config.minimumBudget ? { not: null, gte: 200000 } : { not: null, lt: 200000 },
   } as const;
 }
@@ -31,7 +33,9 @@ export function campaignModeWhere(mode: CampaignMode) {
 function campaignModeSql(mode: CampaignMode) {
   const config = campaignModeConfig[mode];
   return {
-    status: config.active ? Prisma.sql`c.metaStatus = 'ACTIVE'` : Prisma.sql`(c.metaStatus <> 'ACTIVE' OR c.metaStatus IS NULL)`,
+    status: config.active
+      ? Prisma.sql`(ma.status = 'ACTIVE' AND c.metaStatus = 'ACTIVE')`
+      : Prisma.sql`(ma.status <> 'ACTIVE' OR c.metaStatus <> 'ACTIVE' OR c.metaStatus IS NULL)`,
     budget: config.minimumBudget ? Prisma.sql`c.effectiveDailyBudget >= 200000` : Prisma.sql`c.effectiveDailyBudget < 200000`,
   };
 }
