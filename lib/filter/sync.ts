@@ -76,7 +76,7 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
         if (error instanceof MetaApiError && [10, 100, 200].includes(error.code ?? -1)) {
           await prisma.metaAccount.update({ where: { id: wl.id }, data: { status: "UNAVAILABLE" } });
           summary.wlSkipped += 1;
-          summary.skippedWlNames.push(wl.name);
+          summary.skippedWlNames.push(`${wl.name} (UNAVAILABLE)`);
           continue;
         }
         throw error;
@@ -88,7 +88,7 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
         }
         if (nextStatus !== "ACTIVE") {
           summary.wlSkipped += 1;
-          summary.skippedWlNames.push(wl.name);
+          summary.skippedWlNames.push(`${wl.name} (${nextStatus})`);
           continue;
         }
       }
