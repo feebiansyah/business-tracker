@@ -14,6 +14,7 @@ export async function getOperationalDashboard(now: Date, db: OperationalDb) {
       metaAccounts: {
         select: {
           spendHistorySyncedThrough: true,
+          status: true,
           _count: { select: { campaigns: { where: { metaStatus: "ACTIVE" } } } },
         },
       },
@@ -38,7 +39,7 @@ export async function getOperationalDashboard(now: Date, db: OperationalDb) {
   const dashboard = buildOperationalDashboard(accounts.map((account) => ({
     id: account.id,
     name: account.name,
-    metaAccounts: account.metaAccounts.map((wl) => ({ spendHistorySyncedThrough: wl.spendHistorySyncedThrough, activeCampaignCount: wl._count.campaigns })),
+    metaAccounts: account.metaAccounts.map((wl) => ({ status: wl.status, spendHistorySyncedThrough: wl.spendHistorySyncedThrough, activeCampaignCount: wl._count.campaigns })),
     commissionCovered: account.commissionImports.length > 0,
     clickCovered: account.clickImports.length > 0,
     clickaduCampaignConfigs: account.clickaduCampaignConfigs,
