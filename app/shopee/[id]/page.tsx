@@ -11,6 +11,9 @@ import { ShopeeAccountManagement } from "@/components/shopee/account-management"
 import { ShopeeAdsterraOverview } from "@/components/dashboard/shopee-adsterra-overview";
 import { getShopeeAdsterraOverview } from "@/lib/dashboard/adsterra-overview";
 import { parseAdsterraOverviewParams } from "@/lib/dashboard/adsterra-overview-params";
+import { ShopeeClickaduOverview } from "@/components/dashboard/shopee-clickadu-overview";
+import { getShopeeClickaduOverview } from "@/lib/dashboard/clickadu-overview";
+import { parseClickaduOverviewParams } from "@/lib/dashboard/clickadu-overview-params";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +35,7 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
   if (!dashboard) notFound();
   const performance = dashboard.accounts[0];
   const adsterraOverview = await getShopeeAdsterraOverview(prisma, shopeeAccountId, dashboard.state.from, dashboard.state.to, parseAdsterraOverviewParams(rawSearchParams));
+  const clickaduOverview = await getShopeeClickaduOverview(prisma, shopeeAccountId, dashboard.state.from, dashboard.state.to, parseClickaduOverviewParams(rawSearchParams));
 
   return (
     <section className="min-w-0 space-y-6">
@@ -50,11 +54,15 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
           <input type="hidden" name="adsterraSort" value={adsterraOverview.state.sort} />
           <input type="hidden" name="adsterraDir" value={adsterraOverview.state.dir} />
           <input type="hidden" name="adsterraPageSize" value={adsterraOverview.state.pageSize} />
+          <input type="hidden" name="clickaduSort" value={clickaduOverview.state.sort} />
+          <input type="hidden" name="clickaduDir" value={clickaduOverview.state.dir} />
+          <input type="hidden" name="clickaduPageSize" value={clickaduOverview.state.pageSize} />
           <button className="h-10 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700">Terapkan</button>
           <Link href={`/shopee/${account.id}`} className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</Link>
         </form>
         <ShopeePerformanceCard account={performance} dashboardState={dashboard.state} />
         <ShopeeAdsterraOverview overview={adsterraOverview} dashboardState={dashboard.state} />
+        <ShopeeClickaduOverview overview={clickaduOverview} dashboardState={dashboard.state} />
       </div>
       <div><h3 className="text-lg font-semibold text-slate-950">WL terhubung</h3><p className="mt-1 text-sm text-slate-500">Ad account Meta yang terhubung ke akun Shopee ini.</p></div>
       <div className="max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
