@@ -47,6 +47,15 @@ export class MetaGraphClient {
     return this.getAllPages<MetaAdAccount>("/me/adaccounts", ["id", "account_id", "name", "account_status"]);
   }
 
+  async getAdAccountStatus(accountId: string): Promise<number | undefined> {
+    const url = new URL(`${this.baseUrl}/act_${encodeURIComponent(accountId)}`);
+    url.searchParams.set("fields", "account_status");
+    if (this.appSecretProof) url.searchParams.set("appsecret_proof", this.appSecretProof);
+    const payload = await this.fetchPage<MetaAdAccount>(url);
+    const status = (payload as unknown as MetaAdAccount).account_status;
+    return typeof status === "number" ? status : undefined;
+  }
+
   getOwnedAdAccounts(businessId: string) {
     return this.getAllPages<MetaAdAccount>(`/${encodeURIComponent(businessId)}/owned_ad_accounts`, [
       "id",
