@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { MetaGraphClient } from "@/lib/meta/client";
+import { MetaApiError, MetaGraphClient } from "@/lib/meta/client";
 import type { MetaAdSet } from "@/lib/meta/types";
 import { resolveEffectiveDailyBudget, isHistorySyncCampaign } from "@/lib/filter/rules";
 import { persistInsightChunk, upsertCampaignMetadata } from "@/lib/filter/persistence";
@@ -14,11 +14,13 @@ export type FilterSyncSummary = {
   wlTotal: number;
   wlSucceeded: number;
   wlFailed: number;
+  wlSkipped: number;
   campaignsProcessed: number;
   insightRowsStored: number;
   unresolvedBudgets: number;
   missingStartDates: number;
   failedWlNames: string[];
+  skippedWlNames: string[];
 };
 
 export class FilterSyncError extends Error {
@@ -42,7 +44,7 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
   if (!Number.isInteger(shopeeAccountId) || shopeeAccountId <= 0) throw new FilterSyncError("Akun Shopee tidak valid.");
   const account = await prisma.shopeeAccount.findUnique({
     where: { id: shopeeAccountId },
-    select: { id: true, metaAccounts: { select: { id: true, name: true, accountId: true, spendHistorySyncedThrough: true }, orderBy: { name: "asc" } } },
+    select: { id: true, metaAccounts: { select: { id: true, name: true, accountId: true, status: true, spendHistorySyncedThrough: true }, orderBy: { name: "asc" } } },
   });
   if (!account) throw new FilterSyncError("Akun Shopee tidak ditemukan.");
 
@@ -50,17 +52,46 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
     wlTotal: account.metaAccounts.length,
     wlSucceeded: 0,
     wlFailed: 0,
+    wlSkipped: 0,
     campaignsProcessed: 0,
     insightRowsStored: 0,
     unresolvedBudgets: 0,
     missingStartDates: 0,
     failedWlNames: [],
+    skippedWlNames: [],
   };
   const client = new MetaGraphClient();
   const today = indonesiaDate(new Date());
 
   for (const [wlIndex, wl] of account.metaAccounts.entries()) {
     try {
+      // Status WL diverifikasi setiap sync, termasuk WL yang sebelumnya nonaktif.
+      // Jika aktif kembali, jalur sync campaign normal tetap digunakan.
+      let accountStatus: number | undefined;
+      try {
+        accountStatus = await client.getAdAccountStatus(wl.accountId);
+      } catch (error) {
+        // Error akses spesifik akun dipisahkan dari error sementara/token/rate limit.
+        // UNAVAILABLE adalah kondisi operasional, bukan klaim Meta menonaktifkan akun.
+        if (error instanceof MetaApiError && [10, 100, 200].includes(error.code ?? -1)) {
+          await prisma.metaAccount.update({ where: { id: wl.id }, data: { status: "UNAVAILABLE" } });
+          summary.wlSkipped += 1;
+          summary.skippedWlNames.push(wl.name);
+          continue;
+        }
+        throw error;
+      }
+      if (accountStatus !== undefined) {
+        const nextStatus = accountStatus === 1 ? "ACTIVE" : "INACTIVE";
+        if (wl.status !== nextStatus) {
+          await prisma.metaAccount.update({ where: { id: wl.id }, data: { status: nextStatus } });
+        }
+        if (nextStatus !== "ACTIVE") {
+          summary.wlSkipped += 1;
+          summary.skippedWlNames.push(wl.name);
+          continue;
+        }
+      }
       const metaCampaigns = await client.getCampaigns(wl.accountId);
       const metaAdSets = await client.getAdSets(wl.accountId);
       const adSetsByCampaign = new Map<string, MetaAdSet[]>();
