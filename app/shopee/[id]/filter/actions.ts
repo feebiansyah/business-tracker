@@ -18,9 +18,13 @@ export async function syncFilterAction(shopeeAccountId: number, previousState: F
     const summary = await syncFilter(shopeeAccountId);
     revalidatePath(`/shopee/${shopeeAccountId}`);
     revalidatePath(`/shopee/${shopeeAccountId}/filter`);
+    revalidatePath(`/shopee/${shopeeAccountId}/fix`);
+    revalidatePath(`/shopee/${shopeeAccountId}/off-filter`);
+    revalidatePath(`/shopee/${shopeeAccountId}/off-fix`);
+    revalidatePath("/wl");
     return {
       success: summary.wlFailed === 0,
-      message: summary.wlFailed === 0 ? "Sync Meta Filter selesai." : `Sync selesai dengan ${summary.wlFailed} WL gagal.`,
+      message: summary.wlFailed === 0 ? "Sync Meta selesai." : `Sync selesai dengan ${summary.wlFailed} WL gagal.`,
       summary,
     };
   } catch (error) {
