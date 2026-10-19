@@ -69,7 +69,10 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
     bidWriteInFlight.current = true; setWritingBid(true); setError("");
     try {
       const response = await saveAdsterraCustomBidAction(shopeeAccountId, result.config.id, placementId, bidPrice, expectedPrice);
-      if (response.success) setCustomBids({ success: true, bids: response.bids });
+      if (response.success) {
+        setCustomBids({ success: true, bids: response.bids });
+        setSuccess(`Custom Bid Placement ${placementId} berhasil disimpan dan diverifikasi.`);
+      }
       return response;
     } finally { bidWriteInFlight.current = false; setWritingBid(false); }
   };
@@ -81,7 +84,10 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
     bidWriteInFlight.current = true; setWritingBid(true); setError("");
     try {
       const response = await deleteAdsterraCustomBidAction(shopeeAccountId, result.config.id, placementId, expectedPrice);
-      if (response.success) setCustomBids({ success: true, bids: response.bids });
+      if (response.success) {
+        setCustomBids({ success: true, bids: response.bids });
+        setSuccess(`Custom Bid ID Placement ${placementId} berhasil dihapus dan diverifikasi.`);
+      }
       return response;
     } finally { bidWriteInFlight.current = false; setWritingBid(false); }
   };
@@ -107,7 +113,7 @@ function AnalysisResult({ result, shopeeName, lastBlacklistReplacedAt, customBid
   const analysis = result.analysis;
   const clicks = analysis.rows.reduce((sum, row) => sum + row.clicks, 0);
   const stats = [["Biaya Iklan", formatIdr(analysis.totalCostIdr), formatUsd(analysis.totalSpentUsd)], ["Komisi Bersih Shopee", formatIdr(analysis.totalCommission), ""], ["Profit", formatIdr(analysis.totalProfit), ""], ["ROI", formatPercent(analysis.roi), ""], ["Klik Iklan", new Intl.NumberFormat("id-ID").format(clicks), ""], ["Kandidat Blacklist", String(analysis.candidatePlacements.length), "Biaya ≥ Rp1.000; tidak memenuhi ROI > 10% dan CTR > 8%"]];
-  return <div className="space-y-4"><div className="grid gap-1 rounded-lg border bg-slate-50 p-3 text-sm sm:grid-cols-2"><p>Shopee Account: <b>{shopeeName}</b></p><p>Campaign: <b>{result.config.label || result.config.campaignId}</b></p><p>Tag Link 1: <b>{result.config.sourceTag}</b></p><p>Periode: <b>{result.dateFrom} – {result.dateTill}</b></p><p>Kurs: <b>{formatIdr(result.fxRate)} / USD</b></p><p>Terakhir Replace Blacklist: <b>{formatBlacklistReplacementTime(lastBlacklistReplacedAt)}</b></p></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{stats.map(([label, value, detail]) => <div key={label} className="rounded-lg border bg-slate-50 p-3"><p className="text-xs font-medium uppercase text-slate-500">{label}</p><p className="font-semibold">{value}</p>{detail && <p className="text-xs text-slate-500">{detail}</p>}</div>)}</div><p className="text-xs text-slate-500">Custom Bid aktual untuk Indonesia (ID). GLOBAL berlaku jika tidak ada override ID. Nilai bid ditampilkan tanpa konversi kurs.</p>{customBids && !customBids.success && <p role="status" className="text-sm text-amber-800">{customBids.message}</p>}<PlacementTable analysis={analysis} customBids={customBids} onSaveBid={onSaveBid} onDeleteBid={onDeleteBid} writeBusy={writingBid}/><TrafficRoiCandidateList ids={analysis.candidatePlacements} noun="Placement" copyLabel="Copy Placement"/></div>;
+  return <div className="space-y-4"><div className="grid gap-1 rounded-lg border bg-slate-50 p-3 text-sm sm:grid-cols-2"><p>Shopee Account: <b>{shopeeName}</b></p><p>Campaign: <b>{result.config.label || result.config.campaignId}</b></p><p>Tag Link 1: <b>{result.config.sourceTag}</b></p><p>Periode: <b>{result.dateFrom} – {result.dateTill}</b></p><p>Kurs: <b>{formatIdr(result.fxRate)} / USD</b></p><p>Terakhir Replace Blacklist: <b>{formatBlacklistReplacementTime(lastBlacklistReplacedAt)}</b></p></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{stats.map(([label, value, detail]) => <div key={label} className="rounded-lg border bg-slate-50 p-3"><p className="text-xs font-medium uppercase text-slate-500">{label}</p><p className="font-semibold">{value}</p>{detail && <p className="text-xs text-slate-500">{detail}</p>}</div>)}</div><p className="text-xs text-slate-500">Isi harga per Placement untuk Custom Bid Indonesia (ID), lalu klik Simpan. Nilai GLOBAL hanya ditampilkan dan tidak ikut diubah. Harga bid tidak dikonversi kurs.</p>{customBids && !customBids.success && <p role="status" className="text-sm text-amber-800">{customBids.message}</p>}<PlacementTable analysis={analysis} customBids={customBids} onSaveBid={onSaveBid} onDeleteBid={onDeleteBid} writeBusy={writingBid}/><TrafficRoiCandidateList ids={analysis.candidatePlacements} noun="Placement" copyLabel="Copy Placement"/></div>;
 }
 
 function cloneFormData(source: FormData) { const clone = new FormData(); for (const [key, value] of source.entries()) clone.append(key, value); return clone; }
