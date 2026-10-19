@@ -46,3 +46,39 @@ test("Custom Bid server action authenticates and reuses only scoped config and c
   assert.match(action, /loadClient: scopedAdsterraClient/);
   assert.doesNotMatch(action, /replaceBlacklist|setCampaignActive|revalidatePath/);
 });
+
+
+test("Custom Bid editor exposes independent ID save/delete controls without touching blacklist", async () => {
+  const [editor, table, workflow] = await Promise.all([
+    readFile(new URL("./custom-bid-editor.tsx", import.meta.url), "utf8"),
+    readFile(new URL("./placement-table.tsx", import.meta.url), "utf8"),
+    readFile(new URL("./analysis-workflow.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(editor, /type="number"/);
+  assert.match(editor, /placeholder="Contoh: 0\.015"/);
+  assert.match(editor, /min="0"/);
+  assert.match(editor, /max="200"/);
+  assert.match(editor, /Simpan/);
+  assert.match(editor, /Hapus/);
+  assert.match(editor, /onSubmit=\{save\}/);
+  assert.match(editor, /window\.confirm/);
+  assert.match(table, /CustomBidEditor/);
+  assert.match(table, /onSaveBid/);
+  assert.match(table, /onDeleteBid/);
+  assert.match(workflow, /saveAdsterraCustomBidAction/);
+  assert.match(workflow, /deleteAdsterraCustomBidAction/);
+  assert.match(workflow, /bidWriteInFlight/);
+  assert.doesNotMatch(editor, /replaceAdsterraBlacklistAction|setAdsterraCampaignActiveAction/);
+});
+
+test("Custom Bid mutation actions authenticate and scope to the stored campaign", async () => {
+  const actions = await readFile(new URL("../../app/shopee/[id]/adsterra-roi/actions.ts", import.meta.url), "utf8");
+  for (const name of ["saveAdsterraCustomBidAction", "deleteAdsterraCustomBidAction"]) {
+    const body = actions.match(new RegExp(\`export async function \${name}[\\s\\S]*?(?=\\nexport async function|$)\`))?.[0] ?? "";
+    assert.match(body, /await requireUser\(\)/);
+    assert.match(body, /writeAdsterraPlacementCustomBid/);
+    assert.match(body, /getAdsterraConfigById\(prisma, accountId, id\)/);
+    assert.match(body, /loadClient: scopedAdsterraClient/);
+    assert.doesNotMatch(body, /replaceAdsterraBlacklist|setAdsterraCampaignActive/);
+  }
+});
