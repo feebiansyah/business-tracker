@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { placementCustomBids } from "@/lib/adsterra-roi/custom-bids";
 import type { AdsterraCustomBid, AdsterraCustomBidsResult } from "@/lib/adsterra-roi/types";
 
@@ -22,11 +22,6 @@ export function CustomBidEditor({ placement, result, writeBusy = false, onSave, 
   const [draft, setDraft] = useState(currentIdPrice ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    setDraft(currentIdPrice ?? "");
-    setMessage("");
-  }, [currentIdPrice, placement]);
 
   if (result === null) return <span className="text-slate-500">Memuat...</span>;
   if (!result.success) return <span className="text-amber-800" title={result.message}>Gagal dimuat</span>;
