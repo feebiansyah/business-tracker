@@ -2,25 +2,24 @@
 
 import { useState } from "react";
 import type { AdsterraCustomBidsResult, AdsterraRoiAnalysis } from "@/lib/adsterra-roi/types";
-import { placementCustomBids } from "@/lib/adsterra-roi/custom-bids";
+import { CustomBidEditor, type CustomBidEditorProps } from "./custom-bid-editor";
 import { getClientPagination } from "@/components/traffic-roi/client-pagination";
 import { TrafficRoiPagination } from "@/components/traffic-roi/pagination-controls";
 import { formatIdr, formatPercent, formatUsd } from "@/components/clickadu-roi/view-model";
 import { hasMinimumDecisionCost } from "../../lib/traffic-roi/decision.ts";
 import { formatPlacementCtr } from "./placement-ctr.ts";
 
-export function PlacementTable({ analysis, customBids }: { analysis: AdsterraRoiAnalysis; customBids: AdsterraCustomBidsResult | null }) {
+export function PlacementTable({ analysis, customBids, onSaveBid, onDeleteBid, writeBusy = false }: {
+  analysis: AdsterraRoiAnalysis;
+  customBids: AdsterraCustomBidsResult | null;
+  onSaveBid?: CustomBidEditorProps["onSave"];
+  onDeleteBid?: CustomBidEditorProps["onDelete"];
+  writeBusy?: boolean;
+}) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const pagination = getClientPagination(analysis.rows.length, page, pageSize);
   const rows = analysis.rows.slice(pagination.startIndex, pagination.endIndex);
-  return <div className="max-w-full overflow-hidden rounded-lg border"><div className="overflow-x-auto"><table className="w-full min-w-200 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{["Placement", "Spend USD", "Spend IDR", "Komisi", "Profit", "ROI", "CTR", "Custom Bid (ID / GLOBAL)", "Status"].map((label) => <th key={label} className="whitespace-nowrap px-3 py-3">{label}</th>)}</tr></thead><tbody className="divide-y">{rows.map((row) => { const enoughSpend = hasMinimumDecisionCost(row.costIdr); return <tr key={row.placement}><td className="px-3 py-3 font-medium">{row.placement}</td><td className="px-3 py-3">{formatUsd(row.spentUsd)}</td><td className="px-3 py-3">{formatIdr(row.costIdr)}</td><td className="px-3 py-3">{formatIdr(row.commission)}</td><td className={`px-3 py-3 ${row.profit.startsWith("-") ? "text-red-600" : "text-emerald-700"}`}>{formatIdr(row.profit)}</td><td className="px-3 py-3">{formatPercent(row.roi)}</td><td className="px-3 py-3">{formatPlacementCtr(row.clicks, row.impressions)}</td><td className="px-3 py-3"><CustomBidValue result={customBids} placement={row.placement}/></td><td className={`whitespace-nowrap px-3 py-3 ${row.isBlacklistCandidate ? "text-red-600" : enoughSpend ? "text-emerald-700" : "text-slate-500"}`}>{row.isBlacklistCandidate ? "Kandidat Blacklist" : enoughSpend ? "Aman" : "Belum Cukup Spend"}</td></tr>;})}</tbody></table></div><TrafficRoiPagination totalRows={analysis.rows.length} label="Placement" page={pagination.page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}/></div>;
+  return <div className="max-w-full overflow-hidden rounded-lg border"><div className="overflow-x-auto"><table className="w-full min-w-200 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{["Placement", "Spend USD", "Spend IDR", "Komisi", "Profit", "ROI", "CTR", "Custom Bid (ID / GLOBAL)", "Status"].map((label) => <th key={label} className="whitespace-nowrap px-3 py-3">{label}</th>)}</tr></thead><tbody className="divide-y">{rows.map((row) => { const enoughSpend = hasMinimumDecisionCost(row.costIdr); return <tr key={row.placement}><td className="px-3 py-3 font-medium">{row.placement}</td><td className="px-3 py-3">{formatUsd(row.spentUsd)}</td><td className="px-3 py-3">{formatIdr(row.costIdr)}</td><td className="px-3 py-3">{formatIdr(row.commission)}</td><td className={`px-3 py-3 ${row.profit.startsWith("-") ? "text-red-600" : "text-emerald-700"}`}>{formatIdr(row.profit)}</td><td className="px-3 py-3">{formatPercent(row.roi)}</td><td className="px-3 py-3">{formatPlacementCtr(row.clicks, row.impressions)}</td><td className="px-3 py-3"><CustomBidEditor result={customBids} placement={row.placement} onSave={onSaveBid} onDelete={onDeleteBid} writeBusy={writeBusy}/></td><td className={`whitespace-nowrap px-3 py-3 ${row.isBlacklistCandidate ? "text-red-600" : enoughSpend ? "text-emerald-700" : "text-slate-500"}`}>{row.isBlacklistCandidate ? "Kandidat Blacklist" : enoughSpend ? "Aman" : "Belum Cukup Spend"}</td></tr>;})}</tbody></table></div><TrafficRoiPagination totalRows={analysis.rows.length} label="Placement" page={pagination.page} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}/></div>;
 }
 
-function CustomBidValue({ result, placement }: { result: AdsterraCustomBidsResult | null; placement: string }) {
-  if (result === null) return <span className="text-slate-500">Memuat...</span>;
-  if (!result.success) return <span className="text-amber-800" title={result.message}>Gagal dimuat</span>;
-  const bids = placementCustomBids(result.bids, placement);
-  if (bids.indonesia === null && bids.global === null) return <span className="text-slate-500">Tanpa override ID/GLOBAL</span>;
-  return <div className="space-y-1 whitespace-nowrap tabular-nums">{bids.indonesia !== null && <div>ID: {bids.indonesia}</div>}{bids.global !== null && <div>GLOBAL: {bids.global}</div>}</div>;
-}
