@@ -18,6 +18,8 @@ import { getAdsterraDailyHistory, getAdsterraDailySyncConfigs } from "../../../.
 import { parseAdsterraHistoryParams, type AdsterraHistoryParams } from "../../../../lib/adsterra-history/server-pagination";
 import { AdsterraApiError, type AdsterraCampaignStatusResult } from "../../../../lib/adsterra-roi/client";
 import { setAndVerifyAdsterraCampaignActive } from "../../../../lib/adsterra-roi/campaign-activity";
+import { loadAdsterraCustomBids } from "../../../../lib/adsterra-roi/custom-bids";
+import type { AdsterraCustomBidsResult } from "../../../../lib/adsterra-roi/types";
 
 function campaignStatusErrorMessage(error: unknown) {
   return error instanceof AdsterraApiError ? error.message : "Status campaign Adsterra gagal dimuat.";
@@ -27,6 +29,19 @@ async function scopedAdsterraClient(shopeeAccountId: number) {
   const credential = await getEncryptedTrafficCredential(prisma, shopeeAccountId, TrafficProvider.ADSTERRA);
   if (!credential) throw new AdsterraApiError("Koneksi Adsterra belum dikonfigurasi.");
   return getAdsterraClient(decryptTrafficSecret(credential.encryptedSecret));
+}
+
+export async function getAdsterraCustomBidsAction(shopeeAccountId: number, configId: number): Promise<AdsterraCustomBidsResult> {
+  await requireUser();
+  try {
+    const bids = await loadAdsterraCustomBids(shopeeAccountId, configId, {
+      loadConfig: (accountId, id) => getAdsterraConfigById(prisma, accountId, id),
+      loadClient: scopedAdsterraClient,
+    });
+    return { success: true, bids };
+  } catch (error) {
+    return { success: false, message: error instanceof AdsterraApiError ? error.message : "Custom Bid Adsterra gagal dimuat." };
+  }
 }
 
 export async function getAdsterraCampaignStatusesAction(shopeeAccountId: number) {

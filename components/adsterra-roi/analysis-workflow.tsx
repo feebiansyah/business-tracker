@@ -2,11 +2,11 @@
 
 import { useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { analyzeAdsterraRoiAction, replaceAdsterraBlacklistAction } from "@/app/shopee/[id]/adsterra-roi/actions";
+import { analyzeAdsterraRoiAction, getAdsterraCustomBidsAction, replaceAdsterraBlacklistAction } from "@/app/shopee/[id]/adsterra-roi/actions";
 import { TrafficRoiCandidateList } from "@/components/traffic-roi/candidate-list";
 import { PlacementTable } from "@/components/adsterra-roi/placement-table";
 import type { AdsterraAnalysisConfig } from "@/lib/adsterra-roi/analyze";
-import type { AdsterraRoiAnalysis } from "@/lib/adsterra-roi/types";
+import type { AdsterraCustomBidsResult, AdsterraRoiAnalysis } from "@/lib/adsterra-roi/types";
 import { formatIdr, formatPercent, formatUsd } from "@/components/clickadu-roi/view-model";
 import { formatBlacklistReplacementTime } from "../../lib/traffic-roi/replacement-timestamp";
 
@@ -18,6 +18,7 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [result, setResult] = useState<Result | null>(null);
+  const [customBids, setCustomBids] = useState<AdsterraCustomBidsResult | null>(null);
   const [analysisVersion, setAnalysisVersion] = useState(0);
   const [lastBlacklistReplacedAt, setLastBlacklistReplacedAt] = useState<string | null>(null);
   const analysisInFlight = useRef(false);
@@ -27,10 +28,14 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
   async function analyze(data: FormData) {
     if (analysisInFlight.current || replaceInFlight.current) return;
     analysisInFlight.current = true;
-    setBusy(true); setError(""); setSuccess(""); setResult(null); lastAnalysisForm.current = null;
+    setBusy(true); setError(""); setSuccess(""); setResult(null); setCustomBids(null); lastAnalysisForm.current = null;
     try {
       const response = await analyzeAdsterraRoiAction(shopeeAccountId, data);
-      if (response.success) { lastAnalysisForm.current = cloneFormData(data); setResult(response.result); setLastBlacklistReplacedAt(response.result.config.lastBlacklistReplacedAt?.toISOString() ?? null); setAnalysisVersion((value) => value + 1); }
+      if (response.success) {
+        lastAnalysisForm.current = cloneFormData(data); setResult(response.result); setLastBlacklistReplacedAt(response.result.config.lastBlacklistReplacedAt?.toISOString() ?? null); setAnalysisVersion((value) => value + 1);
+        try { setCustomBids(await getAdsterraCustomBidsAction(shopeeAccountId, response.result.config.id)); }
+        catch { setCustomBids({ success: false, message: "Custom Bid Adsterra gagal dimuat." }); }
+      }
       else setError(response.message);
     } finally { analysisInFlight.current = false; setBusy(false); }
   }
@@ -67,15 +72,15 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
     </form>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {success && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{success}</p>}
-    {result && <><div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-slate-700"><p className="font-medium text-slate-900">Aturan Kandidat Blacklist</p><p className="mt-1">Placement AMAN hanya jika ROI &gt; 10% dan CTR &gt; 8%. Dengan Biaya Iklan ≥ Rp1.000, kegagalan salah satu syarat menjadikannya kandidat blacklist pada periode analisis. CTR dihitung dari klik / impresi × 100; impresi nol tidak memenuhi syarat CTR.</p><p>Placement lainnya akan dikeluarkan dari blacklist.</p></div><AnalysisResult key={analysisVersion} result={result} shopeeName={shopeeAccountName} lastBlacklistReplacedAt={lastBlacklistReplacedAt}/><div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-sm text-slate-700">Replace menghitung ulang analisis di server, mengganti blacklist secara penuh, dan memverifikasi daftar final secara exact.</p><Button type="button" variant="destructive" className="mt-3" disabled={busy || replacing} onClick={replaceBlacklist}>{replacing ? "Memperbarui blacklist..." : "Replace Blacklist Adsterra"}</Button></div></>}
+    {result && <><div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-slate-700"><p className="font-medium text-slate-900">Aturan Kandidat Blacklist</p><p className="mt-1">Placement AMAN hanya jika ROI &gt; 10% dan CTR &gt; 8%. Dengan Biaya Iklan ≥ Rp1.000, kegagalan salah satu syarat menjadikannya kandidat blacklist pada periode analisis. CTR dihitung dari klik / impresi × 100; impresi nol tidak memenuhi syarat CTR.</p><p>Placement lainnya akan dikeluarkan dari blacklist.</p></div><AnalysisResult key={analysisVersion} result={result} shopeeName={shopeeAccountName} lastBlacklistReplacedAt={lastBlacklistReplacedAt} customBids={customBids}/><div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-sm text-slate-700">Replace menghitung ulang analisis di server, mengganti blacklist secara penuh, dan memverifikasi daftar final secara exact.</p><Button type="button" variant="destructive" className="mt-3" disabled={busy || replacing} onClick={replaceBlacklist}>{replacing ? "Memperbarui blacklist..." : "Replace Blacklist Adsterra"}</Button></div></>}
   </section>;
 }
 
-function AnalysisResult({ result, shopeeName, lastBlacklistReplacedAt }: { result: Result; shopeeName: string; lastBlacklistReplacedAt: string | null }) {
+function AnalysisResult({ result, shopeeName, lastBlacklistReplacedAt, customBids }: { result: Result; shopeeName: string; lastBlacklistReplacedAt: string | null; customBids: AdsterraCustomBidsResult | null }) {
   const analysis = result.analysis;
   const clicks = analysis.rows.reduce((sum, row) => sum + row.clicks, 0);
   const stats = [["Biaya Iklan", formatIdr(analysis.totalCostIdr), formatUsd(analysis.totalSpentUsd)], ["Komisi Bersih Shopee", formatIdr(analysis.totalCommission), ""], ["Profit", formatIdr(analysis.totalProfit), ""], ["ROI", formatPercent(analysis.roi), ""], ["Klik Iklan", new Intl.NumberFormat("id-ID").format(clicks), ""], ["Kandidat Blacklist", String(analysis.candidatePlacements.length), "Biaya ≥ Rp1.000; tidak memenuhi ROI > 10% dan CTR > 8%"]];
-  return <div className="space-y-4"><div className="grid gap-1 rounded-lg border bg-slate-50 p-3 text-sm sm:grid-cols-2"><p>Shopee Account: <b>{shopeeName}</b></p><p>Campaign: <b>{result.config.label || result.config.campaignId}</b></p><p>Tag Link 1: <b>{result.config.sourceTag}</b></p><p>Periode: <b>{result.dateFrom} – {result.dateTill}</b></p><p>Kurs: <b>{formatIdr(result.fxRate)} / USD</b></p><p>Terakhir Replace Blacklist: <b>{formatBlacklistReplacementTime(lastBlacklistReplacedAt)}</b></p></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{stats.map(([label, value, detail]) => <div key={label} className="rounded-lg border bg-slate-50 p-3"><p className="text-xs font-medium uppercase text-slate-500">{label}</p><p className="font-semibold">{value}</p>{detail && <p className="text-xs text-slate-500">{detail}</p>}</div>)}</div><PlacementTable analysis={analysis}/><TrafficRoiCandidateList ids={analysis.candidatePlacements} noun="Placement" copyLabel="Copy Placement"/></div>;
+  return <div className="space-y-4"><div className="grid gap-1 rounded-lg border bg-slate-50 p-3 text-sm sm:grid-cols-2"><p>Shopee Account: <b>{shopeeName}</b></p><p>Campaign: <b>{result.config.label || result.config.campaignId}</b></p><p>Tag Link 1: <b>{result.config.sourceTag}</b></p><p>Periode: <b>{result.dateFrom} – {result.dateTill}</b></p><p>Kurs: <b>{formatIdr(result.fxRate)} / USD</b></p><p>Terakhir Replace Blacklist: <b>{formatBlacklistReplacementTime(lastBlacklistReplacedAt)}</b></p></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{stats.map(([label, value, detail]) => <div key={label} className="rounded-lg border bg-slate-50 p-3"><p className="text-xs font-medium uppercase text-slate-500">{label}</p><p className="font-semibold">{value}</p>{detail && <p className="text-xs text-slate-500">{detail}</p>}</div>)}</div><p className="text-xs text-slate-500">Custom Bid aktual untuk Indonesia (ID). GLOBAL berlaku jika tidak ada override ID. Nilai bid ditampilkan tanpa konversi kurs.</p>{customBids && !customBids.success && <p role="status" className="text-sm text-amber-800">{customBids.message}</p>}<PlacementTable analysis={analysis} customBids={customBids}/><TrafficRoiCandidateList ids={analysis.candidatePlacements} noun="Placement" copyLabel="Copy Placement"/></div>;
 }
 
 function cloneFormData(source: FormData) { const clone = new FormData(); for (const [key, value] of source.entries()) clone.append(key, value); return clone; }

@@ -1,5 +1,5 @@
 import Decimal from "decimal.js";
-import type { AdsterraPlacementStatistic, AdsterraStatisticsInput } from "./types.ts";
+import type { AdsterraCustomBid, AdsterraPlacementStatistic, AdsterraStatisticsInput } from "./types.ts";
 
 const STATS_URL = "https://api3.adsterratools.com/advertiser/stats.json";
 const API_BASE_URL = "https://api3.adsterratools.com/advertiser";
@@ -33,6 +33,11 @@ export class AdsterraClient {
     const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
     const body = await this.fetchJson(`${API_BASE_URL}/campaign/${campaignId}/linking/blacklist.json`, "GET");
     return parseBlacklist(body);
+  }
+  async getCustomBids(campaignIdValue: string): Promise<AdsterraCustomBid[]> {
+    const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
+    const body = await this.fetchJson(`${API_BASE_URL}/campaign/${campaignId}/custom_bid.json`, "GET", undefined, true);
+    return parseCustomBids(body);
   }
   async getCampaignStatus(campaignIdValue: string): Promise<AdsterraCampaignStatusResult> {
     const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
@@ -75,6 +80,25 @@ function parseCampaignStatus(campaignId: number, body: unknown): AdsterraCampaig
   const statuses: Record<number, AdsterraCampaignStatus> = { 1: "INACTIVE", 2: "LIMITED", 3: "ACTIVE", 4: "NOT_IN_USE" };
   if (typeof active !== "number" || !Number.isInteger(active) || !(active in statuses)) throw new AdsterraApiError("Adsterra API mengembalikan status campaign tidak valid.");
   return { campaignId, activeCode: active as 1 | 2 | 3 | 4, status: statuses[active] };
+}
+
+function parseCustomBids(body: unknown): AdsterraCustomBid[] {
+  const invalid = () => new AdsterraApiError("Adsterra API mengembalikan Custom Bid tidak valid atau tidak lengkap.");
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw invalid();
+  const { items, itemCount } = body as Record<string, unknown>;
+  if (!Array.isArray(items) || !Number.isSafeInteger(itemCount) || itemCount !== items.length) throw invalid();
+  const identities = new Set<string>();
+  return items.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw invalid();
+    const item = value as Record<string, unknown>;
+    const placementId = String(positiveInteger(item.placement_id, "Placement ID"));
+    if (typeof item.price !== "number" || !Number.isFinite(item.price) || item.price < 0) throw invalid();
+    if (typeof item.country_code !== "string" || !/^(?:[A-Z]{2}|GLOBAL)$/.test(item.country_code)) throw invalid();
+    const identity = `${placementId}:${item.country_code}`;
+    if (identities.has(identity)) throw invalid();
+    identities.add(identity);
+    return { placementId, price: new Decimal(item.price).toFixed(), countryCode: item.country_code };
+  });
 }
 
 export function normalizePlacementIds(values: readonly unknown[]) {

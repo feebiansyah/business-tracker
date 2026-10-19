@@ -19,7 +19,7 @@ for (const { clicks, impressions, expected } of [
 
 test("placement table shows aggregate CTR between ROI and Status and keeps horizontal scrolling", async () => {
   const source = await readFile(new URL("./placement-table.tsx", import.meta.url), "utf8");
-  assert.match(source, /"ROI", "CTR", "Status"/);
+  assert.match(source, /"ROI", "CTR", "Custom Bid \(ID \/ GLOBAL\)", "Status"/);
   assert.match(source, /formatPercent\(row\.roi\)[\s\S]*formatPlacementCtr\(row\.clicks, row\.impressions\)[\s\S]*row\.isBlacklistCandidate/);
   assert.match(source, /overflow-x-auto/);
   assert.match(source, /TrafficRoiPagination totalRows=\{analysis\.rows\.length\}/);

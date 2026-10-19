@@ -1,4 +1,6 @@
 export type AdsterraStatisticsInput = { campaignId: string; dateFrom: string; dateTill: string };
+export type AdsterraCustomBid = { placementId: string; price: string; countryCode: string };
+export type AdsterraCustomBidsResult = { success: true; bids: AdsterraCustomBid[] } | { success: false; message: string };
 export type AdsterraPlacementStatistic = { placement: string; impressions: number; clicks: number; spent: string };
 export type AdsterraShopeeCsvRow = { logicalRow: number; date: string; tagLink1: string; tagLink3: string; commission: string };
 export type PlacementCommission = { placement: string; commission: string; rowCount: number };
