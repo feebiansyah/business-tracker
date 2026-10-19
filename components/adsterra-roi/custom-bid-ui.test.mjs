@@ -74,7 +74,9 @@ test("Custom Bid editor exposes independent ID save/delete controls without touc
 test("Custom Bid mutation actions authenticate and scope to the stored campaign", async () => {
   const actions = await readFile(new URL("../../app/shopee/[id]/adsterra-roi/actions.ts", import.meta.url), "utf8");
   for (const name of ["saveAdsterraCustomBidAction", "deleteAdsterraCustomBidAction"]) {
-    const body = actions.match(new RegExp(\`export async function \${name}[\\s\\S]*?(?=\\nexport async function|$)\`))?.[0] ?? "";
+    const start = actions.indexOf("export async function " + name + "(");
+    const next = actions.indexOf("\nexport async function", start + 1);
+    const body = start < 0 ? "" : actions.slice(start, next < 0 ? undefined : next);
     assert.match(body, /await requireUser\(\)/);
     assert.match(body, /writeAdsterraPlacementCustomBid/);
     assert.match(body, /getAdsterraConfigById\(prisma, accountId, id\)/);
