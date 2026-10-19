@@ -19,6 +19,7 @@ import { parseAdsterraHistoryParams, type AdsterraHistoryParams } from "../../..
 import { AdsterraApiError, type AdsterraCampaignStatusResult } from "../../../../lib/adsterra-roi/client";
 import { setAndVerifyAdsterraCampaignActive } from "../../../../lib/adsterra-roi/campaign-activity";
 import { loadAdsterraCustomBids } from "../../../../lib/adsterra-roi/custom-bids";
+import { AdsterraCustomBidWriteError, writeAdsterraPlacementCustomBid } from "../../../../lib/adsterra-roi/custom-bid-write";
 import type { AdsterraCustomBidsResult } from "../../../../lib/adsterra-roi/types";
 
 function campaignStatusErrorMessage(error: unknown) {
@@ -41,6 +42,47 @@ export async function getAdsterraCustomBidsAction(shopeeAccountId: number, confi
     return { success: true, bids };
   } catch (error) {
     return { success: false, message: error instanceof AdsterraApiError ? error.message : "Custom Bid Adsterra gagal dimuat." };
+  }
+}
+
+function customBidWriteMessage(error: unknown) {
+  return error instanceof AdsterraCustomBidWriteError || error instanceof AdsterraApiError
+    ? error.message : "Gagal memperbarui Custom Bid Adsterra.";
+}
+
+export async function saveAdsterraCustomBidAction(
+  shopeeAccountId: number, configId: number, placementId: string, price: string, expectedPrice: string | null,
+) {
+  await requireUser();
+  try {
+    const result = await writeAdsterraPlacementCustomBid({
+      shopeeAccountId, configId, placementId, price, expectedPrice, operation: "SAVE",
+    }, {
+      loadConfig: (accountId, id) => getAdsterraConfigById(prisma, accountId, id),
+      loadClient: scopedAdsterraClient,
+    });
+    if (result.status === "UPDATED") revalidatePath(`/shopee/${shopeeAccountId}/adsterra-roi`);
+    return { success: true as const, ...result };
+  } catch (error) {
+    return { success: false as const, message: customBidWriteMessage(error) };
+  }
+}
+
+export async function deleteAdsterraCustomBidAction(
+  shopeeAccountId: number, configId: number, placementId: string, expectedPrice: string | null,
+) {
+  await requireUser();
+  try {
+    const result = await writeAdsterraPlacementCustomBid({
+      shopeeAccountId, configId, placementId, expectedPrice, operation: "DELETE",
+    }, {
+      loadConfig: (accountId, id) => getAdsterraConfigById(prisma, accountId, id),
+      loadClient: scopedAdsterraClient,
+    });
+    if (result.status === "UPDATED") revalidatePath(`/shopee/${shopeeAccountId}/adsterra-roi`);
+    return { success: true as const, ...result };
+  } catch (error) {
+    return { success: false as const, message: customBidWriteMessage(error) };
   }
 }
 
