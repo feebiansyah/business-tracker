@@ -106,5 +106,5 @@ function parseResponse(body: unknown): AdsterraPlacementStatistic[] {
   });
 }
 function stringId(value: unknown) { if (typeof value !== "string" && typeof value !== "number") throw new AdsterraApiError("Adsterra API mengembalikan placement tidak valid."); const id = String(value).trim(); if (!id) throw new AdsterraApiError("Adsterra API mengembalikan placement tidak valid."); return id; }
-function count(value: unknown, field: string) { const parsed = typeof value === "string" ? Number(value) : value; if (typeof parsed !== "number" || !Number.isFinite(parsed) || parsed < 0) throw new AdsterraApiError(`Adsterra API mengembalikan ${field} tidak valid.`); return parsed; }
+function count(value: unknown, field: string) { const parsed = typeof value === "string" && value.trim() !== "" ? Number(value) : value; if (typeof parsed !== "number" || !Number.isFinite(parsed) || parsed < 0) throw new AdsterraApiError(`Adsterra API mengembalikan ${field} tidak valid.`); return parsed; }
 function money(value: unknown) { try { const parsed = new Decimal(String(value)); if (!parsed.isFinite() || parsed.isNegative()) throw new Error(); return parsed.toString(); } catch { throw new AdsterraApiError("Adsterra API mengembalikan spent tidak valid."); } }
