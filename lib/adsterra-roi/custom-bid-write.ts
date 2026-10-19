@@ -1,5 +1,5 @@
 import Decimal from "decimal.js";
-import { AdsterraAmbiguousWriteError, AdsterraApiError } from "./client.ts";
+import { AdsterraAmbiguousWriteError } from "./client.ts";
 import { parseAdsterraConfigId, parseShopeeAccountId } from "./config-input.ts";
 import type { AdsterraCustomBid } from "./types.ts";
 
