@@ -39,6 +39,53 @@ export class AdsterraClient {
     const body = await this.fetchJson(`${API_BASE_URL}/campaign/${campaignId}/custom_bid.json`, "GET", undefined, true);
     return parseCustomBids(body);
   }
+  async setCustomBids(campaignId: string, bids: readonly AdsterraCustomBid[]) {
+    await this.writeCustomBids(campaignId, "POST", bids);
+  }
+  async updateCustomBids(campaignId: string, bids: readonly AdsterraCustomBid[]) {
+    await this.writeCustomBids(campaignId, "PATCH", bids);
+  }
+  async deleteCustomBids(campaignId: string, bids: readonly Pick<AdsterraCustomBid, "placementId" | "countryCode">[]) {
+    await this.writeCustomBids(campaignId, "DELETE", bids);
+  }
+  private async writeCustomBids(
+    campaignIdValue: string,
+    method: "POST" | "PATCH" | "DELETE",
+    bids: readonly Pick<AdsterraCustomBid, "placementId" | "countryCode" | "price">[] | readonly Pick<AdsterraCustomBid, "placementId" | "countryCode">[],
+  ) {
+    const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
+    if (!bids.length) throw new AdsterraApiError("Daftar perubahan Custom Bid tidak boleh kosong.");
+    const custom_bids = bids.map((bid) => {
+      const placement_id = positiveInteger(bid.placementId, "Placement ID");
+      if (typeof bid.countryCode !== "string" || !/^(?:[A-Z]{2}|GLOBAL)$/.test(bid.countryCode)) {
+        throw new AdsterraApiError("GEO Custom Bid tidak valid.");
+      }
+      if (method === "DELETE") return { placement_id, country_code: bid.countryCode };
+      if (!("price" in bid) || typeof bid.price !== "string") {
+        throw new AdsterraApiError("Harga Custom Bid tidak valid.");
+      }
+      const price = Number(bid.price);
+      if (!Number.isFinite(price) || price < 0 || price > 200) throw new AdsterraApiError("Harga Custom Bid harus 0 sampai 200.");
+      return { placement_id, price, country_code: bid.countryCode };
+    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${API_BASE_URL}/campaign/${campaignId}/custom_bid.json`, {
+        method,
+        headers: { "X-API-Key": this.apiKey, Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ custom_bids }),
+        cache: "no-store",
+      });
+    } catch {
+      // A timed-out write may already have been accepted. Never retry blindly.
+      throw new AdsterraAmbiguousWriteError();
+    }
+    if (!response.ok) throw new AdsterraApiError(`Request Custom Bid Adsterra gagal (HTTP ${response.status}).`);
+    // The documented response is 200 with a complete Custom Bid collection.
+    // Missing or malformed responses must be verified by GET before reporting success.
+    try { parseCustomBids(await response.json()); }
+    catch { throw new AdsterraAmbiguousWriteError(); }
+  }
   async getCampaignStatus(campaignIdValue: string): Promise<AdsterraCampaignStatusResult> {
     const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
     const body = await this.fetchJson(`${API_BASE_URL}/campaign/${campaignId}.json`, "GET", undefined, true);
