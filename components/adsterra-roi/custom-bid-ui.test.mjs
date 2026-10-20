@@ -62,6 +62,7 @@ test("Custom Bid editor exposes independent ID save/delete controls without touc
   assert.match(editor, /Hapus/);
   assert.match(editor, /onSubmit=\{save\}/);
   assert.match(editor, /window\.confirm/);
+  assert.match(editor, /mengubah data Adsterra sungguhan/);
   assert.match(table, /CustomBidEditor/);
   assert.match(table, /onSaveBid/);
   assert.match(table, /onDeleteBid/);
@@ -81,6 +82,25 @@ test("Custom Bid mutation actions authenticate and scope to the stored campaign"
     assert.match(body, /writeAdsterraPlacementCustomBid/);
     assert.match(body, /getAdsterraConfigById\(prisma, accountId, id\)/);
     assert.match(body, /loadClient: scopedAdsterraClient/);
+    assert.match(body, /experiment: await customBidExperiment\(\)/);
     assert.doesNotMatch(body, /replaceAdsterraBlacklist|setAdsterraCampaignActive/);
   }
+});
+
+test("existing editor fields support localhost create and keep edit/delete controls", () => {
+  const script = `
+    import React from 'react';
+    import { renderToStaticMarkup } from 'react-dom/server';
+    import editorModule from './components/adsterra-roi/custom-bid-editor.tsx';
+    const { CustomBidEditor } = editorModule;
+    const render = (bids) => renderToStaticMarkup(React.createElement(CustomBidEditor, {placement:'1', result:{success:true,bids}, onSave:async()=>{}, onDelete:async()=>{}}));
+    console.log(JSON.stringify({empty:render([]), existing:render([{placementId:'1',countryCode:'ID',price:'0.01'}])}));
+  `;
+  const html = JSON.parse(execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
+    cwd: fileURLToPath(new URL("../../", import.meta.url)), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+  }));
+  assert.match(html.empty, /target localhost.*server/);
+  assert.doesNotMatch(html.empty, /<input[^>]*disabled=""/);
+  assert.doesNotMatch(html.existing, /<input[^>]*disabled=""/);
+  assert.match(html.existing, /Hapus/);
 });

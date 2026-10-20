@@ -40,7 +40,7 @@ export class AdsterraClient {
     return parseCustomBids(body);
   }
   async setCustomBids(campaignId: string, bids: readonly AdsterraCustomBid[]) {
-    await this.writeCustomBids(campaignId, "POST", bids);
+    return this.writeCustomBids(campaignId, "POST", bids);
   }
   async updateCustomBids(campaignId: string, bids: readonly AdsterraCustomBid[]) {
     await this.writeCustomBids(campaignId, "PATCH", bids);
@@ -83,7 +83,7 @@ export class AdsterraClient {
     if (!response.ok) throw new AdsterraApiError(`Request Custom Bid Adsterra gagal (HTTP ${response.status}).`);
     // The documented response is 200 with a complete Custom Bid collection.
     // Missing or malformed responses must be verified by GET before reporting success.
-    try { parseCustomBids(await response.json()); }
+    try { return parseCustomBids(await response.json()); }
     catch { throw new AdsterraAmbiguousWriteError(); }
   }
   async getCampaignStatus(campaignIdValue: string): Promise<AdsterraCampaignStatusResult> {

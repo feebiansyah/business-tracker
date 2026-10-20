@@ -51,14 +51,26 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
 
   async function replaceBlacklist() {
     if (analysisInFlight.current || replaceInFlight.current || bidWriteInFlight.current || !result || !lastAnalysisForm.current) return;
-    if (!window.confirm(`Blacklist campaign Adsterra akan diganti berdasarkan hasil analisis terbaru. ${result.analysis.candidatePlacements.length} Placement dengan Biaya Iklan minimal Rp1.000 yang tidak memenuhi ROI > 10% dan CTR > 8% akan dibuat OFF. Placement yang tidak memenuhi kondisi blacklist akan dibuat ON dan dikeluarkan dari blacklist. Lanjutkan?`)) return;
+    if (!window.confirm(`Blacklist campaign Adsterra akan diganti berdasarkan hasil analisis terbaru. ${result.analysis.candidatePlacements.length} Placement dengan Biaya Iklan minimal Rp1.000 yang tidak memenuhi ROI > 10% dan CTR > 8% akan dibuat OFF. Semua Custom Bid (seluruh GEO) milik Placement blacklist akan dihapus setelah blacklist diverifikasi, termasuk jika blacklist tidak berubah. Placement yang dibuat ON tidak mendapatkan kembali bid lama. Lanjutkan?`)) return;
     replaceInFlight.current = true;
     setReplacing(true); setError(""); setSuccess("");
     try {
       const response = await replaceAdsterraBlacklistAction(shopeeAccountId, cloneFormData(lastAnalysisForm.current));
-      if (!response.success) setError(response.message);
-      else if (response.status === "NO_CHANGE") setSuccess(`Blacklist sudah sesuai. Tidak ada write API dilakukan (${response.finalCount} Placement).`);
-      else { if (response.lastBlacklistReplacedAt) setLastBlacklistReplacedAt(response.lastBlacklistReplacedAt); setSuccess(`Blacklist berhasil diperbarui dan diverifikasi: ${response.finalCount} Placement; ${response.addedCount} ditambahkan dan ${response.removedCount} dikeluarkan.`); }
+      if ("customBidReset" in response && response.customBidReset) {
+        if (response.lastBlacklistReplacedAt) setLastBlacklistReplacedAt(response.lastBlacklistReplacedAt);
+        const reset = response.customBidReset;
+        const metadataWarning = response.metadata.status === "FAILED" ? response.metadata.message : "";
+        setCustomBids(reset.bids === null
+          ? { success: false, message: "Custom Bid belum dapat diverifikasi. Muat ulang analisis sebelum mengubah bid." }
+          : { success: true, bids: reset.bids });
+        if (response.customBidReset.status === "PARTIAL") {
+          setError(`Kegagalan parsial: ${reset.message} Placement belum direset/terverifikasi: ${reset.pendingPlacementIds.join(", ") || "periksa daftar aktual di Adsterra"}. ${metadataWarning}`);
+        } else if (metadataWarning) {
+          setError(`Blacklist dan reset Custom Bid sudah diverifikasi. ${metadataWarning}`);
+        } else {
+          setSuccess(`${response.status === "NO_CHANGE" ? "Blacklist sudah sesuai" : "Blacklist berhasil diperbarui dan diverifikasi"}: ${response.finalCount} Placement. ${reset.message}`);
+        }
+      } else setError(response.message ?? "Gagal memperbarui blacklist Adsterra.");
     } finally { replaceInFlight.current = false; setReplacing(false); }
   }
 

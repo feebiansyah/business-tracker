@@ -33,7 +33,7 @@ export function CustomBidEditor({ placement, result, writeBusy = false, onSave, 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSave || !onSave) return;
-    if (!window.confirm(`Simpan harga Custom Bid GEO Indonesia (ID) untuk Placement ${placement}: ${draft.trim()}?`)) return;
+    if (!window.confirm(`Ini mengubah data Adsterra sungguhan. ${currentIdPrice === null ? "UJI CREATE: POST satu item saja." : "Edit override existing."} Simpan Custom Bid GEO Indonesia (ID) Placement ${placement}, harga ${draft.trim()}? Gunakan campaign uji tanpa bid penting.`)) return;
     setSubmitting(true);
     setMessage("");
     try {
@@ -49,7 +49,7 @@ export function CustomBidEditor({ placement, result, writeBusy = false, onSave, 
 
   async function remove() {
     if (disabled || currentIdPrice === null || !onDelete) return;
-    if (!window.confirm(`Hapus Custom Bid Indonesia (ID) Placement ${placement}? Override GLOBAL/GEO lain tidak ikut dihapus.`)) return;
+    if (!window.confirm(`Ini mengubah data Adsterra sungguhan. Hapus Custom Bid Indonesia (ID) Placement ${placement}? Override GLOBAL/GEO lain tidak ikut dihapus.`)) return;
     setSubmitting(true);
     setMessage("");
     try {
@@ -87,6 +87,7 @@ export function CustomBidEditor({ placement, result, writeBusy = false, onSave, 
       </button>
       {currentIdPrice !== null && <button type="button" disabled={disabled} onClick={() => void remove()} className="h-8 rounded-md border border-red-300 px-2 text-xs font-medium text-red-700 disabled:opacity-40">Hapus</button>}
     </form>
+    {currentIdPrice === null && <p className="max-w-72 whitespace-normal text-xs text-amber-800">Uji create hanya untuk satu target localhost yang diizinkan server. Nonaktif secara default dan di production.</p>}
     {message && <p role="status" className="max-w-72 whitespace-normal text-xs text-slate-600">{message}</p>}
   </div>;
 }
