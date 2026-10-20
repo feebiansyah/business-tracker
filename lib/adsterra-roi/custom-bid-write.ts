@@ -110,8 +110,8 @@ export async function writeAdsterraPlacementCustomBid(input: CustomBidWriteInput
   const countryCode: Country = "ID";
   const current = before.find((bid) => bid.placementId === id && bid.countryCode === countryCode);
   const creating = input.operation === "SAVE" && !current;
-  if (creating && !experiment) {
-    throw new AdsterraCustomBidWriteError("Pembuatan override baru dinonaktifkan demi keamanan blacklist. Uji create hanya tersedia untuk satu target server pada development localhost.");
+  if (creating && !experiment && !deps.allowCreate) {
+    throw new AdsterraCustomBidWriteError("Pembuatan override baru belum diaktifkan pada server ini.");
   }
   const currentPrice = current?.price ?? null;
   if (currentPrice === null ? expectedPrice !== null : expectedPrice === null || !new Decimal(currentPrice).eq(expectedPrice)) {
@@ -139,7 +139,7 @@ export async function writeAdsterraPlacementCustomBid(input: CustomBidWriteInput
     if (!updatedBid) {
       await client.deleteCustomBids(config.campaignId, [{ placementId: id, countryCode }]);
     } else if (creating) {
-      // Experimental create: ONLY the explicit operator input, NEVER `expected`.
+      // Create: ONLY the explicit operator input, NEVER a previous campaign snapshot.
       const response = await client.setCustomBids(config.campaignId, [updatedBid]);
       if (!exactBidsMatch(response, expected)) ambiguous = true;
     } else {
