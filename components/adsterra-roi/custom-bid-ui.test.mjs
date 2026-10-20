@@ -104,3 +104,15 @@ test("existing editor fields support localhost create and keep edit/delete contr
   assert.doesNotMatch(html.existing, /<input[^>]*disabled=""/);
   assert.match(html.existing, /Hapus/);
 });
+
+
+test("create rollout is server-only and existing authentication/scope remains mandatory", async () => {
+  const actions = await readFile(new URL("../../app/shopee/[id]/adsterra-roi/actions.ts", import.meta.url), "utf8");
+  const start = actions.indexOf("export async function saveAdsterraCustomBidAction(");
+  const end = actions.indexOf("\nexport async function", start + 1);
+  const save = actions.slice(start, end);
+  assert.match(save, /await requireUser\(\)/);
+  assert.match(save, /allowCreate: process\.env\.ADSTERRA_CUSTOM_BID_CREATE_ENABLED === "1"/);
+  assert.match(save, /getAdsterraConfigById\(prisma, accountId, id\)/);
+  assert.doesNotMatch(save, /formData\.get\(["\x27]allowCreate/);
+});
