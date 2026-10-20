@@ -65,6 +65,7 @@ export async function saveAdsterraCustomBidAction(
       shopeeAccountId, configId, placementId, price, expectedPrice, operation: "SAVE",
     }, {
       experiment: await customBidExperiment(),
+      allowCreate: process.env.ADSTERRA_CUSTOM_BID_CREATE_ENABLED === "1",
       loadConfig: (accountId, id) => getAdsterraConfigById(prisma, accountId, id),
       loadClient: scopedAdsterraClient,
     });
