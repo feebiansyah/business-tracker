@@ -1,5 +1,5 @@
 import Decimal from "decimal.js";
-import type { AdsterraPlacementStatistic, AdsterraStatisticsInput } from "./types.ts";
+import type { AdsterraCustomBid, AdsterraPlacementStatistic, AdsterraStatisticsInput } from "./types.ts";
 
 const STATS_URL = "https://api3.adsterratools.com/advertiser/stats.json";
 const API_BASE_URL = "https://api3.adsterratools.com/advertiser";
@@ -33,6 +33,58 @@ export class AdsterraClient {
     const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
     const body = await this.fetchJson(`${API_BASE_URL}/campaign/${campaignId}/linking/blacklist.json`, "GET");
     return parseBlacklist(body);
+  }
+  async getCustomBids(campaignIdValue: string): Promise<AdsterraCustomBid[]> {
+    const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
+    const body = await this.fetchJson(`${API_BASE_URL}/campaign/${campaignId}/custom_bid.json`, "GET", undefined, true);
+    return parseCustomBids(body);
+  }
+  async setCustomBids(campaignId: string, bids: readonly AdsterraCustomBid[]) {
+    return this.writeCustomBids(campaignId, "POST", bids);
+  }
+  async updateCustomBids(campaignId: string, bids: readonly AdsterraCustomBid[]) {
+    await this.writeCustomBids(campaignId, "PATCH", bids);
+  }
+  async deleteCustomBids(campaignId: string, bids: readonly Pick<AdsterraCustomBid, "placementId" | "countryCode">[]) {
+    await this.writeCustomBids(campaignId, "DELETE", bids);
+  }
+  private async writeCustomBids(
+    campaignIdValue: string,
+    method: "POST" | "PATCH" | "DELETE",
+    bids: readonly Pick<AdsterraCustomBid, "placementId" | "countryCode" | "price">[] | readonly Pick<AdsterraCustomBid, "placementId" | "countryCode">[],
+  ) {
+    const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
+    if (!bids.length) throw new AdsterraApiError("Daftar perubahan Custom Bid tidak boleh kosong.");
+    const custom_bids = bids.map((bid) => {
+      const placement_id = positiveInteger(bid.placementId, "Placement ID");
+      if (typeof bid.countryCode !== "string" || !/^(?:[A-Z]{2}|GLOBAL)$/.test(bid.countryCode)) {
+        throw new AdsterraApiError("GEO Custom Bid tidak valid.");
+      }
+      if (method === "DELETE") return { placement_id, country_code: bid.countryCode };
+      if (!("price" in bid) || typeof bid.price !== "string") {
+        throw new AdsterraApiError("Harga Custom Bid tidak valid.");
+      }
+      const price = Number(bid.price);
+      if (!Number.isFinite(price) || price < 0 || price > 200) throw new AdsterraApiError("Harga Custom Bid harus 0 sampai 200.");
+      return { placement_id, price, country_code: bid.countryCode };
+    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${API_BASE_URL}/campaign/${campaignId}/custom_bid.json`, {
+        method,
+        headers: { "X-API-Key": this.apiKey, Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ custom_bids }),
+        cache: "no-store",
+      });
+    } catch {
+      // A timed-out write may already have been accepted. Never retry blindly.
+      throw new AdsterraAmbiguousWriteError();
+    }
+    if (!response.ok) throw new AdsterraApiError(`Request Custom Bid Adsterra gagal (HTTP ${response.status}).`);
+    // The documented response is 200 with a complete Custom Bid collection.
+    // Missing or malformed responses must be verified by GET before reporting success.
+    try { return parseCustomBids(await response.json()); }
+    catch { throw new AdsterraAmbiguousWriteError(); }
   }
   async getCampaignStatus(campaignIdValue: string): Promise<AdsterraCampaignStatusResult> {
     const campaignId = positiveInteger(campaignIdValue, "Campaign ID");
@@ -77,6 +129,25 @@ function parseCampaignStatus(campaignId: number, body: unknown): AdsterraCampaig
   return { campaignId, activeCode: active as 1 | 2 | 3 | 4, status: statuses[active] };
 }
 
+function parseCustomBids(body: unknown): AdsterraCustomBid[] {
+  const invalid = () => new AdsterraApiError("Adsterra API mengembalikan Custom Bid tidak valid atau tidak lengkap.");
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw invalid();
+  const { items, itemCount } = body as Record<string, unknown>;
+  if (!Array.isArray(items) || !Number.isSafeInteger(itemCount) || itemCount !== items.length) throw invalid();
+  const identities = new Set<string>();
+  return items.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw invalid();
+    const item = value as Record<string, unknown>;
+    const placementId = String(positiveInteger(item.placement_id, "Placement ID"));
+    if (typeof item.price !== "number" || !Number.isFinite(item.price) || item.price < 0) throw invalid();
+    if (typeof item.country_code !== "string" || !/^(?:[A-Z]{2}|GLOBAL)$/.test(item.country_code)) throw invalid();
+    const identity = `${placementId}:${item.country_code}`;
+    if (identities.has(identity)) throw invalid();
+    identities.add(identity);
+    return { placementId, price: new Decimal(item.price).toFixed(), countryCode: item.country_code };
+  });
+}
+
 export function normalizePlacementIds(values: readonly unknown[]) {
   const result: number[] = []; const seen = new Set<number>();
   for (const value of values) { const placement = positiveInteger(value, "Placement ID"); if (!seen.has(placement)) { seen.add(placement); result.push(placement); } }
@@ -106,5 +177,5 @@ function parseResponse(body: unknown): AdsterraPlacementStatistic[] {
   });
 }
 function stringId(value: unknown) { if (typeof value !== "string" && typeof value !== "number") throw new AdsterraApiError("Adsterra API mengembalikan placement tidak valid."); const id = String(value).trim(); if (!id) throw new AdsterraApiError("Adsterra API mengembalikan placement tidak valid."); return id; }
-function count(value: unknown, field: string) { const parsed = typeof value === "string" ? Number(value) : value; if (typeof parsed !== "number" || !Number.isFinite(parsed) || parsed < 0) throw new AdsterraApiError(`Adsterra API mengembalikan ${field} tidak valid.`); return parsed; }
+function count(value: unknown, field: string) { const parsed = typeof value === "string" && value.trim() !== "" ? Number(value) : value; if (typeof parsed !== "number" || !Number.isFinite(parsed) || parsed < 0) throw new AdsterraApiError(`Adsterra API mengembalikan ${field} tidak valid.`); return parsed; }
 function money(value: unknown) { try { const parsed = new Decimal(String(value)); if (!parsed.isFinite() || parsed.isNegative()) throw new Error(); return parsed.toString(); } catch { throw new AdsterraApiError("Adsterra API mengembalikan spent tidak valid."); } }
