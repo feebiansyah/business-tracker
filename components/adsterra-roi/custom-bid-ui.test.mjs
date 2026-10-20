@@ -99,7 +99,7 @@ test("existing editor fields support localhost create and keep edit/delete contr
   const html = JSON.parse(execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
     cwd: fileURLToPath(new URL("../../", import.meta.url)), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
   }));
-  assert.match(html.empty, /target localhost.*server/);
+  assert.match(html.empty, /Ketersediaan create diatur oleh server/);
   assert.doesNotMatch(html.empty, /<input[^>]*disabled=""/);
   assert.doesNotMatch(html.existing, /<input[^>]*disabled=""/);
   assert.match(html.existing, /Hapus/);
