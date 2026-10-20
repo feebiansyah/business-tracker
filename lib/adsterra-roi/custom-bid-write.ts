@@ -36,6 +36,7 @@ type WriteClient = {
 };
 type Dependencies = {
   experiment?: ExperimentTarget | null;
+  allowCreate?: boolean;
   loadConfig(accountId: number, configId: number): Promise<{ id: number; shopeeAccountId: number; campaignId: string } | null>;
   loadClient(accountId: number): Promise<WriteClient>;
 };
