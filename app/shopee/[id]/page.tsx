@@ -11,6 +11,7 @@ import { ShopeeAccountManagement } from "@/components/shopee/account-management"
 import { ShopeeAdsterraOverview } from "@/components/dashboard/shopee-adsterra-overview";
 import { getShopeeAdsterraOverview } from "@/lib/dashboard/adsterra-overview";
 import { parseAdsterraOverviewParams } from "@/lib/dashboard/adsterra-overview-params";
+import { TrafficBalances } from "@/components/traffic-balances/traffic-balances";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,7 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
         <div className="flex w-full flex-wrap gap-2 sm:w-auto"><SyncMetaButton shopeeAccountId={account.id} /><Button variant="ghost" asChild><Link href={`/shopee/${account.id}/import`}>Import Shopee</Link></Button><Button asChild><Link href={`/meta/new?shopeeAccountId=${account.id}`}>Tambah WL</Link></Button></div>
       </div>
       <ShopeeAccountManagement accountId={account.id} accountName={account.name} />
+      <TrafficBalances key={account.id} accounts={[{ id: account.id, name: account.name }]} variant="overview" />
       <div className="space-y-4">
         <form method="get" className="grid gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex sm:flex-wrap sm:items-end">
           <label className="grid gap-1 text-xs font-medium text-slate-600">Tanggal Mulai<input type="date" name="from" defaultValue={dashboard.state.from} className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal" /></label>
