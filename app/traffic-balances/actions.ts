@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import { decryptTrafficSecret } from "@/lib/traffic-credentials/crypto";
 import { getEncryptedTrafficCredential } from "@/lib/traffic-credentials/repository";
-import { requestTrafficBalance } from "@/lib/traffic-balances/providers";
+import { requestTrafficBalance, requestYesterdayAccountSpend } from "@/lib/traffic-balances/providers";
 import { loadTrafficBalances } from "@/lib/traffic-balances/service";
 
 export async function getTrafficBalancesAction(input: unknown) {
@@ -15,6 +15,7 @@ export async function getTrafficBalancesAction(input: unknown) {
       loadCredential: (id, provider) => getEncryptedTrafficCredential(prisma, id, provider),
       decrypt: decryptTrafficSecret,
       requestBalance: requestTrafficBalance,
+      requestYesterdaySpend: requestYesterdayAccountSpend,
     });
     return { success: true as const, balances };
   } catch {

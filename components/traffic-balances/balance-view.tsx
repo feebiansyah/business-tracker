@@ -2,6 +2,7 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatBalanceTime, formatBalanceUsd, type BalanceState } from "@/lib/traffic-balances/refresh-state";
 import { balanceKey, type BalanceKey, type BalanceProvider } from "@/lib/traffic-balances/types";
+import { formatRunwayDays, runwayTitle } from "@/lib/traffic-balances/runway";
 
 export type BalanceAccount = { id: number; name: string };
 export type BalanceViewProps = {
@@ -13,6 +14,17 @@ export type BalanceViewProps = {
 const providers: BalanceProvider[] = ["CLICKADU", "ADSTERRA"];
 const labels = { CLICKADU: "Clickadu", ADSTERRA: "Adsterra" };
 
+function BalanceRunway({ state }: { state: BalanceState }) {
+  if (state.status === "LOADING") return null;
+  const runway = state.runway;
+  if (state.status !== "SUCCESS" || !runway) return <span className="text-xs text-slate-500" title="Estimasi disembunyikan karena pasangan saldo dan spend kemarin belum valid atau gagal diperbarui.">Estimasi belum tersedia</span>;
+  const label = runway.status === "ESTIMATED" ? formatRunwayDays(runway.days)
+    : runway.status === "EXHAUSTED" ? "Saldo habis"
+      : runway.status === "NO_SPEND" ? "Tidak ada spend kemarin" : "Estimasi belum tersedia";
+  const red = runway.status === "EXHAUSTED" || (runway.status === "ESTIMATED" && runway.low);
+  return <span className={`text-xs ${red ? "font-medium text-red-600" : "text-slate-500"}`} title={runwayTitle(runway)}>{label}</span>;
+}
+
 function BalanceValue({ state }: { state?: BalanceState }) {
   const loading = !state || state.status === "LOADING";
   const hasBalance = state?.balance !== null && state?.balance !== undefined;
@@ -21,6 +33,7 @@ function BalanceValue({ state }: { state?: BalanceState }) {
     {hasBalance ? <span className="whitespace-nowrap font-semibold tabular-nums text-slate-950">{formatBalanceUsd(state.balance!)}</span>
       : <span className={loading ? "animate-pulse whitespace-nowrap text-slate-400" : "whitespace-nowrap text-slate-500"} title={state?.status === "NOT_CONNECTED" ? "Credential provider belum dikonfigurasi." : undefined}>{loading ? "Memuat…" : state.status === "NOT_CONNECTED" ? "Belum terhubung" : "Gagal memuat"}</span>}
     {hasBalance && loading && <span className="text-xs text-slate-500">Memuat…</span>}
+    {hasBalance && <BalanceRunway state={state} />}
     {state?.status === "ERROR" && <span role="alert" className="whitespace-nowrap text-xs text-red-600" title={hasBalance ? `${state.message} Saldo terakhir tetap ditampilkan.` : state.message}>{hasBalance ? "Gagal diperbarui" : "Coba refresh"}</span>}
   </span>;
 }

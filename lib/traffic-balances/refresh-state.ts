@@ -1,5 +1,5 @@
 import Decimal from "decimal.js";
-import { balanceKey, type BalanceKey, type BalanceResult } from "./types.ts";
+import { balanceKey, type BalanceKey, type BalanceResult, type TrafficRunway } from "./types.ts";
 
 export type BalanceState = {
   status: "LOADING" | "SUCCESS" | "NOT_CONNECTED" | "ERROR";
@@ -7,15 +7,16 @@ export type BalanceState = {
   balance: string | null;
   updatedAt: string | null;
   message: string;
+  runway: TrafficRunway | null;
 };
 type Snapshot = Record<string, BalanceState>;
 export type BalanceLoader = (keys: BalanceKey[]) => Promise<BalanceResult[]>;
 
 export function completeBalanceRefresh(previous: BalanceState, requestId: number, result: BalanceResult): BalanceState {
   if (previous.requestId !== requestId) return previous;
-  if (result.status === "SUCCESS") return { requestId, status: "SUCCESS", balance: result.balance, updatedAt: result.updatedAt, message: "" };
-  if (result.status === "NOT_CONNECTED") return { requestId, status: "NOT_CONNECTED", balance: null, updatedAt: null, message: "" };
-  return { ...previous, status: "ERROR", message: result.message };
+  if (result.status === "SUCCESS") return { requestId, status: "SUCCESS", balance: result.balance, updatedAt: result.updatedAt, message: "", runway: result.runway ?? null };
+  if (result.status === "NOT_CONNECTED") return { requestId, status: "NOT_CONNECTED", balance: null, updatedAt: null, message: "", runway: null };
+  return { ...previous, status: "ERROR", message: result.message, runway: null };
 }
 
 // Page-lifetime store only: no persistence, no timer/polling, no shared balance cache.
@@ -36,7 +37,7 @@ export function createBalanceStore(load: BalanceLoader) {
       for (const key of keys) {
         const id = balanceKey(key);
         busy.add(id);
-        next[id] = { balance: snapshot[id]?.balance ?? null, updatedAt: snapshot[id]?.updatedAt ?? null, requestId, status: "LOADING", message: "" };
+        next[id] = { balance: snapshot[id]?.balance ?? null, updatedAt: snapshot[id]?.updatedAt ?? null, requestId, status: "LOADING", message: "", runway: null };
       }
       snapshot = next; publish();
       let results: BalanceResult[];
