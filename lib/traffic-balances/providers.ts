@@ -75,6 +75,88 @@ export async function requestTrafficBalance(
   }
 }
 
+function clickaduSpendAmount(value: unknown): Decimal {
+  if (typeof value !== "string"
+    || !/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())) throw new Error();
+  const amount = new Decimal(value.trim());
+  if (!amount.isFinite() || amount.isNegative()) throw new Error();
+  return amount;
+}
+
+function clickaduPageNumber(value: unknown): number {
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) throw new Error();
+  const page = Number(value);
+  if (!Number.isSafeInteger(page) || page > 1_000) throw new Error();
+  return page;
+}
+
+// Advertiser contract confirmed by the operator; the date-grouped response was
+// also read from one connected account: result.items[{ date, spent }], page,
+// perPage, totalPages and totals.spent. No timezone echo is required by the API.
+async function requestClickaduYesterdayAccountSpend(token: string, date: string): Promise<YesterdaySpend> {
+  try {
+    const day = new Date(`${date}T00:00:00.000Z`);
+    if (!token.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+      || !Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== date) throw new Error();
+    const url = new URL("https://ssp.clickadu.com/v1.0/api/client/statistics/");
+    url.searchParams.set("dateFrom", date);
+    url.searchParams.set("dateTill", date);
+    url.searchParams.set("groupBy", "date");
+    // Bangkok and Jakarta share the same UTC+7 calendar-day boundaries.
+    url.searchParams.set("timezone", "Asia/Bangkok");
+    url.searchParams.set("limit", "50");
+    url.searchParams.set("withTestExpenses", "1");
+    // Deliberately NO campaign, status, product, material, zone or other filter:
+    // spend covers the credential's whole account, including OFF and SmartCPA.
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      // Bound the entire collection, not just each page. No automatic retries.
+      timer = setTimeout(() => { reject(new Error()); controller.abort(); }, 10_000);
+    });
+    try {
+      const read = async (): Promise<YesterdaySpend> => {
+        let totalPages: number | null = null;
+        let total: Decimal | null = null;
+        let spent: Decimal | null = null;
+        for (let page = 1; page <= (totalPages ?? 1); page++) {
+          controller.signal.throwIfAborted();
+          url.searchParams.set("page", String(page));
+          const response = await fetch(url, {
+            method: "GET", cache: "no-store", redirect: "error", signal: controller.signal,
+            headers: { Accept: "application/json", Authorization: token },
+          });
+          if (!response.ok) throw new Error();
+          const result = record(record(parseExactJson(await response.text())).result);
+          const reportedPages = clickaduPageNumber(result.totalPages);
+          if (clickaduPageNumber(result.page) !== page || result.perPage !== "50"
+            || page > reportedPages || (totalPages !== null && reportedPages !== totalPages)) throw new Error();
+          totalPages = reportedPages;
+          if (!Array.isArray(result.items) || result.items.length === 0 || result.items.length > 50
+            || (page < totalPages && result.items.length !== 50)) throw new Error();
+          const reportedTotal = clickaduSpendAmount(record(result.totals).spent);
+          if (total !== null && !reportedTotal.eq(total)) throw new Error();
+          total = reportedTotal;
+          for (const value of result.items) {
+            const row = record(value);
+            // One date-only group for one day must have one unique date row.
+            // Reject missing dates, summary rows and duplicates, never add them.
+            if (row.date !== date || spent !== null) throw new Error();
+            spent = clickaduSpendAmount(row.spent);
+          }
+        }
+        // Totals are a completeness check, NOT a second row to add to spend.
+        // Empty collections cannot prove zero; an explicit date row with 0 can.
+        if (spent === null || total === null || !spent.eq(total)) throw new Error();
+        return { status: "VERIFIED", date, amountUsd: spent.toString(), timezone: "Asia/Jakarta", coverage: "ACCOUNT" };
+      };
+      return await Promise.race([read(), timeout]);
+    } finally { clearTimeout(timer); }
+  } catch {
+    return unavailableSpend(date, "Spend Clickadu gagal dimuat, tidak lengkap, atau tanggal/pagination/total respons tidak konsisten.");
+  }
+}
+
 // Official contract: https://docs.adsterratools.com/docs/public/v3/partners-api.yml
 // GET /stats.{format}: campaign/banner/landing/country are optional filters.
 // Grouping only by date with NO campaign or active-status filter covers the account,
@@ -86,9 +168,7 @@ export async function requestYesterdayAccountSpend(
   provider: BalanceProvider, token: string, date: string,
 ): Promise<YesterdaySpend> {
   if (provider === "CLICKADU") {
-    // Public advertiser docs describe EST reporting, not a proven WIB account API.
-    // Do not guess parameters, reuse campaign-filtered ROI reads or local history.
-    return unavailableSpend(date, "Kontrak statistik seluruh akun Clickadu dengan batas hari WIB belum terverifikasi.");
+    return requestClickaduYesterdayAccountSpend(token, date);
   }
   try {
     const day = new Date(`${date}T00:00:00.000Z`);
