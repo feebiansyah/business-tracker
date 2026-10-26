@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import { ClickaduApiError } from "../clickadu-roi/client.ts";
 import type { ClickaduStatisticsInput, ClickaduZoneStatistic } from "../clickadu-roi/types.ts";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -7,7 +8,7 @@ type DailyConfig = { id: number; campaignId: string; historySyncedThrough: strin
 type CampaignSnapshot = Record<string, unknown>;
 export type ClickaduDailySyncDependencies = {
   loadConfigs(shopeeAccountId: number): Promise<DailyConfig[]>;
-  getStatistics(input: ClickaduStatisticsInput): Promise<Array<Pick<ClickaduZoneStatistic, "spent" | "zone">>>;
+  getStatistics(input: ClickaduStatisticsInput): Promise<Array<Pick<ClickaduZoneStatistic, "spent">>>;
   getCampaign(campaignId: string): Promise<CampaignSnapshot>;
   persistDay(input: ClickaduDailyMetricInput): Promise<unknown>;
 };
@@ -55,10 +56,17 @@ export async function syncClickaduDailyMetrics(input: { shopeeAccountId: number;
     const start = getClickaduSyncStart({ checkpoint: config.historySyncedThrough, latestMetricDate: config.latestMetricDate, today: input.today });
     if (earliestStart === null || start < earliestStart) earliestStart = start;
     for (const date of listDatesInclusive(start, input.today)) {
-      const statistics = await deps.getStatistics({ campaignIds: [config.campaignId], dateFrom: date, dateTill: date });
-      const campaign = date === input.today ? await deps.getCampaign(config.campaignId) : {};
-      await deps.persistDay({ clickaduCampaignConfigId: config.id, date, spendUsd: sumZoneSpend(statistics), dailyBudget: dailyBudgetSnapshot(campaign, date, input.today) });
-      dateCount += 1;
+      try {
+        const statistics = await deps.getStatistics({ campaignIds: [config.campaignId], dateFrom: date, dateTill: date });
+        const spendUsd = sumZoneSpend(statistics);
+        if (spendUsd === null) throw new ClickaduDailySyncError("Data spend harian belum tersedia.");
+        const campaign = date === input.today ? await deps.getCampaign(config.campaignId) : {};
+        await deps.persistDay({ clickaduCampaignConfigId: config.id, date, spendUsd, dailyBudget: dailyBudgetSnapshot(campaign, date, input.today) });
+        dateCount += 1;
+      } catch (error) {
+        const reason = error instanceof ClickaduApiError || error instanceof ClickaduDailySyncError ? error.message : "Pengambilan atau penyimpanan data harian gagal.";
+        throw new ClickaduDailySyncError(`Sync berhenti pada campaign ${config.campaignId}, tanggal ${date}. ${dateCount} entri harian tersimpan; belum seluruhnya berhasil. ${reason}`);
+      }
     }
   }
   return { configCount: configs.length, dateCount, from: earliestStart, through: configs.length > 0 ? input.today : null };

@@ -18,8 +18,10 @@ export function parseDashboardParams(raw: RawParams, accountIds: readonly number
   })) };
 }
 
-export function dashboardParamsToSearch(state: DashboardParams) {
-  const params = new URLSearchParams();
+export function dashboardParamsToSearch(state: DashboardParams, preservedSearch = "") {
+  const params = new URLSearchParams(preservedSearch);
+  params.delete("from");
+  params.delete("to");
   if (state.from) params.set("from", state.from);
   if (state.to) params.set("to", state.to);
   for (const [id, value] of Object.entries(state.accounts)) { params.set(`sort_${id}`, value.sort); params.set(`dir_${id}`, value.dir); params.set(`page_${id}`, String(value.page)); params.set(`pageSize_${id}`, String(value.pageSize)); }

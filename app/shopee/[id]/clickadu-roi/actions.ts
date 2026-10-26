@@ -19,6 +19,7 @@ import {
   saveClickaduConfig,
 } from "../../../../lib/clickadu-roi/config-repository";
 import { ClickaduDailySyncError, indonesiaToday, syncClickaduDailyMetrics } from "../../../../lib/clickadu-history/daily-sync";
+import { ClickaduDailyHistoryClient } from "../../../../lib/clickadu-history/client";
 import { persistClickaduDailyMetricAndCheckpoint } from "../../../../lib/clickadu-history/persistence";
 import { getClickaduDailyHistory, getClickaduDailySyncConfigs } from "../../../../lib/clickadu-history/queries";
 import { parseClickaduHistoryParams, type ClickaduHistoryParams } from "../../../../lib/clickadu-history/server-pagination";
@@ -29,12 +30,12 @@ export async function syncClickaduDailyAction(shopeeAccountId: number) {
   try {
     const credential = await getEncryptedTrafficCredential(prisma, shopeeAccountId, TrafficProvider.CLICKADU);
     if (!credential) throw new ClickaduDailySyncError("Koneksi Clickadu belum dikonfigurasi.");
-    const client = getClickaduClient(decryptTrafficSecret(credential.encryptedSecret));
+    const client = new ClickaduDailyHistoryClient(decryptTrafficSecret(credential.encryptedSecret));
     const result = await syncClickaduDailyMetrics(
       { shopeeAccountId, today: indonesiaToday() },
       {
         loadConfigs: (accountId) => getClickaduDailySyncConfigs(prisma, accountId),
-        getStatistics: (input) => client.getZoneStatistics(input),
+        getStatistics: (input) => client.getStatistics(input),
         getCampaign: (campaignId) => client.getCampaign(campaignId),
         persistDay: (input) => persistClickaduDailyMetricAndCheckpoint(prisma, input),
       },

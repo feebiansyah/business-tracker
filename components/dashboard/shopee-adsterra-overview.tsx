@@ -13,11 +13,8 @@ const percent = (value: string | null) => value === null ? "—" : `${Number(val
 const tone = (value: string | null) => value === null ? "text-slate-950" : Number(value) < 0 ? "text-red-600" : Number(value) > 0 ? "text-emerald-600" : "text-slate-950";
 const date = (value: string) => dateFormatter.format(new Date(`${value}T00:00:00.000Z`));
 
-function href(dashboardState: DashboardParams, overview: AdsterraOverview, change: Parameters<typeof withAdsterraOverviewChange>[1]) {
-  return `?${adsterraOverviewParamsToSearch(dashboardState, withAdsterraOverviewChange(overview.state, change))}`;
-}
-
-export function ShopeeAdsterraOverview({ overview, dashboardState }: { overview: AdsterraOverview; dashboardState: DashboardParams }) {
+export function ShopeeAdsterraOverview({ overview, dashboardState, preservedSearch = "" }: { overview: AdsterraOverview; dashboardState: DashboardParams; preservedSearch?: string }) {
+  const href = (state: DashboardParams, current: AdsterraOverview, change: Parameters<typeof withAdsterraOverviewChange>[1]) => `?${adsterraOverviewParamsToSearch(state, withAdsterraOverviewChange(current.state, change), preservedSearch)}`;
   if (overview.summary === null) return <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"><h2 className="text-xl font-semibold tracking-tight text-slate-950">Overview Adsterra</h2><p className="mt-1 text-sm text-slate-500">Kurs tetap: $1 = Rp19.000</p><p className="py-10 text-center text-sm text-slate-500">Belum ada histori harian Adsterra dalam rentang tanggal ini.</p></article>;
   const summary = overview.summary;
   const stats = [["Total Spend USD", money(summary.spendUsd, usd)], ["Total Spend IDR", money(summary.spendIdr, idr)], ["Komisi", money(summary.commissionIdr, idr)], ["Profit", money(summary.profitIdr, idr)], ["% Profit", percent(summary.profitPercent)]];

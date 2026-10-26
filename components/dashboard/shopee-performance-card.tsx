@@ -10,9 +10,8 @@ const percent = (value: number | null) => value === null ? "—" : `${value.toFi
 const date = (value: string) => dateFormatter.format(new Date(`${value}T00:00:00.000Z`));
 const tone = (value: number | null) => value === null ? "text-slate-950" : value < 0 ? "text-red-600" : value > 0 ? "text-emerald-600" : "text-slate-950";
 
-function href(state: DashboardParams, accountId: number, change: Parameters<typeof withDashboardAccountChange>[2]) { return `?${dashboardParamsToSearch(withDashboardAccountChange(state, accountId, change))}`; }
-
-export function ShopeePerformanceCard({ account, dashboardState }: { account: DashboardAccountData; dashboardState: DashboardParams }) {
+export function ShopeePerformanceCard({ account, dashboardState, preservedSearch = "" }: { account: DashboardAccountData; dashboardState: DashboardParams; preservedSearch?: string }) {
+  const href = (state: DashboardParams, accountId: number, change: Parameters<typeof withDashboardAccountChange>[2]) => `?${dashboardParamsToSearch(withDashboardAccountChange(state, accountId, change), preservedSearch)}`;
   const stats = [["Total Spend", formatRupiah(account.summary.budget)], ["+5%", formatRupiah(account.summary.costWithFee)], ["Komisi", formatRupiah(account.summary.commission)], ["Profit", formatRupiah(account.summary.profit)], ["% Profit", percent(account.summary.profitPercent)]];
   return <article className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
     <header className="border-b border-slate-200 p-4 sm:p-6"><h2 className="break-words text-xl font-semibold tracking-tight text-slate-950">{account.name}</h2><p className="mt-1 text-sm text-slate-500">{account.wlCount} WL terhubung</p><dl className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{stats.map(([label, value], index) => <div key={label} className="min-w-0 rounded-lg border border-slate-200 bg-slate-50/70 p-3"><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</dt><dd className={`mt-1 break-words text-base font-semibold ${index >= 3 ? tone(index === 3 ? account.summary.profit : account.summary.profitPercent) : "text-slate-950"}`}>{value}</dd></div>)}</dl></header>

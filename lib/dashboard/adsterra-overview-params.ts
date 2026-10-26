@@ -16,8 +16,8 @@ export function parseAdsterraOverviewParams(raw: RawParams): AdsterraOverviewPar
   return { sort: adsterraOverviewSortKeys.includes(sort as AdsterraOverviewSortKey) ? sort as AdsterraOverviewSortKey : "date", dir: scalar(raw.adsterraDir) === "asc" ? "asc" : "desc", page: page(scalar(raw.adsterraPage)), pageSize: pageSize(scalar(raw.adsterraPageSize)) };
 }
 
-export function adsterraOverviewParamsToSearch(dashboard: DashboardParams, state: AdsterraOverviewParams) {
-  const params = dashboardParamsToSearch(dashboard);
+export function adsterraOverviewParamsToSearch(dashboard: DashboardParams, state: AdsterraOverviewParams, preservedSearch = "") {
+  const params = dashboardParamsToSearch(dashboard, preservedSearch);
   params.set("adsterraSort", state.sort);
   params.set("adsterraDir", state.dir);
   params.set("adsterraPage", String(state.page));

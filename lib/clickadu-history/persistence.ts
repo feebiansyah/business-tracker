@@ -1,9 +1,15 @@
 import type { Prisma, PrismaClient } from "../generated/prisma/client.ts";
-import type { ClickaduDailyMetricInput } from "./daily-sync.ts";
+import Decimal from "decimal.js";
+import { ClickaduDailySyncError, type ClickaduDailyMetricInput } from "./daily-sync.ts";
 
 type DailyMetricDb = Pick<PrismaClient, "clickaduCampaignDailyMetric"> | Pick<Prisma.TransactionClient, "clickaduCampaignDailyMetric">;
 
 export function buildDailyMetricUpsert(input: ClickaduDailyMetricInput) {
+  // Reject unknown/invalid spend before an upsert or checkpoint can be written.
+  if (typeof input.spendUsd !== "string" || !/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(input.spendUsd)
+    || !new Decimal(input.spendUsd).isFinite() || new Decimal(input.spendUsd).isNegative()) {
+    throw new ClickaduDailySyncError("Spend Clickadu tidak valid; histori dan checkpoint tidak diubah.");
+  }
   const date = new Date(`${input.date}T00:00:00.000Z`);
   const available = {
     spendUsd: input.spendUsd,
