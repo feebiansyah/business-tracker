@@ -17,12 +17,47 @@ function DataStatus({ complete, detail }: { complete: boolean; detail?: string }
 export default async function DashboardPage() {
   const data = await getOperationalDashboard(new Date(), prisma);
   const stats = [["Total Shopee", data.summary.totalShopee], ["Total WL", data.summary.totalWl], ["Campaign Aktif", data.summary.activeCampaigns], ["Perlu Dicek", data.summary.needsAttention]];
-  return <section className="min-w-0 space-y-6">
-    <header><p className="text-sm font-medium text-blue-600">Operational Dashboard</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Status Data Harian</h2><p className="mt-1 text-sm text-slate-500">Target data: {targetLabel(data.targetDate)}</p></header>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{stats.map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p><p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p></div>)}</div>
-    <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="max-w-full overflow-x-auto overscroll-x-contain"><table className="w-full min-w-175 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{["Shopee", "Meta", "Komisi", "Klik Shopee", "Status"].map((label) => <th key={label} className="px-3 py-3 font-medium sm:px-4">{label}</th>)}</tr></thead><tbody className="divide-y divide-slate-200">{data.accounts.map((account) => <tr key={account.id}><td className="px-3 py-3 font-medium sm:px-4"><Link href={`/shopee/${account.id}`} className="text-blue-700 hover:underline">{account.name}</Link></td><td className="px-3 py-3 sm:px-4"><DataStatus complete={account.meta.complete} detail={`${account.meta.coveredWlCount}/${account.meta.totalWlCount} WL lengkap`} /></td><td className="px-3 py-3 sm:px-4"><DataStatus complete={account.commissionComplete} /></td><td className="px-3 py-3 sm:px-4"><DataStatus complete={account.clickComplete} /></td><td className="px-3 py-3 sm:px-4"><DataStatus complete={account.complete} detail={account.complete ? "LENGKAP" : "BELUM LENGKAP"} /></td></tr>)}{data.accounts.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">Belum ada akun Shopee.</td></tr>}</tbody></table></div></div>
-    <TrafficBalances accounts={data.accounts.map(({ id, name }) => ({ id, name }))} variant="dashboard" />
+  return <section className="min-w-0 space-y-4">
+    <header><h2 className="text-2xl font-semibold tracking-tight text-slate-950">Dashboard</h2><p className="mt-1 text-sm text-slate-500">Target data: {targetLabel(data.targetDate)}</p></header>
+    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">{stats.map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"><p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 text-xl font-semibold text-slate-950">{value}</p></div>)}</div>
+    <div className="grid min-w-0 items-start gap-4 min-[1440px]:grid-cols-[minmax(0,2fr)_minmax(28rem,1fr)]">
+      <div className="min-w-0 space-y-3">
+        <section aria-labelledby="dashboard-data-title" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <h3 id="dashboard-data-title" className="px-3 py-2 text-sm font-semibold text-slate-950">Status Data</h3>
+          <div className="max-w-full overflow-x-auto overscroll-x-contain">
+            <table className="w-full min-w-175 text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{["Shopee", "Meta", "Komisi", "Klik Shopee", "Status"].map((label) => <th key={label} className="px-3 py-2 font-medium">{label}</th>)}</tr></thead>
+              <tbody className="divide-y divide-slate-200">
+                {data.accounts.map((account) => <tr key={account.id}>
+                  <td className="px-3 py-2 align-top font-medium"><Link href={`/shopee/${account.id}`} className="text-blue-700 hover:underline">{account.name}</Link></td>
+                  <td className="px-3 py-2 align-top"><DataStatus complete={account.meta.complete} detail={`${account.meta.coveredWlCount}/${account.meta.totalWlCount} WL lengkap`} /></td>
+                  <td className="px-3 py-2 align-top"><DataStatus complete={account.commissionComplete} /></td>
+                  <td className="px-3 py-2 align-top"><DataStatus complete={account.clickComplete} /></td>
+                  <td className="px-3 py-2 align-top"><DataStatus complete={account.complete} detail={account.complete ? "LENGKAP" : "BELUM LENGKAP"} /></td>
+                </tr>)}
+                {data.accounts.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-500">Belum ada akun Shopee.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section aria-labelledby="dashboard-attention-title" className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+          <h3 id="dashboard-attention-title" className="text-sm font-semibold text-slate-950">Perlu Perhatian <span className="font-normal text-slate-500">· {data.summary.needsAttention} akun perlu dicek</span></h3>
+          {data.summary.needsAttention === 0 ? <p className="mt-1 text-sm text-emerald-700">Semua akun Shopee sudah lengkap untuk {targetLabel(data.targetDate)}.</p> : <div className="mt-2 divide-y divide-slate-200">
+            {data.accounts.filter((account) => account.needsAttention).map((account) => <div key={account.id} className="py-2 first:pt-0 last:pb-0">
+              <Link href={`/shopee/${account.id}`} className="text-sm font-medium text-blue-700 hover:underline">{account.name}</Link>
+              <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
+                {!account.meta.complete && <li>• Meta: {account.meta.totalWlCount === 0 ? "belum ada WL terhubung" : `${account.meta.totalWlCount - account.meta.coveredWlCount} WL belum ter-cover sampai D-1`}</li>}
+                {!account.commissionComplete && <li>• Komisi: data D-1 belum diimport</li>}
+                {!account.clickComplete && <li>• Klik Shopee: data D-1 belum diimport</li>}
+                {account.clickaduPendingReplacementCount > 0 && <li>• Clickadu: {account.clickaduPendingReplacementCount > 1 ? `${account.clickaduPendingReplacementCount} campaign belum replace zone hari ini` : "belum replace zone hari ini"}</li>}
+                {account.adsterraPendingReplacementCount > 0 && <li>• Adsterra: {account.adsterraPendingReplacementCount > 1 ? `${account.adsterraPendingReplacementCount} campaign belum replace placement hari ini` : "belum replace placement hari ini"}</li>}
+              </ul>
+            </div>)}
+          </div>}
+        </section>
+      </div>
+      <TrafficBalances accounts={data.accounts.map(({ id, name }) => ({ id, name }))} variant="dashboard" />
+    </div>
     <AdsterraCampaignControls accounts={data.accounts.map((account) => ({ id: account.id, name: account.name, campaigns: account.adsterraCampaigns }))} />
-    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><h3 className="font-semibold text-slate-950">Perlu Perhatian</h3>{data.summary.needsAttention === 0 ? <p className="mt-3 text-sm text-emerald-700">Semua akun Shopee sudah lengkap untuk {targetLabel(data.targetDate)}.</p> : <div className="mt-3 divide-y divide-slate-200">{data.accounts.filter((account) => account.needsAttention).map((account) => <div key={account.id} className="py-3 first:pt-0 last:pb-0"><Link href={`/shopee/${account.id}`} className="font-medium text-blue-700 hover:underline">{account.name}</Link><ul className="mt-1 space-y-1 text-sm text-slate-600">{!account.meta.complete && <li>• Meta: {account.meta.totalWlCount === 0 ? "belum ada WL terhubung" : `${account.meta.totalWlCount - account.meta.coveredWlCount} WL belum ter-cover sampai D-1`}</li>}{!account.commissionComplete && <li>• Komisi: data D-1 belum diimport</li>}{!account.clickComplete && <li>• Klik Shopee: data D-1 belum diimport</li>}{account.clickaduPendingReplacementCount > 0 && <li>• Clickadu: {account.clickaduPendingReplacementCount > 1 ? `${account.clickaduPendingReplacementCount} campaign belum replace zone hari ini` : "belum replace zone hari ini"}</li>}{account.adsterraPendingReplacementCount > 0 && <li>• Adsterra: {account.adsterraPendingReplacementCount > 1 ? `${account.adsterraPendingReplacementCount} campaign belum replace placement hari ini` : "belum replace placement hari ini"}</li>}</ul></div>)}</div>}</section>
   </section>;
 }
