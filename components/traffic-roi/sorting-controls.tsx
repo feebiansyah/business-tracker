@@ -1,22 +1,25 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { DEFAULT_ANALYSIS_SORT, STATUS_SORT_OPTIONS, nextHeaderSort, statusSortOption, type SortCriterion } from "./analysis-sorting";
+import { DEFAULT_ANALYSIS_SORT, STATUS_SORT_OPTIONS, nextHeaderSort, statusSortOption, type SortCriterion, type StatusSortOrder } from "./analysis-sorting";
 
 type ColumnOption = { key: string; label: string };
+export type StatusSortLabels = Partial<Record<StatusSortOrder, { label: string; description: string }>>;
 type SortingProps = {
   criteria: readonly SortCriterion[];
   onChange(criteria: readonly SortCriterion[]): void;
   disabled?: boolean;
+  statusLabels?: StatusSortLabels;
 };
 
 const controlClass = "h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-40";
 
-function StatusSortHeader({ criteria, onChange, disabled = false }: SortingProps) {
+function StatusSortHeader({ criteria, onChange, disabled = false, statusLabels }: SortingProps) {
   const menu = useRef<HTMLDetailsElement>(null);
   const priority = criteria.findIndex((item) => item.key === "status");
   const active = criteria[priority];
-  const selected = statusSortOption(active?.statusOrder);
+  const original = statusSortOption(active?.statusOrder);
+  const selected = { ...original, ...statusLabels?.[original.value] };
   return <details ref={menu} className="min-w-52 normal-case">
     <summary
       aria-disabled={disabled}
@@ -28,7 +31,7 @@ function StatusSortHeader({ criteria, onChange, disabled = false }: SortingProps
       <span className={`mt-0.5 block text-xs ${active ? "font-medium text-blue-700" : "font-normal text-slate-500"}`}>{active ? selected.label : "Pilih status teratas"}</span>
     </summary>
     <div role="group" aria-label="Pilih status teratas" className="mt-1 space-y-1 rounded-md border border-slate-200 bg-white p-1 text-xs shadow-sm">
-      {STATUS_SORT_OPTIONS.map((option) => <button
+      {STATUS_SORT_OPTIONS.map((item) => ({ ...item, ...statusLabels?.[item.value] })).map((option) => <button
         key={option.value} type="button" disabled={disabled}
         aria-pressed={!!active && selected.value === option.value}
         title={option.description}
@@ -43,8 +46,8 @@ function StatusSortHeader({ criteria, onChange, disabled = false }: SortingProps
   </details>;
 }
 
-export function SortHeader({ column, criteria, onChange, disabled = false }: SortingProps & { column: ColumnOption }) {
-  if (column.key === "status") return <StatusSortHeader criteria={criteria} onChange={onChange} disabled={disabled}/>;
+export function SortHeader({ column, criteria, onChange, disabled = false, statusLabels }: SortingProps & { column: ColumnOption }) {
+  if (column.key === "status") return <StatusSortHeader criteria={criteria} onChange={onChange} disabled={disabled} statusLabels={statusLabels}/>;
   const priority = criteria.findIndex((item) => item.key === column.key);
   const active = criteria[priority];
   return <button
@@ -64,7 +67,7 @@ export function headerSortDirection(criteria: readonly SortCriterion[], key: str
   return criteria[0].direction === "asc" ? "ascending" as const : "descending" as const;
 }
 
-export function AnalysisSortingControls({ columns, criteria, onChange, disabled = false }: SortingProps & { columns: readonly ColumnOption[] }) {
+export function AnalysisSortingControls({ columns, criteria, onChange, disabled = false, statusLabels }: SortingProps & { columns: readonly ColumnOption[] }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const unused = columns.filter((column) => !criteria.some((item) => item.key === column.key));
@@ -90,7 +93,7 @@ export function AnalysisSortingControls({ columns, criteria, onChange, disabled 
         </select>
         {criterion.key === "status"
           ? <select aria-label={`Urutan Status prioritas ${index + 1}`} className={`${controlClass} max-w-full`} value={statusSortOption(criterion.statusOrder).value} onChange={(event) => onChange(criteria.map((item, position) => position === index ? { ...item, direction: "asc", statusOrder: statusSortOption(event.target.value).value } : item))}>
-            {STATUS_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {STATUS_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{statusLabels?.[option.value]?.label ?? option.label}</option>)}
           </select>
           : <select aria-label={`Arah prioritas ${index + 1}`} className={controlClass} value={criterion.direction} onChange={(event) => onChange(criteria.map((item, position) => position === index ? { ...item, direction: event.target.value === "asc" ? "asc" : "desc" } : item))}>
             <option value="asc">ASC ↑</option><option value="desc">DESC ↓</option>

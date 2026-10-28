@@ -7,10 +7,18 @@ import { CustomBidEditor, type CustomBidEditorProps } from "./custom-bid-editor"
 import { getClientPagination } from "@/components/traffic-roi/client-pagination";
 import { TrafficRoiPagination } from "@/components/traffic-roi/pagination-controls";
 import { DEFAULT_ANALYSIS_SORT, decimalSortValue, identifierSortValue, prepareSortRows, ratioSortValue, sortPreparedRows, type SortColumn, type SortCriterion } from "@/components/traffic-roi/analysis-sorting";
-import { AnalysisSortingControls, SortHeader, headerSortDirection } from "@/components/traffic-roi/sorting-controls";
+import { AnalysisSortingControls, SortHeader, headerSortDirection, type StatusSortLabels } from "@/components/traffic-roi/sorting-controls";
 import { formatIdr, formatPercent, formatUsd } from "@/components/clickadu-roi/view-model";
 import { hasMinimumDecisionCost } from "../../lib/traffic-roi/decision.ts";
 import { formatPlacementCtr, formatPlacementCpm } from "./placement-ctr.ts";
+import { classifyAdsterraWhitelist, type AdsterraAnalysisListKind } from "@/lib/adsterra-roi/whitelist-analysis";
+
+const whitelistSortLabels: StatusSortLabels = {
+  "safe-first": { label: "Kandidat Whitelist di atas", description: "Kandidat Whitelist → Bukan Kandidat Whitelist → Belum Cukup Spend; data unknown terakhir" },
+  "blacklist-first": { label: "Bukan Kandidat Whitelist di atas", description: "Bukan Kandidat Whitelist → Kandidat Whitelist → Belum Cukup Spend; data unknown terakhir" },
+  "insufficient-first": { label: "Belum Cukup Spend di atas", description: "Belum Cukup Spend → Bukan Kandidat Whitelist → Kandidat Whitelist; data unknown terakhir" },
+};
+const whitelistLabels = { CANDIDATE: "Kandidat Whitelist", NOT_CANDIDATE: "Bukan Kandidat Whitelist", INSUFFICIENT_SPEND: "Belum Cukup Spend", UNKNOWN: "Data belum tersedia" } as const;
 
 const columns: readonly SortColumn<AdsterraRoiRow>[] = [
   { key: "placement", label: "Placement", value: (row) => identifierSortValue(row.placement) },
@@ -31,8 +39,9 @@ function bidPlacementId(placement: string) {
   return /^\d+$/.test(placement) && Number.isSafeInteger(Number(placement)) ? String(Number(placement)) : placement;
 }
 
-export function PlacementTable({ analysis, customBids, onSaveBid, onDeleteBid, writeBusy = false }: {
+export function PlacementTable({ analysis, customBids, onSaveBid, onDeleteBid, writeBusy = false, listKind = "BLACKLIST" }: {
   analysis: AdsterraRoiAnalysis;
+  listKind?: AdsterraAnalysisListKind;
   customBids: AdsterraCustomBidsResult | null;
   onSaveBid?: CustomBidEditorProps["onSave"];
   onDeleteBid?: CustomBidEditorProps["onDelete"];
@@ -41,6 +50,8 @@ export function PlacementTable({ analysis, customBids, onSaveBid, onDeleteBid, w
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [criteria, setCriteria] = useState<readonly SortCriterion[]>(DEFAULT_ANALYSIS_SORT);
+  const whitelistStatuses = useMemo(() => listKind === "WHITELIST"
+    ? new Map(analysis.rows.map((row) => [row.placement, classifyAdsterraWhitelist(row)])) : null, [analysis.rows, listKind]);
   const bidSnapshot = useMemo(() => {
     const snapshot = new Map<string, { id: string | null; global: string | null }>();
     if (customBids?.success) for (const bid of customBids.bids) {
@@ -52,9 +63,14 @@ export function PlacementTable({ analysis, customBids, onSaveBid, onDeleteBid, w
     return snapshot;
   }, [customBids]);
   const prepared = useMemo(() => prepareSortRows(analysis.rows, columns.map((column) => {
+    if (column.key === "status" && whitelistStatuses) return { ...column, value: (row: AdsterraRoiRow) => {
+      const status = whitelistStatuses.get(row.placement);
+      return status === "CANDIDATE" ? new Decimal(1) : status === "NOT_CANDIDATE" ? new Decimal(0)
+        : status === "INSUFFICIENT_SPEND" ? new Decimal(2) : null;
+    } };
     if (column.key !== "bidId" && column.key !== "bidGlobal") return column;
     return { ...column, value: (row: AdsterraRoiRow) => decimalSortValue(bidSnapshot.get(bidPlacementId(row.placement))?.[column.key === "bidId" ? "id" : "global"]) };
-  })), [analysis.rows, bidSnapshot]);
+  })), [analysis.rows, bidSnapshot, whitelistStatuses]);
   const sortedRows = useMemo(() => sortPreparedRows(prepared, criteria), [prepared, criteria]);
   const pagination = getClientPagination(analysis.rows.length, page, pageSize);
   const rows = sortedRows.slice(pagination.startIndex, pagination.endIndex);
@@ -66,14 +82,15 @@ export function PlacementTable({ analysis, customBids, onSaveBid, onDeleteBid, w
   }
 
   return <div className="max-w-full overflow-hidden rounded-lg border">
-    <AnalysisSortingControls columns={columns} criteria={criteria} onChange={changeSort} disabled={writeBusy}/>
+    <AnalysisSortingControls columns={columns} criteria={criteria} onChange={changeSort} disabled={writeBusy} statusLabels={listKind === "WHITELIST" ? whitelistSortLabels : undefined}/>
     <div className="overflow-x-auto"><table className="w-full min-w-200 text-left text-sm">
       <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{columns.filter((column) => column.key !== "bidGlobal").map((column) => <th key={column.key} scope="col" aria-sort={headerSortDirection(criteria, column.key)} className="whitespace-nowrap px-3 py-3">
         {column.key === "bidId" ? <div className="space-y-1"><span>Custom Bid</span><div className="flex gap-2">{columns.filter((item) => item.key === "bidId" || item.key === "bidGlobal").map((item) => <SortHeader key={item.key} column={{ key: item.key, label: item.key === "bidId" ? "ID" : "GLOBAL" }} criteria={criteria} onChange={changeSort} disabled={writeBusy}/>)}</div></div>
-          : <SortHeader column={column.key === "cpm" ? { ...column, label: "CPM (USD)" } : column} criteria={criteria} onChange={changeSort} disabled={writeBusy}/>}
+          : <SortHeader column={column.key === "cpm" ? { ...column, label: "CPM (USD)" } : column} criteria={criteria} onChange={changeSort} disabled={writeBusy} statusLabels={listKind === "WHITELIST" ? whitelistSortLabels : undefined}/>}
       </th>)}</tr></thead>
       <tbody className="divide-y">{rows.map((row) => {
         const enoughSpend = hasMinimumDecisionCost(row.costIdr);
+        const whitelistStatus = whitelistStatuses?.get(row.placement) ?? "UNKNOWN";
         return <tr key={row.placement}>
           <td className="px-3 py-3 font-medium">{row.placement}</td>
           <td className="px-3 py-3">{formatUsd(row.spentUsd)}</td>
@@ -84,7 +101,7 @@ export function PlacementTable({ analysis, customBids, onSaveBid, onDeleteBid, w
           <td className="px-3 py-3">{formatPlacementCtr(row.clicks, row.impressions)}</td>
           <td className="px-3 py-3"><CustomBidEditor key={`${row.placement}:${customBids?.success ? (bidSnapshot.get(bidPlacementId(row.placement))?.id ?? "none") : "not-loaded"}`} result={customBids} placement={row.placement} onSave={onSaveBid} onDelete={onDeleteBid} writeBusy={writeBusy}/></td>
           <td className="whitespace-nowrap px-3 py-3 tabular-nums" title="CPM aktual: Spend USD ÷ Impressions × 1.000">{formatPlacementCpm(row.spentUsd, row.impressions)}</td>
-          <td className={`whitespace-nowrap px-3 py-3 ${row.isBlacklistCandidate ? "text-red-600" : enoughSpend ? "text-emerald-700" : "text-slate-500"}`}>{row.isBlacklistCandidate ? "Kandidat Blacklist" : enoughSpend ? "Aman" : "Belum Cukup Spend"}</td>
+          <td className={`whitespace-nowrap px-3 py-3 ${listKind === "WHITELIST" ? whitelistStatus === "CANDIDATE" ? "text-emerald-700" : whitelistStatus === "UNKNOWN" ? "text-amber-700" : "text-slate-500" : row.isBlacklistCandidate ? "text-red-600" : enoughSpend ? "text-emerald-700" : "text-slate-500"}`}>{listKind === "WHITELIST" ? whitelistLabels[whitelistStatus] : row.isBlacklistCandidate ? "Kandidat Blacklist" : enoughSpend ? "Aman" : "Belum Cukup Spend"}</td>
         </tr>;
       })}</tbody>
     </table></div>
