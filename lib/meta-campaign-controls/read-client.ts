@@ -101,6 +101,12 @@ export class MetaCampaignReadClient {
     }
   }
 
+  /** Minimum proof for an individual OFF target; shares the existing GET/retry limits. */
+  async readObject(id: string, kind: "campaign" | "adset" | "ad") {
+    if (!/^[0-9]{1,100}$/.test(id)) throw new MetaReadError("INTEGRITY", "ID objek Meta tidak valid.");
+    return this.get(id, [...BASIC_FIELDS, ...(kind !== "campaign" ? ["campaign_id"] : []), ...(kind === "ad" ? ["adset_id"] : [])]);
+  }
+
   page(payload: Record<string, unknown>): MetaReadPage {
     if (!Array.isArray(payload.data)) throw new MetaReadError("INVALID_RESPONSE", "Daftar objek Meta tidak valid; respons bukan daftar kosong yang terverifikasi.");
     if (payload.paging === undefined) return { rows: payload.data, after: null };
