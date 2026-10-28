@@ -4,38 +4,35 @@ import { useEffect, useRef, useState } from "react";
 import { executeMetaOffAction, prepareMetaOffAction } from "@/app/shopee/[id]/filter/meta-off-actions";
 import type { OffConfirmation, OffExecution, OffKind } from "@/lib/meta-campaign-controls/off-types";
 import type { PreviewInput } from "@/lib/meta-campaign-controls/types";
+import type { MetaActionLock } from "./action-lock";
 
 const labels = { ALL: "OFF Semua", ADSET: "OFF Set Iklan", AD: "OFF Iklan" };
 const kinds = { campaign: "Campaign", adset: "Set iklan", ad: "Iklan" };
 const time = (value: string) => new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "medium", timeZone: "Asia/Jakarta" }).format(new Date(value));
 
-export function useMetaOffControls(scope: PreviewInput, onBusyChange: (busy: boolean) => void) {
+export function useMetaOffControls(scope: PreviewInput, actionLock: MetaActionLock) {
   const key = JSON.stringify(scope);
   const current = useRef(key), epoch = useRef(0), pending = useRef(false);
   const [busy, setBusy] = useState<"prepare" | "execute" | null>(null);
   const [stored, setStored] = useState<{ key: string; confirmation?: OffConfirmation; result?: OffExecution; error?: string; attempted?: boolean } | null>(null);
   useEffect(() => { current.current = key; epoch.current++; return () => { current.current = ""; }; }, [key]);
-  useEffect(() => {
-    if (!busy) return;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [busy]);
   const state = stored?.key === key ? stored : null;
-  const lock = (stage: "prepare" | "execute") => { pending.current = true; setBusy(stage); onBusyChange(true); };
-  const unlock = () => { pending.current = false; setBusy(null); onBusyChange(false); };
+  const lock = (stage: "prepare" | "execute") => { pending.current = true; setBusy(stage); };
+  const unlock = (keepConfirmation = false) => { pending.current = false; setBusy(null); actionLock.finish("off", keepConfirmation); };
   async function begin(kind: OffKind, objectId: string) {
-    if (pending.current) return;
+    if (pending.current || !actionLock.begin("off")) return;
     const ticket = ++epoch.current; lock("prepare"); setStored(null);
+    let confirmed = false;
     try {
       const response = await prepareMetaOffAction({ scope, kind, objectId });
       if (ticket !== epoch.current || current.current !== key) return;
+      confirmed = response.success;
       setStored(response.success ? { key, confirmation: response.confirmation } : { key, error: response.message });
     } catch { if (ticket === epoch.current && current.current === key) setStored({ key, error: "Rencana tidak dapat dibaca. Tidak ada eksekusi OFF diminta." }); }
-    finally { unlock(); }
+    finally { unlock(confirmed); }
   }
   async function execute() {
-    if (pending.current || !state?.confirmation) return;
+    if (pending.current || !state?.confirmation || !actionLock.begin("off")) return;
     const ticket = ++epoch.current; lock("execute");
     const confirmation = state.confirmation;
     setStored({ key, confirmation, attempted: true });
@@ -47,7 +44,7 @@ export function useMetaOffControls(scope: PreviewInput, onBusyChange: (busy: boo
       if (ticket === epoch.current && current.current === key) setStored({ key, attempted: true, error: "Hasil eksekusi terputus/tidak diketahui. POST mungkin sudah diterapkan. Tidak diulang otomatis; baca ulang status sebelum tindakan berikutnya." });
     } finally { unlock(); }
   }
-  const clear = () => { if (!pending.current) { epoch.current++; setStored(null); } };
+  const clear = () => { if (!pending.current) { epoch.current++; setStored(null); actionLock.clear("off"); } };
   return { busy, confirmation: state?.confirmation, result: state?.result, error: state?.error, attempted: !!state?.attempted, begin, execute, clear, isLocked: () => pending.current };
 }
 
