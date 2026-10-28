@@ -24,13 +24,15 @@ export function hierarchyObjects(data: HierarchyPreview): OffObject[] {
 
 export async function buildOffPlan(selection: OffSelection, target: PreviewTarget, client: MetaPausedClient): Promise<OffPlan> {
   client.budget.remaining();
-  let plan: OffPlan;
+  let plan: Omit<OffPlan, "proofReadCosts">;
   if (selection.kind === "ALL") {
     if (selection.objectId !== target.campaign.id) throw new MetaReadError("INTEGRITY", "Campaign browser tidak sesuai lookup server.");
+    await client.object(target, target.campaign.id, "campaign");
+    const requestsBeforeHierarchy = client.budget.requests;
     const response = await client.budget.waitReadOnly(() => readCampaignPreview(target, client.reader));
     if (!response.success) throw new MetaReadError(response.kind ?? "PROVIDER", response.message);
     if (response.data.readState !== "COMPLETE") throw new MetaReadError("INTEGRITY", "OFF Semua memerlukan hierarchy lengkap dan relasi valid. Tidak ada POST dijalankan.");
-    plan = { selection, target, objects: hierarchyObjects(response.data), guards: [], hierarchy: response.data };
+    plan = { selection, target, objects: hierarchyObjects(response.data), guards: [], hierarchy: response.data, hierarchyRequests: client.budget.requests - requestsBeforeHierarchy };
   } else {
     const kind = selection.kind === "AD" ? "ad" : "adset";
     const object = await client.object(target, selection.objectId, kind);
@@ -39,7 +41,7 @@ export async function buildOffPlan(selection: OffSelection, target: PreviewTarge
   }
   if (plan.objects.some((object) => !object.configuredStatus)) throw new MetaReadError("INVALID_RESPONSE", "Status konfigurasi target belum tersedia. Tindakan ditolak.");
   client.budget.remaining();
-  return plan;
+  return { ...plan, proofReadCosts: Object.fromEntries(plan.objects.map((object) => [object.id, client.proofReadCost(target, object)])) };
 }
 
 export function planDigest(plan: OffPlan) {
@@ -48,10 +50,12 @@ export function planDigest(plan: OffPlan) {
 }
 
 export function finalReadMinimum(plan: OffPlan) {
-  if (plan.selection.kind !== "ALL") return plan.selection.kind === "AD" ? 2 : 1;
-  return 1 + Math.max(1, Math.ceil(plan.objects.filter((object) => object.kind === "adset").length / 100)) + Math.max(1, Math.ceil(plan.objects.filter((object) => object.kind === "ad").length / 100));
+  if (plan.selection.kind !== "ALL") return plan.proofReadCosts[plan.objects[0].id];
+  const hierarchyFloor = 1 + Math.max(1, Math.ceil(plan.objects.filter((object) => object.kind === "adset").length / 100)) + Math.max(1, Math.ceil(plan.objects.filter((object) => object.kind === "ad").length / 100));
+  return plan.proofReadCosts[plan.objects[0].id] + Math.max(hierarchyFloor, plan.hierarchyRequests ?? 0);
 }
 
-export function minimumRemainingRequests(plan: OffPlan) {
-  return plan.objects.filter((object) => object.configuredStatus !== "PAUSED").reduce((sum, object) => sum + (object.kind === "ad" ? 5 : 3), finalReadMinimum(plan));
+/** Reserve observed pagination costs, not just one GET per proof. Future drift is still bounded. */
+export function minimumRemainingRequests(plan: OffPlan, fromIndex = 0, currentProofDone = false) {
+  return plan.objects.slice(fromIndex).filter((object) => object.configuredStatus !== "PAUSED").reduce((sum, object) => sum + 1 + (currentProofDone && object.id === plan.objects[fromIndex].id ? 1 : 2) * plan.proofReadCosts[object.id], finalReadMinimum(plan));
 }

@@ -22,13 +22,40 @@ export class MetaPausedClient {
   }
 
   async object(target: PreviewTarget, id: string, kind: ObjectKind): Promise<OffObject> {
-    this.budget.remaining();
-    const row = await this.reader.readObject(metaId(id), kind);
-    this.budget.remaining();
-    const parsed = parseMetaObject(row, { accountId: target.wl.id, objectId: id, ...(kind !== "campaign" ? { campaignId: target.campaign.id } : {}) }, this.reader.safeText);
+    metaId(id);
     if (kind === "campaign" && id !== target.campaign.id) throw new MetaReadError("INTEGRITY", "Campaign tidak sesuai target.");
-    if (kind === "ad" && !parsed.adSetId) throw new MetaReadError("INTEGRITY", "Relasi set iklan belum terverifikasi.");
-    return { ...parsed.view, kind, parentId: kind === "campaign" ? null : kind === "adset" ? target.campaign.id : parsed.adSetId! };
+    // The official SDK types these edges as Campaign[], AdSet[], and Ad[]. Never infer kind
+    // from common node fields or metadata aliases; stop as soon as exact membership is proved.
+    const edge = kind === "campaign" ? "campaigns" : kind === "adset" ? "adsets" : "ads";
+    const parentId = kind === "campaign" ? target.wl.id : target.campaign.id;
+    const ids = new Set<string>(), cursors = new Set<string>();
+    let after: string | undefined;
+    do {
+      this.budget.remaining();
+      const page = this.reader.page(await this.reader.readTypedPage(parentId, edge, after));
+      this.budget.remaining();
+      let found: ReturnType<typeof parseMetaObject> | undefined;
+      for (const value of page.rows) {
+        const row = record(value), rowId = metaId(row.id);
+        if (ids.has(rowId)) throw new MetaReadError("INTEGRITY", "ID berulang pada pembuktian jenis Meta.");
+        if (ids.size >= 5_000) throw new MetaReadError("LIMIT", "Batas 5.000 objek pembuktian jenis tercapai; jenis target belum terbukti.");
+        ids.add(rowId);
+        if (rowId === id) {
+          found = parseMetaObject(row, { accountId: target.wl.id, objectId: id, ...(kind !== "campaign" ? { campaignId: target.campaign.id } : {}) }, this.reader.safeText);
+          if (kind === "ad" && !found.adSetId) throw new MetaReadError("INTEGRITY", "Relasi set iklan belum terverifikasi.");
+        }
+      }
+      if (found) return { ...found.view, kind, parentId: kind === "campaign" ? null : kind === "adset" ? target.campaign.id : found.adSetId! };
+      if (page.after && cursors.has(page.after)) throw new MetaReadError("INTEGRITY", "Cursor berulang pada pembuktian jenis Meta.");
+      after = page.after ?? undefined;
+      if (after) cursors.add(after);
+    } while (after);
+    throw new MetaReadError("INTEGRITY", "Jenis/keanggotaan target tidak terbukti pada edge Meta yang sesuai; tindakan ditolak.");
+  }
+
+  proofReadCost(target: PreviewTarget, object: Pick<OffObject, "id" | "kind" | "parentId">) {
+    const own = this.reader.membershipPageCost(object.kind === "campaign" ? target.wl.id : target.campaign.id, object.kind === "campaign" ? "campaigns" : object.kind === "adset" ? "adsets" : "ads", object.id);
+    return own + (object.kind === "ad" ? this.reader.membershipPageCost(target.campaign.id, "adsets", object.parentId!) : 0);
   }
 
   async proof(target: PreviewTarget, object: Pick<OffObject, "id" | "kind" | "parentId">) {

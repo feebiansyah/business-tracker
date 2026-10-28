@@ -22,7 +22,7 @@ export async function executeOffPlan(plan: OffPlan, client: MetaPausedClient): P
   const newObjects: OffObject[] = [];
   let stopReason = "";
   if (client.budget.requests + minimumRemainingRequests(plan) > 100) {
-    return { status: "PARTIAL", message: "Rencana ditolak sebelum POST: kebutuhan request minimum melampaui 100. Gunakan target tunggal yang lebih kecil.", objects, finalRead, newObjects, verifiedObjects, requests: client.budget.requests, finishedAt: new Date().toISOString() };
+    return { status: "PARTIAL", message: "Rencana ditolak sebelum POST: biaya request/pagination teramati melampaui 100. Gunakan target tunggal yang lebih kecil.", objects, finalRead, newObjects, verifiedObjects, requests: client.budget.requests, finishedAt: new Date().toISOString() };
   }
   try {
     for (let index = 0; index < objects.length; index++) {
@@ -41,6 +41,11 @@ export async function executeOffPlan(plan: OffPlan, client: MetaPausedClient): P
         }
         if (before.configuredStatus !== row.object.configuredStatus) {
           stopReason = "Status konfigurasi berubah/tidak tersedia pada GET sebelum write. Konfirmasi ulang diperlukan.";
+          row.message = stopReason; break;
+        }
+        for (const object of plan.objects) plan.proofReadCosts[object.id] = Math.max(plan.proofReadCosts[object.id], client.proofReadCost(plan.target, object));
+        if (client.budget.requests + minimumRemainingRequests(plan, index, true) > 100) {
+          stopReason = "Biaya pagination terbaru melampaui sisa budget verifikasi; POST berikutnya tidak dijalankan.";
           row.message = stopReason; break;
         }
         client.budget.remaining();
@@ -71,6 +76,7 @@ export async function executeOffPlan(plan: OffPlan, client: MetaPausedClient): P
     client.budget.remaining();
     let finalObjects: OffObject[];
     if (plan.selection.kind === "ALL") {
+      await client.object(plan.target, plan.target.campaign.id, "campaign");
       const final = await readCampaignPreview(plan.target, client.freshHierarchyReader());
       if (!final.success) throw new MetaReadError(final.kind ?? "PROVIDER", "Pembacaan akhir gagal.");
       hierarchy = final.data; finalRead = hierarchy.readState === "COMPLETE" ? "COMPLETE" : "PARTIAL";
@@ -89,9 +95,14 @@ export async function executeOffPlan(plan: OffPlan, client: MetaPausedClient): P
     const finalMap = new Map(finalObjects.map((object) => [object.id, object]));
     for (const row of objects) {
       const current = finalMap.get(row.object.id);
-      if (!current || current.parentId !== row.object.parentId || current.configuredStatus !== "PAUSED") {
+      if (!current || current.kind !== row.object.kind || current.parentId !== row.object.parentId || current.configuredStatus !== "PAUSED") {
         if (pauseVerified(row)) { row.state = "UNVERIFIED"; row.message = "Pembacaan akhir tidak membuktikan target tetap PAUSED dalam scope yang dikonfirmasi."; }
-      } else if (row.postSent && row.state === "UNVERIFIED") { row.state = "VERIFIED_PAUSED"; row.message = "GET akhir memverifikasi configured_status PAUSED."; row.readAt = new Date().toISOString(); }
+      } else if (row.postSent && (row.state === "UNVERIFIED" || row.state === "FAILED")) {
+        const previous = row.message;
+        row.state = "VERIFIED_PAUSED";
+        row.message = `${previous} GET akhir kini memverifikasi jenis/relasi target dan configured_status PAUSED; penyebab perubahan status tidak diasumsikan.`;
+        row.readAt = new Date().toISOString();
+      }
     }
   } catch (error) { stopReason = failureMessage(error); }
   const complete = finalRead === "COMPLETE" && newObjects.length === 0 && objects.every(pauseVerified);
