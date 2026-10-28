@@ -16,6 +16,8 @@ export class MetaCampaignReadClient {
   private readonly deadline: number;
   private readonly proof?: string;
   private objectCount = 0;
+  private readonly pageDepths = new Map<string, number>();
+  private readonly membershipCosts = new Map<string, number>();
   requests = 0;
 
   constructor(private readonly config: MetaConfig = getMetaConfig(), private readonly fetchImpl: typeof fetch = fetch, private readonly now = Date.now, startedAt = now()) {
@@ -66,7 +68,10 @@ export class MetaCampaignReadClient {
         if (attempt === 0 && this.remaining() > 1_000) { await new Promise((resolve) => setTimeout(resolve, 250)); continue; }
         throw new MetaReadError(timeout ? "TIMEOUT" : "PROVIDER", timeout ? "Request Meta melewati batas waktu. Pembacaan belum lengkap." : "Respons Meta gagal dibaca. Coba Refresh manual.");
       }
-      if (response.ok && !payload.error) return payload;
+      if (response.ok && !payload.error) {
+        this.observeMembership(path, after, payload);
+        return payload;
+      }
       const error = payload.error && typeof payload.error === "object" ? payload.error as Record<string, unknown> : {};
       const code = typeof error.code === "number" ? error.code : null;
       // Optional diagnostic fallback is not a retry of the same request.
@@ -101,10 +106,26 @@ export class MetaCampaignReadClient {
     }
   }
 
-  /** Minimum proof for an individual OFF target; shares the existing GET/retry limits. */
-  async readObject(id: string, kind: "campaign" | "adset" | "ad") {
-    if (!/^[0-9]{1,100}$/.test(id)) throw new MetaReadError("INTEGRITY", "ID objek Meta tidak valid.");
-    return this.get(id, [...BASIC_FIELDS, ...(kind !== "campaign" ? ["campaign_id"] : []), ...(kind === "ad" ? ["adset_id"] : [])]);
+  /** Typed SDK edges prove object kind; a GET of an arbitrary node alone cannot do that. */
+  async readTypedPage(parentId: string, edge: "campaigns" | "adsets" | "ads", after?: string) {
+    if (!/^[0-9]{1,100}$/.test(parentId) || (after !== undefined && !/^[\x21-\x7E]{1,4096}$/.test(after))) throw new MetaReadError("INTEGRITY", "ID/cursor pembuktian jenis Meta tidak valid.");
+    const path = `${edge === "campaigns" ? "act_" : ""}${parentId}/${edge}`;
+    return this.get(path, [...BASIC_FIELDS, ...(edge !== "campaigns" ? ["campaign_id"] : []), ...(edge === "ads" ? ["adset_id"] : [])], after);
+  }
+
+  private observeMembership(path: string, after: string | undefined, payload: Record<string, unknown>) {
+    if (!/^(act_)?[0-9]+\/(campaigns|adsets|ads)$/.test(path) || !Array.isArray(payload.data)) return;
+    const depth = after ? (this.pageDepths.get(path) ?? 0) + 1 : 1;
+    this.pageDepths.set(path, depth);
+    // Cost metadata only, never object-kind/scope evidence. The target is validated separately.
+    for (const row of payload.data.slice(0, 5_000)) if (row && typeof row === "object" && !Array.isArray(row)) {
+      const id = (row as Record<string, unknown>).id;
+      if (typeof id === "string" && /^[0-9]{1,100}$/.test(id)) this.membershipCosts.set(`${path}/${id}`, depth);
+    }
+  }
+
+  membershipPageCost(parentId: string, edge: "campaigns" | "adsets" | "ads", id: string) {
+    return this.membershipCosts.get(`${edge === "campaigns" ? "act_" : ""}${parentId}/${edge}/${id}`) ?? 1;
   }
 
   page(payload: Record<string, unknown>): MetaReadPage {

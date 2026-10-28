@@ -4,7 +4,7 @@ export type OffKind = "ALL" | "ADSET" | "AD";
 export type ObjectKind = "campaign" | "adset" | "ad";
 export type OffSelection = { scope: PreviewInput; kind: OffKind; objectId: string };
 export type OffObject = MetaObjectView & { kind: ObjectKind; parentId: string | null };
-export type OffPlan = { selection: OffSelection; target: PreviewTarget; objects: OffObject[]; guards: OffObject[]; hierarchy?: HierarchyPreview };
+export type OffPlan = { selection: OffSelection; target: PreviewTarget; objects: OffObject[]; guards: OffObject[]; hierarchy?: HierarchyPreview; hierarchyRequests?: number; proofReadCosts: Record<string, number> };
 export type OffConfirmation = {
   token: string; kind: OffKind; target: PreviewTarget; objects: OffObject[]; expiresAt: string;
   counts: { campaign: number; adset: number; ad: number; needPause: number };

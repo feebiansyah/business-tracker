@@ -47,3 +47,24 @@ No automated tests were created or run. A disposable localhost sandbox outside t
 Independent read-only code review initially found status-drift, integrity-stop, and cumulative object-cap issues; all three were corrected and re-reviewed with no remaining Critical/Important findings. TypeScript, scoped ESLint, production build, and tracked diff check pass on final source. Production build initially blocked by a user process loading the Prisma DLL; rerun after the user stopped dev passed (Next compile 8.5s, built-in TypeScript 11.6s, all four static pages generated). No live OFF/permission-write validation is claimed.
 
 Provider contract checked against the official Meta Business SDK: [campaign](https://github.com/facebook/facebook-nodejs-business-sdk/blob/main/src/objects/campaign.js), [ad set](https://github.com/facebook/facebook-nodejs-business-sdk/blob/main/src/objects/ad-set.js), [ad](https://github.com/facebook/facebook-nodejs-business-sdk/blob/main/src/objects/ad.js), and [node update POST](https://github.com/facebook/facebook-nodejs-business-sdk/blob/main/src/abstract-crud-object.js). This is not proof of the configured token's live write permission.
+
+## Follow-up review corrections (baseline 906779d, 2026-10-28)
+
+Two user findings were first reproduced manually with the actual actions and isolated mock transport: ADSET accepted an ad ID from the same campaign, and a rejected POST remained FAILED despite the final GET showing PAUSED. No automated tests or live reads/writes were used.
+
+Object kind now comes from exact membership on official typed SDK edges: [AdAccount.getCampaigns](https://github.com/facebook/facebook-nodejs-business-sdk/blob/main/src/objects/ad-account.js) returns Campaign objects, and Campaign.getAdSets/getAds return AdSet/Ad objects. No guessed metadata aliases or node-field heuristics are used. Preparation, execution preflight, immediate proofs, and final verification all fail closed if membership or selected-object scope cannot be proved. Lookup stops after finding the exact ID; single-object validation does not require unrelated rows' parent fields. All pages retain ID/duplicate/cursor/object limits and share the action request/time envelope.
+
+Observed membership page depths, necessary parent lookups, and full hierarchy read costs feed the pre-write request reservation. Reservation is checked again after the immediate proof. Later external pagination changes can still cause a bounded partial outcome; observed costs are not a guarantee that future GETs have the same layout. The plan's cost metadata is temporary, server-only, and is not object-kind evidence or part of the business confirmation digest.
+
+Final reconciliation now checks exact ID, kind, parent, and configured PAUSED before upgrading an attempted FAILED or UNVERIFIED result. It retains the prior explanation (including rejected POST) and explicitly does not attribute the status change to the application. Invalid/missing final proof does not upgrade outcomes.
+
+Manual follow-up checks on the actual helpers/actions:
+
+- ADSET with ad ID, AD with ad-set ID, and ADSET with campaign ID: rejected, zero POST. A type/membership change after confirmation is rejected again at execution, zero POST. Invalid typed-edge responses also reject without POST.
+- Valid ADSET found on a later page: COMPLETE, one POST, nine execution requests. Valid AD: COMPLETE with one POST; parent and sibling configuration unchanged. Actual modal ALL flow: COMPLETE, six sequential POSTs, 32 execution requests (two more than the original 30-request fixture for root membership proofs).
+- Rejected POST, first verification still ACTIVE, final valid PAUSED: VERIFIED_PAUSED with the rejected-POST explanation and no causal claim. Final GET denied, wrong parent, or wrong kind: PARTIAL; failed outcome is not upgraded.
+- Stable page-40 target: rejected before confirmation, zero POST. Cheap confirmation followed by page-40 execution preflight: NOT_ATTEMPTED, zero POST. Page growth discovered only by the immediate proof: pre-POST reservation stops the write, zero POST; relevant final read is still attempted within the remaining envelope.
+- Valid ad beside an unrelated row missing adset_id: single-target preparation/execution remains COMPLETE after proving its own parent.
+- Sandbox database-write count remained zero; Graph transport never delegates to live fetch. No automated tests were created or run.
+
+Independent follow-up review found the repeated-scan cost and unrelated-row validation issues above; both were corrected and re-reviewed with no remaining Critical/Important findings. Final TypeScript, five-file scoped ESLint, production build (Next compile 6.2s, built-in TypeScript 7.3s), and diff check passed. Live typed-edge behavior/default visibility and token write permission remain unverified; large targets may safely reject due to the strict request budget. No merge or deployment is authorized.
