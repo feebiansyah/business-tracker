@@ -16,6 +16,12 @@ const scheduleField = "is_budget_schedule_enabled";
 const sharingField = "is_adset_budget_sharing_enabled";
 export type BudgetPostResult = "ACKNOWLEDGED" | "REJECTED" | "AMBIGUOUS";
 
+class UnsupportedBudgetFieldsError extends MetaReadError {
+  constructor(readonly sharingOnly: boolean) {
+    super("PROVIDER", "Meta menolak pembacaan field anggaran opsional. Tidak dianggap schedule nonaktif.", true);
+  }
+}
+
 /** Budget-only fields NEVER enter the hierarchy client's common Ad fields. */
 export class MetaBudgetClient {
   private readonly transport: typeof fetch;
@@ -63,7 +69,11 @@ export class MetaBudgetClient {
         if (Number.isFinite(delay) && delay + 500 < this.budget.remaining()) { await new Promise((resolve) => setTimeout(resolve, delay)); continue; }
       }
       const optionalUnsupported = error.code === 100 && typeof error.message === "string" && /is_budget_schedule_enabled|is_adset_budget_sharing_enabled/.test(error.message) && /nonexisting|unknown|does not exist|not valid/i.test(error.message);
-      throw new MetaReadError("PROVIDER", "Meta menolak pembacaan anggaran/izin/field. Tidak dianggap nilai nol atau schedule nonaktif.", optionalUnsupported);
+      if (optionalUnsupported) {
+        const message = error.message as string;
+        throw new UnsupportedBudgetFieldsError(message.includes(sharingField) && !message.includes(scheduleField) && !moneyFields.some((field) => message.includes(field)));
+      }
+      throw new MetaReadError("PROVIDER", "Meta menolak pembacaan anggaran/izin/field. Tidak dianggap nilai nol atau schedule nonaktif.");
     }
     throw new MetaReadError("PROVIDER", "Pembacaan anggaran tidak selesai.");
   }
@@ -72,7 +82,15 @@ export class MetaBudgetClient {
     const core = [...identityFields, ...(kind === "adset" ? ["campaign_id"] : []), ...moneyFields];
     try { return await this.get(path, [...core, scheduleField, ...(kind === "campaign" ? [sharingField] : [])], after); }
     catch (error) {
-      if (!(error instanceof MetaReadError) || !error.optionalFieldUnsupported) throw error;
+      if (!(error instanceof UnsupportedBudgetFieldsError)) throw error;
+      if (kind === "campaign" && error.sharingOnly) {
+        // Sharing failure is not evidence that schedule is unsupported. At most
+        // three field sets are tried, all through get()/the shared action budget.
+        try { return await this.get(path, [...core, scheduleField], after); }
+        catch (scheduleError) {
+          if (!(scheduleError instanceof UnsupportedBudgetFieldsError)) throw scheduleError;
+        }
+      }
       // Unsupported optional flags remain MISSING, never false. Basic values stay readable.
       return this.get(path, core, after);
     }
