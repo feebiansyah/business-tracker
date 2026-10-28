@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CampaignHistoryModal } from "@/components/filter/campaign-history-modal";
+import { CampaignManagerModal, createCampaignPreviewStore } from "@/components/meta-campaign-controls/campaign-manager-modal";
 import { SortableHeader } from "@/components/filter/sortable-header";
 import { TablePagination } from "@/components/filter/table-pagination";
 import type { FilterCampaignRow, PageInfo } from "@/lib/filter/queries";
@@ -22,16 +23,20 @@ const startDate = (value: string | null) => value ? startDateFormatter.format(ne
 export function FilterTable({ mode, shopeeAccountId, campaigns, pagination, state }: { mode: CampaignMode; shopeeAccountId: number; campaigns: FilterCampaignRow[]; pagination: PageInfo; state: FilterParams }) {
   const router = useRouter();
   const [selectedCampaign, setSelectedCampaign] = useState<Pick<FilterCampaignRow, "id" | "name"> | null>(null);
+  const [managedCampaign, setManagedCampaign] = useState<Pick<FilterCampaignRow, "id" | "name"> | null>(null);
+  const [previewStore] = useState(createCampaignPreviewStore);
+  const canManage = mode === "filter" || mode === "fix";
   const navigate = (change: Partial<FilterParams>) => router.push(`?${filterParamsToSearch(withFilterChange(state, change))}`);
   const changeSort = (sort: FilterSortKey) => navigate({ sort, dir: sort === state.sort && state.dir === "asc" ? "desc" : "asc" });
   return <><div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
     <div className="max-w-full overflow-x-auto overscroll-x-contain"><table className="w-full min-w-300 text-left text-sm">
-      <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{columns.map((column) => <SortableHeader key={column.key} label={column.label} active={state.sort === column.key} direction={state.dir} onSort={() => changeSort(column.key)} className={column.key === "name" ? "sticky left-0 z-20 bg-slate-50 shadow-[2px_0_0_0_rgb(226_232_240)]" : ""} />)}</tr></thead>
+      <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{columns.map((column) => <SortableHeader key={column.key} label={column.label} active={state.sort === column.key} direction={state.dir} onSort={() => changeSort(column.key)} className={column.key === "name" ? "sticky left-0 z-20 bg-slate-50 shadow-[2px_0_0_0_rgb(226_232_240)]" : ""} />)}{canManage && <th scope="col" className="px-4 py-3 font-medium">Aksi</th>}</tr></thead>
       <tbody className="divide-y divide-slate-200">{campaigns.map((campaign) => <tr key={campaign.id}>
         <td className="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-slate-950 shadow-[2px_0_0_0_rgb(226_232_240)]"><button type="button" className="text-left hover:underline" onClick={() => setSelectedCampaign({ id: campaign.id, name: campaign.name })}>{campaign.name}</button></td>
         <td className="px-4 py-3 text-slate-600">{campaign.wlName}</td><td className="whitespace-nowrap px-4 py-3 text-slate-600">{startDate(campaign.startTime)}</td><td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.budget)}</td>
         <td className="px-4 py-3 text-slate-600">{campaign.days}</td><td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.totalSpend)}</td><td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.costWithFee)}</td><td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.totalCommission)}</td><td className="px-4 py-3 text-slate-600">{formatRupiah(campaign.profit)}</td><td className="px-4 py-3 text-slate-600">{percent(campaign.profitPercent)}</td>
-      </tr>)}{pagination.total === 0 && <tr><td colSpan={10} className="px-6 py-10 text-center text-slate-500">Belum ada campaign yang memenuhi {campaignModeConfig[mode].title}.</td></tr>}</tbody>
+        {canManage && <td className="px-4 py-3"><button type="button" className="whitespace-nowrap rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-600" onClick={() => setManagedCampaign({ id: campaign.id, name: campaign.name })}>Kelola Iklan</button></td>}
+      </tr>)}{pagination.total === 0 && <tr><td colSpan={canManage ? 11 : 10} className="px-6 py-10 text-center text-slate-500">Belum ada campaign yang memenuhi {campaignModeConfig[mode].title}.</td></tr>}</tbody>
     </table></div><TablePagination page={pagination.page} pageCount={pagination.pageCount} total={pagination.total} pageSize={pagination.pageSize} onPageChange={(page) => navigate({ page })} onPageSizeChange={(pageSize) => navigate({ pageSize: pageSize as 25 | 50 | 100 })} />
-  </div>{selectedCampaign && <CampaignHistoryModal mode={mode} shopeeAccountId={shopeeAccountId} campaignId={selectedCampaign.id} campaignName={selectedCampaign.name} onClose={() => setSelectedCampaign(null)} />}</>;
+  </div>{selectedCampaign && <CampaignHistoryModal mode={mode} shopeeAccountId={shopeeAccountId} campaignId={selectedCampaign.id} campaignName={selectedCampaign.name} onClose={() => setSelectedCampaign(null)} />}{canManage && managedCampaign && <CampaignManagerModal mode={mode} shopeeAccountId={shopeeAccountId} campaignId={managedCampaign.id} campaignName={managedCampaign.name} store={previewStore} onClose={() => setManagedCampaign(null)} />}</>;
 }
