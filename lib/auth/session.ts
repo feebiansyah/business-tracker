@@ -14,17 +14,17 @@ export async function createUserSession(userId: number) {
   (await cookies()).set(SESSION_COOKIE_NAME, token, cookieOptions(expiresAt));
 }
 
-export async function getCurrentUser() {
+export async function getCurrentUser(options: { readOnly?: boolean } = {}) {
   const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
   return resolveSessionUser(token, new Date(), {
     findSession: (tokenHash) => prisma.session.findUnique({ where: { tokenHash }, select: { tokenHash: true, expiresAt: true, user: { select: { id: true, email: true, name: true, isActive: true } } } }),
-    deleteSession: async (tokenHash) => { await prisma.session.deleteMany({ where: { tokenHash } }); },
+    deleteSession: async (tokenHash) => { if (!options.readOnly) await prisma.session.deleteMany({ where: { tokenHash } }); },
   });
 }
 
-export async function requireUser() {
-  const user = await getCurrentUser();
+export async function requireUser(options: { readOnly?: boolean } = {}) {
+  const user = await getCurrentUser(options);
   if (!user) redirect("/login");
   return user;
 }
