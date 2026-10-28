@@ -118,3 +118,35 @@ campaign/set source conflicts; exact IDR conversion and signature purpose;
 stale preconditions and late responses; budget admission before POST; final GET
 after rejected/ambiguous POST; common confirmation lock; no DB/live write paths
 in mock verification. External Meta operators remain outside application locks.
+
+## Follow-up: positive evidence for shared adset budgets
+
+Baseline `edbba219f78d8b444c4fd0ef534c7485b23f69d7`. Official v24 changelog
+read via public GET (HTTP 200):
+https://developers.facebook.com/docs/graph-api/changelog/version24.0/
+Adset budget sharing is intended for campaigns not using campaign budget.
+Sharing TRUE plus a proven daily-budgeted set and a complete list now proves
+ADSET mode when campaign amounts are zero or unavailable. Missing/null remain
+unchanged; they do not prove mode without that positive evidence. Positive
+campaign budgets conflicting with sharing, invalid amounts, active lifetime and
+active/unknown schedules still block saving. Existing signed preconditions,
+verification and OFF behavior are unchanged.
+
+Live GET audit: same CECEKADES target, v25.0, IDR, sharing TRUE, campaign budget
+fields MISSING, set daily 500000/lifetime 0, schedules FALSE, list complete.
+Original modal rendered in a temporary local GET-only preview using actual Meta
+data, not mock data: one enabled form for set `120254300922800170`, no campaign
+editor. Browser inspected at 1440px/390px; screenshots kept outside repository.
+The preview read hierarchy with 3 GETs and budget with 4 GETs. All mutation
+handlers blocked at its boundary; no POST/validate_only or database write.
+This verifies actual data/rendering, not a fresh end-to-end application login
+or successful live budget write.
+
+Manual mock observations: campaign mode, explicit-zero adset mode, shared mode
+with MISSING/NULL preserved, conflicts, invalid/absent evidence, lifetime and
+schedule guards; configuration changes after confirmation returned
+RECONFIRM_REQUIRED without POST, including a change to another valid ADSET
+configuration. No automated tests created/run.
+Final TypeScript, scoped ESLint and production build passed. The first build
+hit a Prisma DLL lock from this audit's own live-preview process; that process
+was closed and the full build passed on retry. No user process was stopped.

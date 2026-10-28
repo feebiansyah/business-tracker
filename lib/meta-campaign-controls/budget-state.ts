@@ -3,6 +3,7 @@ import type { BudgetEligibility, BudgetFlag, BudgetKind, BudgetSnapshot, BudgetV
 export const budgetFlag = (value: unknown): BudgetFlag => value === true ? "TRUE" : value === false ? "FALSE" : value === undefined ? "MISSING" : value === null ? "NULL" : "INVALID";
 const zero = (value: BudgetValue) => value.state === "VALUE" && value.value === "0";
 const positive = (value: BudgetValue) => value.state === "VALUE" && BigInt(value.value) > BigInt(0);
+const absentOrZero = (value: BudgetValue) => value.state === "MISSING" || value.state === "NULL" || zero(value);
 
 /** Classification is based exclusively on fresh Meta evidence, never database budget hints. */
 export function budgetEligibility(snapshot: BudgetSnapshot, kind: BudgetKind, id: string): BudgetEligibility {
@@ -11,9 +12,19 @@ export function budgetEligibility(snapshot: BudgetSnapshot, kind: BudgetKind, id
   if (!object) return fail("Jenis/target anggaran tidak ditemukan pada edge Meta yang sesuai.");
   if (!snapshot.complete) return fail("Pembacaan set iklan belum lengkap. Sumber anggaran belum terbukti.");
   const campaign = snapshot.campaign;
-  if (!zero(campaign.lifetime)) return fail("Lifetime budget aktif atau bukti lifetime campaign tidak lengkap; hanya daily budget yang dapat diedit.");
+  if (snapshot.sharing === "TRUE" && (positive(campaign.daily) || positive(campaign.lifetime))) return fail("Bukti sumber bertentangan: sharing set aktif tetapi daily/lifetime budget campaign positif. Tidak ada perubahan anggaran.");
+  // Meta v24+: adset budget sharing is for campaigns NOT using campaign budget.
+  // https://developers.facebook.com/docs/graph-api/changelog/version24.0/
+  // Combine that positive evidence with an actual daily-budgeted set. Preserve
+  // missing/null as-is; neither alone, nor sharing FALSE/unknown, proves this mode.
+  const sharingProvesAdSets = snapshot.sharing === "TRUE" && absentOrZero(campaign.daily) && absentOrZero(campaign.lifetime)
+    && snapshot.adSets.some((row) => positive(row.daily) && zero(row.lifetime));
   let mode: BudgetEligibility["mode"];
-  if (positive(campaign.daily)) {
+  if (sharingProvesAdSets) mode = "ADSET";
+  else if (!zero(campaign.lifetime)) return fail(positive(campaign.lifetime)
+    ? "Lifetime budget campaign aktif; hanya daily budget yang dapat diedit."
+    : "Sumber anggaran belum terbukti: lifetime campaign hilang/null/tidak valid dan bukti sharing set belum cukup.");
+  else if (positive(campaign.daily)) {
     if (snapshot.adSets.some((row) => !zero(row.daily) || !zero(row.lifetime))) return fail("Anggaran campaign/set bertentangan atau belum lengkap. Tidak menebak tingkat anggaran.");
     mode = "CAMPAIGN";
   } else if (zero(campaign.daily)) mode = "ADSET";
@@ -25,7 +36,7 @@ export function budgetEligibility(snapshot: BudgetSnapshot, kind: BudgetKind, id
   if (mode === "ADSET" && kind !== "adset") return fail("Anggaran dikelola per set iklan; pilih satu set, bukan jumlah totalnya.", mode);
   if (!positive(object.daily) || !zero(object.lifetime)) return fail("Target bukan daily budget positif dengan lifetime nol yang terbukti.", mode);
   if (object.schedule !== "FALSE") return fail("Budget schedule target aktif atau belum terbukti nonaktif.", mode);
-  return { object, mode, editable: true, reason: "Daily budget IDR terverifikasi. Minimum akhir tetap divalidasi Meta; nominal tidak disesuaikan otomatis." };
+  return { object, mode, editable: true, reason: `${sharingProvesAdSets ? "Sumber anggaran set dibuktikan sharing aktif dan daily budget set dari Meta. " : ""}Daily budget IDR terverifikasi. Minimum akhir tetap divalidasi Meta; nominal tidak disesuaikan otomatis.` };
 }
 
 export function adSetDailyTotal(snapshot: BudgetSnapshot): string | null {
