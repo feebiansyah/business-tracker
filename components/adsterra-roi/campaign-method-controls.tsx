@@ -39,9 +39,9 @@ export function CampaignMethodControls({ accountId, configId, info, busy }: {
     finally { pending.current = false; setWorking(false); setPreview(null); operation.end(key, true); }
   }
   return <div className="min-w-56 max-w-lg space-y-2 text-xs">
-    <p className="font-medium">Metode aplikasi: {busy ? "Memuat..." : info?.status === "SUCCESS" ? info.method?.placementMethod ?? "Belum ditetapkan" : "Belum tersedia"}</p>
-    <p>Kesiapan: {info && !busy ? labels[info.readiness] : "Belum dapat diverifikasi"}</p>
-    <p className="text-slate-500">{busy ? "Membaca metadata dan daftar API..." : info?.message ?? "Metadata metode belum dimuat."}</p>
+    <p className="font-medium">Metode aplikasi: {busy && !info ? "Belum dibaca" : info?.status === "SUCCESS" ? info.method?.placementMethod ?? "Belum ditetapkan" : "Belum tersedia"}</p>
+    <p>Kesiapan: {info ? labels[info.readiness] : "Belum dapat diverifikasi"}</p>
+    <p className="text-slate-500">{busy && !info ? "Menunggu pembacaan metadata dan daftar API dalam batch." : info?.message ?? "Metadata metode belum dimuat."}</p>
     {info?.readAt && <p className="text-slate-500">Dibaca: {new Date(info.readAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB</p>}
     <div className="flex flex-wrap gap-1"><select aria-label={`Metode aplikasi campaign config ${configId}`} value={kind} disabled={operation.busy || busy} className="h-8 max-w-full rounded border bg-white px-2" onChange={(e) => setKind(e.target.value as ListKind | "")}>
       <option value="">Pilih metode</option><option value="BLACKLIST">Blacklist</option><option value="WHITELIST">Whitelist</option>

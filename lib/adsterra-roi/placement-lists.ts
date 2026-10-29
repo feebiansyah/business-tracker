@@ -1,12 +1,12 @@
 import "server-only";
 
 import { parseShopeeAccountId } from "./config-input";
-import { campaignKey } from "../adsterra-operations/canonical";
+import { campaignKey, digest } from "../adsterra-operations/canonical";
 import { parseCampaignInfo } from "../adsterra-operations/provider";
 import { assessReadiness, listDigest, storedMethod } from "../adsterra-operations/method-state";
 import type { MethodInfo, MethodState } from "../adsterra-operations/types";
 import type { StoredMethodRow } from "../adsterra-operations/method-state";
-import type { CampaignPlacementLists, PlacementListKind, PlacementListRead } from "./placement-list-types";
+import type { PlacementListBatch, PlacementListKind, PlacementListRead } from "./placement-list-types";
 
 type Config = { id: number; shopeeAccountId: number; campaignId: string };
 type Dependencies = {
@@ -70,74 +70,92 @@ async function readList(campaignId: string, kind: PlacementListKind, token: stri
   }
 }
 
-// All jobs in one account read share two workers, not two requests per campaign.
-// The action's signal also prevents late SELECT results scheduling new requests.
+// Each batch revalidates account/config/credential scope and reads whole physical
+// campaigns. 13 * 3 GET = 39 (under the existing 40-request ceiling), two workers.
 export async function loadAdsterraPlacementLists(
   input: unknown, deps: Dependencies, budget: AbortSignal, deadlineAt = Date.now() + 45_000,
-): Promise<CampaignPlacementLists[]> {
-  const accountId = parseShopeeAccountId(input);
-  const configs = await deps.loadConfigs(accountId);
-  if (budget.aborted) throw new Error("BUDGET_EXHAUSTED");
+  continuation: unknown = null,
+): Promise<PlacementListBatch> {
+  const accountId = parseShopeeAccountId(input), configs = await deps.loadConfigs(accountId);
+  budget.throwIfAborted();
   if (configs.some((config) => config.shopeeAccountId !== accountId)) throw new Error("CONFIG_SCOPE_MISMATCH");
-  if (!configs.length) return [];
-  const methods = new Map<string, MethodState>();
-  let storageAvailable = true;
-  try {
-    const rows = await deps.loadMethods([...new Set(configs.map((config) => campaignKey(config.campaignId)))]);
-    for (const config of configs) {
-      const id = campaignKey(config.campaignId);
-      methods.set(id, storedMethod(rows.find((row) => row.campaignId === id) ?? null));
-    }
-  } catch { storageAvailable = false; }
-  if (budget.aborted) throw new Error("BUDGET_EXHAUSTED");
+  const aliases = configs.map((config) => ({ config, id: campaignKey(config.campaignId) }));
+  const physical = [...new Set(aliases.map((alias) => alias.id))].sort((a, b) => Number(a) - Number(b));
   const credential = await deps.loadCredential(accountId);
-  if (budget.aborted) throw new Error("BUDGET_EXHAUSTED");
+  budget.throwIfAborted();
   if (credential && (credential.shopeeAccountId !== accountId || credential.provider !== "ADSTERRA")) throw new Error("CREDENTIAL_SCOPE_MISMATCH");
-  const initial = unavailable(credential ? "Belum dibaca." : "Koneksi Adsterra belum dikonfigurasi.");
-  const results: CampaignPlacementLists[] = configs.map((config) => ({ configId: config.id, campaignId: config.campaignId, blacklist: initial, whitelist: initial,
-    application: { status: storageAvailable ? "SUCCESS" : "UNAVAILABLE", method: methods.get(campaignKey(config.campaignId)) ?? null,
-      readiness: "UNVERIFIABLE", message: storageAvailable ? "Kedua daftar dan capability belum dapat diverifikasi." : "Penyimpanan metode tidak tersedia/gagal dibaca; bukan metode belum ditetapkan.", readAt: new Date().toISOString() } }));
-  if (!credential) return results;
-  const token = deps.decrypt(credential.encryptedSecret);
-  // Leave time for returning independently completed lists before the action's
-  // hard deadline. Never discard successes merely because later jobs timed out.
-  const remainingMs = Math.min(30_000, deadlineAt - Date.now() - 1_000);
-  if (remainingMs <= 0) {
-    const expired = unavailable("Batas waktu pembacaan tercapai. Silakan refresh.");
-    return results.map((result) => ({ ...result, blacklist: expired, whitelist: expired }));
+  // Only a digest leaves the server. No credential or raw database object in DTO.
+  const scope = digest([accountId, aliases.map(({ config, id }) => [config.id, id]).sort((a, b) => Number(a[0]) - Number(b[0])),
+    credential ? digest(credential.encryptedSecret) : null]);
+  let offset = 0;
+  if (continuation !== null && continuation !== undefined) {
+    if (typeof continuation !== "object" || Array.isArray(continuation)) throw new Error("INVALID_CONTINUATION");
+    const cursor = continuation as Record<string, unknown>;
+    if (cursor.scope !== scope || typeof cursor.after !== "string" || campaignKey(cursor.after) !== cursor.after) throw new Error("CONTINUATION_SCOPE_CHANGED");
+    const index = physical.indexOf(cursor.after);
+    if (index < 0) throw new Error("CONTINUATION_SCOPE_CHANGED");
+    offset = index + 1;
   }
-  const providerBudget = AbortSignal.any([budget, AbortSignal.timeout(remainingMs)]);
-  const physical = [...new Map(configs.map((config, index) => [campaignKey(config.campaignId), { config, index }])).values()];
-  const pricing = new Map<string, string>();
-  const jobs = physical.flatMap(({ config, index }) => (["blacklist", "whitelist", "campaign"] as const).map((kind) => ({ config, index, kind })));
-  let cursor = 0;
-  async function worker() {
-    while (cursor < Math.min(40, jobs.length) && !providerBudget.aborted) {
-      const { config, index, kind } = jobs[cursor++];
-      if (!/^[1-9]\d*$/.test(config.campaignId) || !Number.isSafeInteger(Number(config.campaignId))) {
-        if (kind !== "campaign") results[index][kind] = unavailable("Campaign ID pada konfigurasi tidak valid.");
-      } else {
-        if (kind === "campaign") {
-          try {
-            const response = await fetch(`https://api3.adsterratools.com/advertiser/campaign/${campaignKey(config.campaignId)}.json`, {
-              method: "GET", headers: { "X-API-Key": token, Accept: "application/json" }, cache: "no-store", redirect: "error",
-              signal: AbortSignal.any([providerBudget, AbortSignal.timeout(10_000)]),
+  const ids = physical.slice(offset, offset + Math.floor(40 / 3));
+  const methods = new Map<string, MethodState>(), methodErrors = new Map<string, string>();
+  try {
+    const rows = ids.length ? await deps.loadMethods(ids) : [];
+    budget.throwIfAborted();
+    for (const id of ids) {
+      try { methods.set(id, storedMethod(rows.find((row) => row.campaignId === id) ?? null)); }
+      catch { methodErrors.set(id, "Metadata metode tidak valid; bukan metode belum ditetapkan."); }
+    }
+  } catch (error) {
+    const code = error && typeof error === "object" ? "code" in error ? error.code : "errorCode" in error ? error.errorCode : null : null;
+    const message = code === "P2021" ? "Tabel penyimpanan metode belum tersedia. Periksa migrasi lokal."
+      : code === "P2022" ? "Kolom penyimpanan metode belum tersedia. Periksa migrasi lokal."
+      : ["P1000", "P1001", "P1002", "P1017"].includes(String(code)) ? "Koneksi/autentikasi database metode gagal; bukan metode belum ditetapkan."
+      : "Penyimpanan metode belum tersedia/gagal dibaca; bukan metode belum ditetapkan.";
+    for (const id of ids) methodErrors.set(id, message);
+  }
+  budget.throwIfAborted();
+  const initial = unavailable(credential ? "Belum dibaca dalam batch ini." : "Koneksi Adsterra belum dikonfigurasi.");
+  const records = new Map(ids.map((id) => [id, { blacklist: initial, whitelist: initial, pricing: null as string | null }]));
+  let readCount = ids.length;
+  if (credential && ids.length) {
+    const token = deps.decrypt(credential.encryptedSecret);
+    const remainingMs = Math.min(30_000, deadlineAt - Date.now() - 1_000);
+    if (remainingMs <= 0) throw new Error("BATCH_DEADLINE");
+    {
+      const providerBudget = AbortSignal.any([budget, AbortSignal.timeout(remainingMs)]);
+      let nextId = 0;
+      async function worker() {
+        while (nextId < ids.length && !providerBudget.aborted) {
+          const id = ids[nextId++], record = records.get(id)!;
+          record.blacklist = await readList(id, "blacklist", token, providerBudget);
+          record.whitelist = await readList(id, "whitelist", token, providerBudget);
+          const signal = AbortSignal.any([providerBudget, AbortSignal.timeout(10_000)]);
+          if (!signal.aborted) try {
+            const response = await fetch(`https://api3.adsterratools.com/advertiser/campaign/${id}.json`, {
+              method: "GET", headers: { "X-API-Key": token, Accept: "application/json" }, cache: "no-store", redirect: "error", signal,
             });
             if (!response.ok) throw new Error("CAPABILITY_UNAVAILABLE");
-            const info = parseCampaignInfo(await response.json(), campaignKey(config.campaignId));
-            if (!providerBudget.aborted) pricing.set(campaignKey(config.campaignId), info.pricing);
+            const info = parseCampaignInfo(await response.json(), id);
+            signal.throwIfAborted();
+            record.pricing = info.pricing;
           } catch { /* Unknown capability never permits readiness. */ }
-        } else results[index][kind] = await readList(campaignKey(config.campaignId), kind, token, providerBudget);
+        }
       }
+      await Promise.all(Array.from({ length: Math.min(2, ids.length) }, worker));
+      readCount = nextId;
+      if (!readCount) throw new Error("BATCH_DEADLINE");
     }
   }
-  await Promise.all(Array.from({ length: Math.min(2, jobs.length) }, () => worker()));
-  return results.map((result) => {
-    const id = campaignKey(result.campaignId), source = results[physical.find((item) => campaignKey(item.config.campaignId) === id)!.index];
-    const method = methods.get(id);
-    const application: MethodInfo = storageAvailable && method ? { status: "SUCCESS", method,
-      ...assessReadiness(method, { blacklist: source.blacklist.status === "SUCCESS" ? source.blacklist : null,
-        whitelist: source.whitelist.status === "SUCCESS" ? source.whitelist : null }, pricing.get(id) ?? null), readAt: new Date().toISOString() } : result.application;
-    return { ...result, blacklist: source.blacklist, whitelist: source.whitelist, application };
+  const selected = new Set(ids.slice(0, readCount));
+  const lists = aliases.filter(({ id }) => selected.has(id)).map(({ config, id }) => {
+    const record = records.get(id)!, method = methods.get(id), error = methodErrors.get(id);
+    const application: MethodInfo = method && !error ? { status: "SUCCESS", method,
+      ...assessReadiness(method, { blacklist: record.blacklist.status === "SUCCESS" ? record.blacklist : null,
+        whitelist: record.whitelist.status === "SUCCESS" ? record.whitelist : null }, record.pricing), readAt: new Date().toISOString() }
+      : { status: "UNAVAILABLE", method: null, readiness: "UNVERIFIABLE", message: error ?? "Metadata metode belum dapat dibaca.", readAt: new Date().toISOString() };
+    return { configId: config.id, campaignId: config.campaignId, blacklist: record.blacklist, whitelist: record.whitelist, application };
   });
+  const completed = offset + readCount;
+  return { lists, continuation: completed < physical.length ? { after: ids[readCount - 1], scope } : null,
+    progress: { completed, total: physical.length } };
 }

@@ -9,7 +9,7 @@ import { getEncryptedTrafficCredential } from "@/lib/traffic-credentials/reposit
 import { loadAdsterraPlacementLists } from "@/lib/adsterra-roi/placement-lists";
 import type { PlacementListsResult } from "@/lib/adsterra-roi/placement-list-types";
 
-export async function getAdsterraPlacementListsAction(shopeeAccountId: unknown): Promise<PlacementListsResult> {
+export async function getAdsterraPlacementListsAction(shopeeAccountId: unknown, continuation: unknown = null): Promise<PlacementListsResult> {
   const deadlineAt = Date.now() + 45_000;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45_000);
@@ -44,7 +44,7 @@ export async function getAdsterraPlacementListsAction(shopeeAccountId: unknown):
     }
     if (!user) redirect("/login");
     try {
-      const lists = await withinBudget(() => loadAdsterraPlacementLists(shopeeAccountId, {
+      const batch = await withinBudget(() => loadAdsterraPlacementLists(shopeeAccountId, {
         loadConfigs: async (accountId) => {
           const account = await prisma.shopeeAccount.findUnique({ where: { id: accountId }, select: { id: true } });
           controller.signal.throwIfAborted();
@@ -57,11 +57,13 @@ export async function getAdsterraPlacementListsAction(shopeeAccountId: unknown):
           campaignId: true, placementMethod: true, methodVersion: true, methodReady: true, approvedBlacklistHash: true, approvedWhitelistHash: true,
         } }),
         decrypt: decryptTrafficSecret,
-      }, controller.signal, deadlineAt));
-      return { success: true, lists };
-    } catch {
+      }, controller.signal, deadlineAt, continuation));
+      return { success: true, ...batch };
+    } catch (error) {
       return { success: false, message: controller.signal.aborted
         ? "Batas waktu pembacaan daftar API tercapai. Silakan refresh."
+        : error instanceof Error && error.message.startsWith("CONTINUATION_SCOPE_CHANGED")
+          ? "Scope akun/config/credential berubah selama pembacaan. Hasil yang telah dibaca tidak diperbarui otomatis; mulai Refresh Semua yang baru."
         : "Daftar API gagal dimuat. Periksa akun dan koneksi Adsterra." };
     }
   } finally { clearTimeout(timer); }

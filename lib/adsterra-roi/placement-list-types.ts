@@ -13,5 +13,12 @@ export type CampaignPlacementLists = {
 };
 
 export type PlacementListsResult =
-  | { success: true; lists: CampaignPlacementLists[] }
+  | ({ success: true } & PlacementListBatch)
   | { success: false; message: string };
+
+export type PlacementListCursor = { after: string; scope: string };
+export type PlacementListBatch = {
+  lists: CampaignPlacementLists[];
+  continuation: PlacementListCursor | null;
+  progress: { completed: number; total: number };
+};
