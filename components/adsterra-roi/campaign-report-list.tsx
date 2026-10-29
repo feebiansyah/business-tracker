@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { AdsterraCampaignStatusResult } from "@/lib/adsterra-roi/client";
 import { AdsterraCampaignHistoryModal } from "./campaign-history-modal";
 import { PlacementListReadout, useAdsterraPlacementLists } from "./campaign-placement-lists";
+import { useAdsterraOperation } from "./operation-context";
 
 type Campaign = { id: number; campaignId: string; label: string | null; sourceTag: string; autoScheduleEnabled: boolean };
 type StatusState = { campaignStatus: AdsterraCampaignStatusResult | null; error: string | null };
@@ -15,6 +16,7 @@ type PendingToggle = { campaign: Campaign; desiredActive: boolean };
 const statusLabels = { ACTIVE: "Active", INACTIVE: "Inactive", LIMITED: "Limit", NOT_IN_USE: "Not in use" } as const;
 
 export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connected }: { shopeeAccountId: number; campaigns: Campaign[]; connected: boolean }) {
+  const operation = useAdsterraOperation();
   const [selected, setSelected] = useState<Campaign | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusesBusy, setStatusesBusy] = useState(false);
@@ -46,13 +48,15 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
 
   async function sync(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (lock.current) return;
+    if (!operation.begin("daily-sync")) return;
     lock.current = true; setBusy(true); setMessage(""); setError("");
     try { const result = await syncAdsterraDailyAction(shopeeAccountId); if (result.success) setMessage(result.message); else setError(result.message); }
-    finally { lock.current = false; setBusy(false); }
+    finally { lock.current = false; setBusy(false); operation.end("daily-sync"); }
   }
 
   async function toggleCampaign(campaign: Campaign, desiredActive: boolean) {
     if (toggleLocks.current.has(campaign.id)) return false;
+    if (!operation.begin("campaign-toggle")) return false;
     toggleLocks.current.add(campaign.id); setTogglingIds((current) => new Set(current).add(campaign.id)); setMessage(""); setError(""); setConfirmationError("");
     try {
       const result = await setAdsterraCampaignActiveAction(shopeeAccountId, campaign.id, desiredActive);
@@ -60,6 +64,7 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
       if (result.success) { setMessage(`Status ${campaign.label || campaign.campaignId} berhasil diverifikasi: ${statusLabels[result.campaignStatus.status]}.`); return true; }
       setError(result.message); setConfirmationError(result.message); return false;
     } finally {
+      operation.end("campaign-toggle", true);
       toggleLocks.current.delete(campaign.id);
       setTogglingIds((current) => { const next = new Set(current); next.delete(campaign.id); return next; });
     }
@@ -73,6 +78,7 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
 
   async function toggleAutoSchedule(campaign: Campaign, enabled: boolean) {
     if (autoScheduleLocks.current.has(campaign.id)) return;
+    if (!operation.begin("auto-flag")) return;
     autoScheduleLocks.current.add(campaign.id);
     setAutoScheduleBusyIds((current) => new Set(current).add(campaign.id));
     setMessage(""); setError("");
@@ -80,8 +86,9 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
       const result = await setAdsterraAutoScheduleEnabledAction(shopeeAccountId, campaign.id, enabled);
       if (!result.success) { setError(result.message); return; }
       setAutoScheduleByConfig((current) => ({ ...current, [campaign.id]: result.autoScheduleEnabled }));
-      setMessage(`Auto ON/OFF ${campaign.label || campaign.campaignId} ${result.autoScheduleEnabled ? "diaktifkan" : "dinonaktifkan"}.`);
+      setMessage(`Auto ON/OFF ${campaign.label || campaign.campaignId} ${result.autoScheduleEnabled ? "diaktifkan" : "dinonaktifkan"}. ${"warning" in result ? result.warning : ""}`);
     } finally {
+      operation.end("auto-flag", true);
       autoScheduleLocks.current.delete(campaign.id);
       setAutoScheduleBusyIds((current) => { const next = new Set(current); next.delete(campaign.id); return next; });
     }
@@ -89,7 +96,7 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
 
   const confirmationBusy = pendingToggle ? togglingIds.has(pendingToggle.campaign.id) : false;
 
-  return <section className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+  return <section className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"><fieldset disabled={operation.busy} className="min-w-0 space-y-4">
     <div className="flex flex-wrap items-end justify-between gap-3"><div><h3 className="font-semibold text-slate-950">Laporan Harian Adsterra</h3><p className="mt-1 text-sm text-slate-500">Pilih campaign untuk melihat Spend, Komisi, dan Profit harian.</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="ghost" disabled={statusesBusy || !connected || campaigns.length === 0} onClick={() => void refreshStatuses()}>{statusesBusy ? "Memuat Status..." : "Refresh Status"}</Button><form onSubmit={sync}><Button disabled={busy || !connected || campaigns.length === 0}>{busy ? "Menyinkronkan..." : "Sync Adsterra"}</Button></form></div></div>
     {!connected && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Koneksi Adsterra belum dikonfigurasi.</p>}{message && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}{error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-slate-500">Daftar dari API; tidak menunjukkan mode editor website Adsterra.</p><Button type="button" variant="ghost" disabled={placementLists.busy || !connected || campaigns.length === 0} onClick={() => void placementLists.refresh()}>{placementLists.busy ? "Memuat Daftar API..." : "Refresh Daftar API"}</Button></div>
@@ -101,7 +108,7 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
         <td className="px-4 py-3"><PlacementListReadout value={lists?.whitelist} busy={placementLists.busy} connected={connected} error={placementLists.error} /></td>
         <td className="px-4 py-3"><label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600"><input type="checkbox" checked={autoScheduleByConfig[campaign.id] ?? campaign.autoScheduleEnabled} disabled={autoScheduleBusy} onChange={(event) => void toggleAutoSchedule(campaign, event.target.checked)} className="size-4 accent-blue-600" aria-label={`Auto ON/OFF ${campaign.label || campaign.campaignId}`} />{autoScheduleBusy ? "Menyimpan..." : (autoScheduleByConfig[campaign.id] ?? campaign.autoScheduleEnabled) ? "Aktif" : "Nonaktif"}</label></td><td className="px-4 py-3">{(status === "ACTIVE" || status === "INACTIVE" || status === "LIMITED") ? <Button type="button" size="icon" variant={status === "INACTIVE" ? "default" : "destructive"} disabled={toggling || statusesBusy} aria-label={status === "INACTIVE" ? `Aktifkan ${campaign.label || campaign.campaignId}` : `Matikan ${campaign.label || campaign.campaignId}`} title={status === "INACTIVE" ? "Aktifkan campaign" : "Matikan campaign"} onClick={() => { setConfirmationError(""); setPendingToggle({ campaign, desiredActive: status === "INACTIVE" }); }}><Power className="size-4" /></Button> : <span className="text-xs text-slate-500">{status ? "Tidak ada aksi manual" : "—"}</span>}</td></tr>;
     })}{campaigns.length === 0 && <tr><td colSpan={8} className="px-6 py-10 text-center text-slate-500">Belum ada campaign Adsterra.</td></tr>}</tbody></table></div></div>
-    {selected && <AdsterraCampaignHistoryModal shopeeAccountId={shopeeAccountId} configId={selected.id} campaignName={selected.label || selected.campaignId} onClose={() => setSelected(null)} />}
+    </fieldset>{selected && <AdsterraCampaignHistoryModal shopeeAccountId={shopeeAccountId} configId={selected.id} campaignName={selected.label || selected.campaignId} onClose={() => setSelected(null)} />}
     <AlertDialog open={pendingToggle !== null} title={pendingToggle?.desiredActive ? "Aktifkan campaign?" : "Matikan campaign?"} description={pendingToggle ? `Campaign ${pendingToggle.campaign.label || pendingToggle.campaign.campaignId} akan ${pendingToggle.desiredActive ? "diaktifkan" : "dinonaktifkan"} di Adsterra.` : ""} confirmLabel={pendingToggle?.desiredActive ? "Aktifkan" : "Matikan"} destructive={pendingToggle?.desiredActive === false} busy={confirmationBusy} error={confirmationError} onCancel={() => setPendingToggle(null)} onConfirm={confirmToggle} />
   </section>;
 }

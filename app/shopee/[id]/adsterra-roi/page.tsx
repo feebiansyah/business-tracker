@@ -7,6 +7,7 @@ import { AdsterraConfigForm } from "@/components/adsterra-roi/config-form";
 import { AdsterraAnalysisWorkflow } from "@/components/adsterra-roi/analysis-workflow";
 import { AdsterraCampaignReportList } from "@/components/adsterra-roi/campaign-report-list";
 import { AdsterraWorkspaceTabs } from "@/components/adsterra-roi/adsterra-workspace-tabs";
+import { AdsterraProtectiveControls } from "@/components/adsterra-roi/protective-controls";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export default async function AdsterraRoiPage({ params }: { params: Promise<{ id
   return <section className="min-w-0 space-y-6">
     <div><Link href={`/shopee/${data.account.id}`} className="text-sm text-slate-500 hover:text-slate-900">← {data.account.name}</Link><h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Adsterra ROI — {data.account.name}</h2><p className="mt-1 text-sm text-slate-500">Analisa statistik placement Adsterra dan CSV komisi Shopee untuk akun ini.</p></div>
     <AdsterraWorkspaceTabs
+      protection={<AdsterraProtectiveControls accountId={data.account.id} campaigns={data.configs}/>}
       campaign={<AdsterraCampaignReportList shopeeAccountId={data.account.id} campaigns={data.configs} connected={data.connected}/>}
       placement={<AdsterraAnalysisWorkflow shopeeAccountId={data.account.id} shopeeAccountName={data.account.name} configs={data.configs} connected={data.connected}/>}
       settings={<div className="space-y-6">

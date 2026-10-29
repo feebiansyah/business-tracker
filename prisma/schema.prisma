@@ -164,6 +164,34 @@ model AdsterraCampaignScheduleRun {
   @@index([businessDate])
 }
 
+// One durable guard per physical provider campaign, including aliases. No FK or
+// cascading delete: deleting a config/account must not erase unresolved writes.
+model AdsterraCampaignOperation {
+  campaignId              String    @id @db.VarChar(64)
+  operationId             String    @db.Char(36)
+  generation              Int       @default(0)
+  owner                   String    @db.VarChar(64)
+  action                  String    @db.VarChar(32)
+  status                  String    @default("IDLE") @db.VarChar(32)
+  phase                   String    @db.VarChar(32)
+  confirmationHash        String?   @db.Char(64)
+  preconditionHash        String?   @db.Char(64)
+  expiresAt               DateTime?
+  uncertain               Boolean   @default(false)
+  summary                 String?   @db.VarChar(2000)
+  startedAt               DateTime?
+  updatedAt               DateTime  @updatedAt
+  protectiveOffId         String?   @db.Char(36)
+  protectiveOffGeneration Int       @default(0)
+  protectiveOffStatus     String    @default("IDLE") @db.VarChar(32)
+  protectiveOffUncertain  Boolean   @default(false)
+  protectiveOffOwner      String?   @db.VarChar(64)
+  protectiveOffSummary    String?   @db.VarChar(1000)
+  protectiveOffAt         DateTime?
+
+  @@index([status])
+}
+
 model AdsterraCampaignDailyMetric {
   id                        Int                     @id @default(autoincrement())
   date                      DateTime                @db.Date

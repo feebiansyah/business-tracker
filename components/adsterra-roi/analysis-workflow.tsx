@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { analyzeAdsterraRoiAction, deleteAdsterraCustomBidAction, getAdsterraCustomBidsAction, replaceAdsterraBlacklistAction, saveAdsterraCustomBidAction } from "@/app/shopee/[id]/adsterra-roi/actions";
+import { analyzeAdsterraRoiAction, deleteAdsterraCustomBidAction, getAdsterraCustomBidsAction, saveAdsterraCustomBidAction } from "@/app/shopee/[id]/adsterra-roi/actions";
 import { TrafficRoiCandidateList } from "@/components/traffic-roi/candidate-list";
 import { PlacementTable } from "@/components/adsterra-roi/placement-table";
 import type { CustomBidEditorProps } from "@/components/adsterra-roi/custom-bid-editor";
@@ -11,12 +11,15 @@ import type { AdsterraCustomBidsResult, AdsterraRoiAnalysis } from "@/lib/adster
 import { formatIdr, formatPercent, formatUsd } from "@/components/clickadu-roi/view-model";
 import { formatBlacklistReplacementTime } from "../../lib/traffic-roi/replacement-timestamp";
 import { adsterraWhitelistCandidates, type AdsterraAnalysisListKind } from "@/lib/adsterra-roi/whitelist-analysis";
+import { PlacementApplication } from "./placement-application";
+import { useAdsterraOperation } from "./operation-context";
 
 type Result = { dateFrom: string; dateTill: string; fxRate: string; config: AdsterraAnalysisConfig; analysis: AdsterraRoiAnalysis };
 
 export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, configs, connected }: { shopeeAccountId: number; shopeeAccountName: string; configs: AdsterraAnalysisConfig[]; connected: boolean }) {
+  const operation = useAdsterraOperation();
   const [busy, setBusy] = useState(false);
-  const [replacing, setReplacing] = useState(false);
+  const replacing = operation.busy;
   const [writingBid, setWritingBid] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -33,6 +36,7 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
 
   async function analyze(data: FormData) {
     if (analysisInFlight.current || replaceInFlight.current || bidWriteInFlight.current) return;
+    if (!operation.begin("analysis")) return;
     analysisInFlight.current = true;
     setBusy(true); setError(""); setSuccess(""); setResult(null); setCustomBids(null); lastAnalysisForm.current = null;
     try {
@@ -43,7 +47,7 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
         catch { setCustomBids({ success: false, message: "Custom Bid Adsterra gagal dimuat." }); }
       }
       else setError(response.message);
-    } finally { analysisInFlight.current = false; setBusy(false); }
+    } finally { analysisInFlight.current = false; setBusy(false); operation.end("analysis"); }
   }
 
   function submitAnalysis(event: FormEvent<HTMLFormElement>) {
@@ -53,40 +57,16 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
   }
 
   function invalidateAnalysis() {
-    if (analysisInFlight.current || replaceInFlight.current || bidWriteInFlight.current) return;
+    if (operation.isBusy() || analysisInFlight.current || replaceInFlight.current || bidWriteInFlight.current) return;
     setResult(null); setCustomBids(null); setError(""); setSuccess("");
     lastAnalysisForm.current = null;
-  }
-
-  async function replaceBlacklist() {
-    if (listKindRef.current !== "BLACKLIST" || analysisInFlight.current || replaceInFlight.current || bidWriteInFlight.current || !result || !lastAnalysisForm.current) return;
-    if (!window.confirm(`Blacklist campaign Adsterra akan diganti berdasarkan hasil analisis terbaru. Aman jika ROI ≥20% ATAU (ROI >10% DAN CTR >8%). ${result.analysis.candidatePlacements.length} Placement dengan Biaya Iklan minimal Rp1.000 yang tidak memenuhi kedua jalur AMAN tersebut akan dibuat OFF. Semua Custom Bid (seluruh GEO) milik Placement blacklist akan dihapus setelah blacklist diverifikasi, termasuk jika blacklist tidak berubah. Placement yang dibuat ON tidak mendapatkan kembali bid lama. Lanjutkan?`)) return;
-    replaceInFlight.current = true;
-    setReplacing(true); setError(""); setSuccess("");
-    try {
-      const response = await replaceAdsterraBlacklistAction(shopeeAccountId, cloneFormData(lastAnalysisForm.current));
-      if ("customBidReset" in response && response.customBidReset) {
-        if (response.lastBlacklistReplacedAt) setLastBlacklistReplacedAt(response.lastBlacklistReplacedAt);
-        const reset = response.customBidReset;
-        const metadataWarning = response.metadata.status === "FAILED" ? response.metadata.message : "";
-        setCustomBids(reset.bids === null
-          ? { success: false, message: "Custom Bid belum dapat diverifikasi. Muat ulang analisis sebelum mengubah bid." }
-          : { success: true, bids: reset.bids });
-        if (response.customBidReset.status === "PARTIAL") {
-          setError(`Kegagalan parsial: ${reset.message} Placement belum direset/terverifikasi: ${reset.pendingPlacementIds.join(", ") || "periksa daftar aktual di Adsterra"}. ${metadataWarning}`);
-        } else if (metadataWarning) {
-          setError(`Blacklist dan reset Custom Bid sudah diverifikasi. ${metadataWarning}`);
-        } else {
-          setSuccess(`${response.status === "NO_CHANGE" ? "Blacklist sudah sesuai" : "Blacklist berhasil diperbarui dan diverifikasi"}: ${response.finalCount} Placement. ${reset.message}`);
-        }
-      } else setError(response.message ?? "Gagal memperbarui blacklist Adsterra.");
-    } finally { replaceInFlight.current = false; setReplacing(false); }
   }
 
   const saveBid: NonNullable<CustomBidEditorProps["onSave"]> = async (placementId, bidPrice, expectedPrice) => {
     if (!result || !customBids?.success || analysisInFlight.current || replaceInFlight.current || bidWriteInFlight.current) {
       return { success: false, message: "Custom Bid belum siap diperbarui. Coba lagi setelah analisis selesai." };
     }
+    if (!operation.begin("bid-write")) return { success: false, message: "Operasi lain sedang berjalan atau menunggu konfirmasi." };
     bidWriteInFlight.current = true; setWritingBid(true); setError("");
     try {
       const response = await saveAdsterraCustomBidAction(shopeeAccountId, result.config.id, placementId, bidPrice, expectedPrice);
@@ -95,13 +75,14 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
         setSuccess(`Custom Bid Placement ${placementId} berhasil disimpan dan diverifikasi.`);
       }
       return response;
-    } finally { bidWriteInFlight.current = false; setWritingBid(false); }
+    } finally { bidWriteInFlight.current = false; setWritingBid(false); operation.end("bid-write", true); }
   };
 
   const deleteBid: NonNullable<CustomBidEditorProps["onDelete"]> = async (placementId, expectedPrice) => {
     if (!result || !customBids?.success || analysisInFlight.current || replaceInFlight.current || bidWriteInFlight.current) {
       return { success: false, message: "Custom Bid belum siap dihapus. Coba lagi setelah analisis selesai." };
     }
+    if (!operation.begin("bid-write")) return { success: false, message: "Operasi lain sedang berjalan atau menunggu konfirmasi." };
     bidWriteInFlight.current = true; setWritingBid(true); setError("");
     try {
       const response = await deleteAdsterraCustomBidAction(shopeeAccountId, result.config.id, placementId, expectedPrice);
@@ -110,14 +91,14 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
         setSuccess(`Custom Bid ID Placement ${placementId} berhasil dihapus dan diverifikasi.`);
       }
       return response;
-    } finally { bidWriteInFlight.current = false; setWritingBid(false); }
+    } finally { bidWriteInFlight.current = false; setWritingBid(false); operation.end("bid-write", true); }
   };
 
   return <section className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
     <div><h3 className="font-semibold">Analisa Adsterra ROI</h3><p className="text-sm text-slate-500">Statistik Placement Adsterra dipadankan dengan Tag_link3 Shopee. Blacklist hanya berubah setelah konfirmasi eksplisit.</p></div>
     <div className="space-y-1"><label className="inline-flex flex-wrap items-center gap-2 text-sm font-medium">Jenis daftar analisis<select aria-label="Jenis daftar analisis" value={listKind} disabled={busy || replacing || writingBid} className="h-9 rounded-lg border bg-white px-3" onChange={(event) => {
       const next = event.target.value;
-      if ((next !== "BLACKLIST" && next !== "WHITELIST") || analysisInFlight.current || replaceInFlight.current || bidWriteInFlight.current) return;
+      if ((next !== "BLACKLIST" && next !== "WHITELIST") || operation.isBusy() || analysisInFlight.current || replaceInFlight.current || bidWriteInFlight.current) return;
       listKindRef.current = next; setListKind(next); setError(""); setSuccess("");
     }}><option value="BLACKLIST">Blacklist</option><option value="WHITELIST">Whitelist</option></select></label><p className="text-xs text-slate-500">Pilihan ini hanya menentukan kandidat analisis di aplikasi, bukan mode aktual editor atau daftar yang sedang diterapkan di Adsterra.</p></div>
     {!connected && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Koneksi Adsterra belum dikonfigurasi.</p>}
@@ -139,10 +120,11 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
           : <p className="mt-1">Kandidat Whitelist wajib Biaya Iklan ≥ Rp1.000 DAN (ROI ≥20% ATAU (ROI &gt;10% DAN CTR &gt;8%)). Batas biaya wajib untuk kedua jalur. CTR dihitung dari klik / impresi × 100; impresi nol membuat CTR tidak tersedia, tetapi ROI ≥20% tetap dapat memenuhi syarat. Biaya belum cukup, ROI null, serta data invalid/unknown tidak otomatis menjadi kandidat.</p>}
         <p className="mt-1 font-medium">Status tabel adalah hasil analisis periode ini, bukan status placement yang sedang diterapkan di provider.</p>
       </div>
-      <AnalysisResult key={analysisVersion} result={result} listKind={listKind} shopeeName={shopeeAccountName} lastBlacklistReplacedAt={lastBlacklistReplacedAt} customBids={customBids} onSaveBid={saveBid} onDeleteBid={deleteBid} writingBid={writingBid}/>
-      {listKind === "BLACKLIST"
-        ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-sm text-slate-700">Replace menghitung ulang analisis di server, mengganti blacklist secara penuh, dan memverifikasi daftar final secara exact.</p><Button type="button" variant="destructive" className="mt-3" disabled={busy || replacing || writingBid} onClick={replaceBlacklist}>{replacing ? "Memperbarui blacklist..." : "Replace Blacklist Adsterra"}</Button></div>
-        : <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-slate-700">Whitelist tahap ini hanya analisis dan salin ID. Tidak ada Replace Whitelist, reset, atau pergantian mode provider. Kandidat kosong tidak mengosongkan daftar provider.</p>}
+      <AnalysisResult key={analysisVersion} result={result} listKind={listKind} shopeeName={shopeeAccountName} lastBlacklistReplacedAt={lastBlacklistReplacedAt} customBids={customBids} onSaveBid={saveBid} onDeleteBid={deleteBid} writingBid={writingBid || replacing}/>
+      <PlacementApplication key={`${analysisVersion}:${listKind}`} accountId={shopeeAccountId} configId={result.config.id} kind={listKind} candidateCount={listKind === "BLACKLIST" ? result.analysis.candidatePlacements.length : adsterraWhitelistCandidates(result.analysis.rows).length} getData={() => lastAnalysisForm.current ? cloneFormData(lastAnalysisForm.current) : null} onResult={(response) => {
+        if (response.lastBlacklistReplacedAt) setLastBlacklistReplacedAt(response.lastBlacklistReplacedAt);
+        setCustomBids(response.actual && ["VERIFIED", "NO_CHANGE"].includes(response.status) ? { success: true, bids: response.actual.bids } : { success: false, message: "Hasil operasi belum pasti/lengkap; periksa pemulihan sebelum write Custom Bid." });
+      }}/>
     </>}
   </section>;
 }

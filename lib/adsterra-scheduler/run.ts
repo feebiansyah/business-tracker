@@ -15,7 +15,7 @@ export type AdsterraSchedulerDependencies<Client> = {
   loadCredential(shopeeAccountId: number): Promise<string | null>;
   createClient(encryptedSecret: string, shopeeAccountId: number): Client | Promise<Client>;
   getCampaignStatus(client: Client, campaignId: string): Promise<AdsterraCampaignStatusResult>;
-  setAndVerify(client: Client, campaignId: string, desiredActive: boolean): Promise<VerifiedResult>;
+  setAndVerify(client: Client, campaignId: string, desiredActive: boolean, config?: EnabledConfig): Promise<VerifiedResult>;
 };
 
 type Detail = { configId: number; campaignId: string; status: AdsterraScheduleTerminalStatus; actualStatus?: string; errorMessage?: string };
@@ -84,7 +84,7 @@ async function processCampaign<Client>(action: AdsterraScheduledAction, config: 
       await finish(config, runId, "FAILED", current.status, "Campaign Adsterra berstatus Not in use.", deps, details);
       return;
     }
-    const result = await deps.setAndVerify(client, config.campaignId, action === "ON");
+    const result = await deps.setAndVerify(client, config.campaignId, action === "ON", config);
     if (!result.verified || result.actual.status !== desiredStatus) {
       await finish(config, runId, "FAILED", result.actual.status, "Status campaign Adsterra tidak terverifikasi.", deps, details);
       return;

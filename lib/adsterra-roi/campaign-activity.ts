@@ -1,4 +1,4 @@
-import { AdsterraAmbiguousWriteError, type AdsterraCampaignStatusResult } from "./client.ts";
+import type { AdsterraCampaignStatusResult } from "./client.ts";
 
 type CampaignActivityClient = {
   setCampaignActive(campaignId: string, active: boolean): Promise<void>;
@@ -18,8 +18,8 @@ export async function setAndVerifyAdsterraCampaignActive(
   let writeWasAmbiguous = false;
   try {
     await client.setCampaignActive(campaignId, desiredActive);
-  } catch (error) {
-    if (!(error instanceof AdsterraAmbiguousWriteError)) throw error;
+  } catch {
+    // Even 4xx may have partial effects; verify actual status, never retry PATCH.
     writeWasAmbiguous = true;
   }
 

@@ -3,20 +3,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAdsterraPlacementListsAction } from "@/app/shopee/[id]/adsterra-roi/placement-list-actions";
 import type { CampaignPlacementLists, PlacementListRead, PlacementListsResult } from "@/lib/adsterra-roi/placement-list-types";
+import { useAdsterraOperation } from "./operation-context";
 
 export function useAdsterraPlacementLists(shopeeAccountId: number, enabled: boolean) {
+  const { revision } = useAdsterraOperation();
   const [busy, setBusy] = useState(false);
   const [snapshot, setSnapshot] = useState<{ accountId: number; lists: CampaignPlacementLists[]; error: string | null } | null>(null);
   const sequence = useRef(0);
-  const inFlight = useRef<{ accountId: number; promise: Promise<PlacementListsResult> } | null>(null);
+  const inFlight = useRef<{ accountId: number; revision: number; promise: Promise<PlacementListsResult> } | null>(null);
   const refresh = useCallback(async () => {
     if (!enabled) return;
     const request = ++sequence.current;
     setBusy(true);
     // Share the pending read across repeated clicks/Strict Mode effect replay.
-    const promise = inFlight.current?.accountId === shopeeAccountId ? inFlight.current.promise
+    const promise = inFlight.current?.accountId === shopeeAccountId && inFlight.current.revision === revision ? inFlight.current.promise
       : getAdsterraPlacementListsAction(shopeeAccountId);
-    inFlight.current = { accountId: shopeeAccountId, promise };
+    inFlight.current = { accountId: shopeeAccountId, revision, promise };
     try {
       const result = await promise;
       if (sequence.current !== request) return;
@@ -27,7 +29,7 @@ export function useAdsterraPlacementLists(shopeeAccountId: number, enabled: bool
       if (inFlight.current?.promise === promise) inFlight.current = null;
       if (sequence.current === request) setBusy(false);
     }
-  }, [enabled, shopeeAccountId]);
+  }, [enabled, shopeeAccountId, revision]);
   useEffect(() => {
     let disposed = false;
     const requests = sequence;

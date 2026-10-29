@@ -1,5 +1,4 @@
 import Decimal from "decimal.js";
-import { AdsterraAmbiguousWriteError } from "./client.ts";
 import { parseAdsterraConfigId, parseShopeeAccountId } from "./config-input.ts";
 import type { AdsterraCustomBid } from "./types.ts";
 import { resetBlacklistedCustomBids } from "./blacklist.ts";
@@ -147,8 +146,8 @@ export async function writeAdsterraPlacementCustomBid(input: CustomBidWriteInput
       // PATCH is update-only; if removed concurrently, fail rather than fall back to POST.
       await client.updateCustomBids(config.campaignId, [updatedBid]);
     }
-  } catch (error) {
-    if (!creating && !(error instanceof AdsterraAmbiguousWriteError)) throw error;
+  } catch {
+    // Every sent write, including 4xx, is followed by GET; no blind retry.
     ambiguous = true;
   }
 
