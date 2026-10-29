@@ -4,6 +4,7 @@ import { signConfirmation, verifyConfirmation } from "./confirmation";
 import { applyPlacementPlan, preconditionHash } from "./application";
 import { OperationError, type ApplicationResult, type Confirmation, type ListKind, type MethodState, type Preview } from "./types";
 import type { Fence } from "./repository";
+import { diagnosticSummary } from "./diagnostics";
 
 type Context = Awaited<ReturnType<typeof operationContext>>;
 export async function prepareApplication(ctx: Context, owner: string, data: FormData, kind: ListKind): Promise<Preview> {
@@ -47,6 +48,7 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
   } catch {
     result = { status: ctx.provider.sent ? "UNVERIFIED" : "RECONFIRM_REQUIRED", phase: "PREFLIGHT", message: "Preflight gagal/timeout. Konfirmasi tidak dapat dipakai ulang. Periksa keadaan operasi sebelum melanjutkan.", actual: null, writeWarnings: [], metadata: "NOT_REQUIRED" };
   }
+  result.diagnostics = [...ctx.provider.diagnostics]; result.writes = ctx.provider.sent;
   if (ctx.provider.notDispatchedStatus) {
     return { ...result, status: ctx.provider.notDispatchedStatus, phase: "NOT_DISPATCHED", metadata: "NOT_REQUIRED",
       message: ctx.provider.notDispatchedStatus === "PARTIAL"
@@ -60,7 +62,7 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
       return result; // readiness + timestamp + guard were committed atomically
     } catch { result.metadata = "FAILED"; result.status = "PARTIAL"; result.message += " Finalisasi metadata/kesiapan gagal atau belum pasti; hasil provider tetap ditampilkan. Jangan ulangi write untuk memperbaiki metadata."; }
   }
-  try { result.status = await ctx.store.finish(fence, result.status, JSON.stringify({ status: result.status, phase: result.phase, metadata: result.metadata, writes: ctx.provider.sent })) as ApplicationResult["status"]; }
+  try { result.status = await ctx.store.finish(fence, result.status, diagnosticSummary(result, ctx.provider.sent)) as ApplicationResult["status"]; }
   catch { result.metadata = "FAILED"; if (!["PARTIAL", "UNVERIFIED"].includes(result.status)) result.status = "UNVERIFIED"; result.message += " Pencatatan hasil operasi gagal; guard mungkin tetap RUNNING. Jangan retry provider."; }
   return result;
 }

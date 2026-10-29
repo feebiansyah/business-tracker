@@ -4,6 +4,7 @@ import { preconditionHash } from "./application";
 import { planMethod, type MethodPreview } from "./method-plan";
 import { signConfirmation, verifyConfirmation } from "./confirmation";
 import { OperationError, type ApplicationResult, type Confirmation, type ListKind } from "./types";
+import { diagnosticSummary } from "./diagnostics";
 
 type Context = Awaited<ReturnType<typeof operationContext>>;
 export async function prepareMethod(ctx: Context, owner: string, kind: ListKind): Promise<MethodPreview> {
@@ -71,7 +72,8 @@ export async function executeMethod(ctx: Context, owner: string, token: unknown)
     result.message = "Pembacaan/prasyarat/guard/timeout menghalangi penyelesaian. Kesiapan tidak dipulihkan otomatis; tidak ada retry write.";
   }
   result.writeWarnings.push(...ctx.provider.warnings);
-  try { result.status = await ctx.store.finish(fence, result.status, JSON.stringify({ status: result.status, phase: result.phase, method: signed.kind, writes: ctx.provider.sent })) as ApplicationResult["status"]; }
+  result.diagnostics = [...ctx.provider.diagnostics]; result.writes = ctx.provider.sent;
+  try { result.status = await ctx.store.finish(fence, result.status, diagnosticSummary(result, ctx.provider.sent)) as ApplicationResult["status"]; }
   catch { result.metadata = "FAILED"; result.status = "UNVERIFIED"; result.message += " Pencatatan hasil juga belum pasti; operasi mungkin tetap terkunci."; }
   return result;
 }

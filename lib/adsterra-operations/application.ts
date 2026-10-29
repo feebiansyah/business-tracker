@@ -6,6 +6,7 @@ import { OperationError, type ApplicationPlan, type ApplicationResult, type List
 import type { OperationBudget } from "./budget";
 import type { PlacementProvider } from "./provider";
 import { capabilityError } from "./method-state";
+import { diagnosticText, type OperationDiagnostic } from "./diagnostics";
 
 export function bidDigest(bids: Snapshot["bids"]) {
   return digest([...bids].sort((a, b) => `${a.placementId}:${a.countryCode}`.localeCompare(`${b.placementId}:${b.countryCode}`)));
@@ -41,9 +42,14 @@ export async function applyPlacementPlan(plan: ApplicationPlan, provider: Placem
   let phase = "PREFLIGHT";
   let actual: ApplicationResult["actual"] = null;
   const warnings: string[] = [];
-  const result = (status: ApplicationResult["status"], message: string): ApplicationResult => ({
-    status, phase, message, actual, writeWarnings: [...provider.warnings, ...warnings], metadata: "NOT_REQUIRED",
-  });
+  const result = (status: ApplicationResult["status"], message: string): ApplicationResult => {
+    if (status === "PARTIAL" && (phase === "VERIFY_LISTS" || phase === "FINAL_VERIFICATION")) provider.recordDiagnostic({
+      stage: phase, kind: "VERIFICATION_MISMATCH", httpStatus: null, reasons: ["GET does not match confirmed state"],
+    });
+    const diagnostics = [...provider.diagnostics];
+    return { status, phase, message, actual, writeWarnings: [...provider.warnings, ...warnings, ...diagnostics.map(diagnosticText)],
+      metadata: "NOT_REQUIRED", diagnostics, writes: provider.sent };
+  };
   const desiredLists = (s: Snapshot) => exactSet(s.blacklist, plan.kind === "BLACKLIST" ? plan.target : [])
     && exactSet(s.whitelist, plan.kind === "WHITELIST" ? plan.target : []);
   const view = (s: Snapshot) => { actual = { blacklist: s.blacklist, whitelist: s.whitelist, bids: s.bids }; };
@@ -88,6 +94,7 @@ export async function applyPlacementPlan(plan: ApplicationPlan, provider: Placem
       ? `Kedua daftar dan dampak Custom Bid sudah diverifikasi. Ini bukan deteksi mode editor.${plan.kind === "BLACKLIST" && !plan.target.length ? " Blacklist API kosong: tidak ada placement yang dikecualikan." : ""}`
       : "Kedua daftar dan Custom Bid sudah sesuai; tidak ada mutasi provider.");
   } catch {
+    provider.recordDiagnostic({ stage: phase as OperationDiagnostic["stage"], kind: "OPERATION_INTERRUPTED", httpStatus: null, reasons: ["Operation interrupted"] });
     return result(provider.ambiguous ? "UNVERIFIED" : provider.sent ? "PARTIAL" : "RECONFIRM_REQUIRED",
       "Operasi dihentikan karena timeout, guard, atau verifikasi gagal. Hasil yang sempat dibaca bukan jaminan keadaan akhir; write tidak diulang.");
   }

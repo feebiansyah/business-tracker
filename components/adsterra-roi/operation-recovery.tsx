@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { prepareAdsterraOperationRecovery, confirmAdsterraOperationRecovery } from "@/app/shopee/[id]/adsterra-roi/placement-application-actions";
 import { useAdsterraOperation } from "./operation-context";
 import { OperationDialog, OperationNotice } from "./operation-dialog";
+import { OperationDiagnostics } from "./operation-diagnostics";
 type Preview = Extract<Awaited<ReturnType<typeof prepareAdsterraOperationRecovery>>, { success: true }>["preview"];
 
 /** Recovery is available even with an unset method, failed first setup, or no CSV. */
@@ -39,6 +40,7 @@ export function AdsterraOperationRecovery({ accountId, campaigns }: {
     <OperationNotice message={message}/>
   </details>{preview && <OperationDialog title="Konfirmasi pemulihan operasi" busy={busy} onClose={() => { setPreview(null); operation.end(key); }}>
       <p className="font-medium">Campaign {preview.campaignId}: {preview.status} / {preview.phase}; protective OFF: {preview.protectiveOffStatus}.</p><p>{preview.message}</p>
+      <OperationDiagnostics origin={preview.origin}/>
       <p>Blacklist API: {preview.blacklist.length} · Whitelist API: {preview.whitelist.length} · Custom Bid: {preview.bidCount} override.</p>
       {preview.blockers.map((reason) => <p key={reason} role="alert" className="text-red-700">{reason}</p>)}
       <div className="flex flex-wrap gap-2"><Button type="button" variant="ghost" disabled={busy} onClick={() => { setPreview(null); operation.end(key); }}>Tutup</Button><Button type="button" disabled={busy || !preview.token} onClick={() => void confirm()}>Konfirmasi Pengakuan Snapshot</Button></div>

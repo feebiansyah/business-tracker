@@ -3,6 +3,7 @@ import { digest } from "./canonical";
 import { bidDigest } from "./application";
 import { signConfirmation, verifyConfirmation } from "./confirmation";
 import { OperationError, type Confirmation } from "./types";
+import { readDiagnostics } from "./diagnostics";
 
 type Context = Awaited<ReturnType<typeof operationContext>>;
 export async function recoveryPreview(ctx: Context, owner: string) {
@@ -19,6 +20,7 @@ export async function recoveryPreview(ctx: Context, owner: string) {
     rules: "ROI20_OR_10_CTR8_SPEND1000_V1", expiresAt };
   return { token: blockers.length ? "" : signConfirmation(signed), expiresAt: new Date(expiresAt).toISOString(),
     campaignId: ctx.scope.campaignId, status: row.status, phase: row.phase, protectiveOffStatus: row.protectiveOffStatus,
+    origin: readDiagnostics(row.summary),
     blockers, blacklist: snapshot.blacklist, whitelist: snapshot.whitelist, bidCount: snapshot.bids.length,
     message: "Pemulihan mengakui snapshot, mengganti generation/versi dan menonaktifkan kesiapan. Tidak menetapkan metode atau menyelesaikan pergantian; konfirmasi baru diperlukan. Tidak mengulang write/memulihkan bid atau membuktikan request lama berhenti." };
 }

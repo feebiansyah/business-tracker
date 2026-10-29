@@ -1,5 +1,39 @@
 import { OperationError } from "./types";
 
+export class ProviderResponseReadError extends OperationError {
+  constructor(readonly httpStatus: number, message = "Pembacaan respons API gagal/timeout; hasil belum dapat diverifikasi.") { super(message); }
+}
+export class ProviderBodyLimitError extends ProviderResponseReadError {
+  constructor(httpStatus: number) { super(httpStatus, "Ukuran respons API melewati batas; hasil belum dapat diverifikasi."); }
+}
+
+async function boundedBody(response: Response, signal: AbortSignal) {
+  if (!response.body) return "";
+  const limit = response.ok ? 8 * 1024 * 1024 : 16 * 1024;
+  const reader = response.body.getReader(), decoder = new TextDecoder();
+  let size = 0, body = "", aborted: (() => void) | undefined;
+  const abort = new Promise<never>((_, reject) => {
+    aborted = () => reject(new OperationError("Pembacaan respons API melewati batas waktu."));
+    signal.addEventListener("abort", aborted, { once: true });
+    if (signal.aborted) aborted();
+  });
+  try {
+    for (;;) {
+      const { value, done } = await Promise.race([reader.read(), abort]);
+      if (done) return body + decoder.decode();
+      size += value.byteLength;
+      if (size > limit) throw new ProviderBodyLimitError(response.status);
+      body += decoder.decode(value, { stream: true });
+    }
+  } catch (error) {
+    throw error instanceof ProviderResponseReadError ? error : new ProviderResponseReadError(response.status);
+  } finally {
+    if (aborted) signal.removeEventListener("abort", aborted);
+    // Cancellation is best effort; never wait beyond the original request budget.
+    void reader.cancel().catch(() => {});
+  }
+}
+
 /** A wait timeout stops THIS continuation, not the underlying database query. */
 export class OperationBudget {
   readonly deadline: number;
@@ -35,7 +69,7 @@ export class OperationBudget {
     try {
       // Consume the body inside the same timeout, never an unbounded response.json.
       const response = await fetcher(input, { ...init, signal: controller.signal, cache: "no-store", redirect: "error" });
-      const body = await response.text();
+      const body = await boundedBody(response, controller.signal);
       this.check();
       return new Response(body || null, { status: response.status, headers: response.headers });
     } finally { clearTimeout(timer); }

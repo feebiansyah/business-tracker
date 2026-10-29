@@ -2,6 +2,8 @@ import { AdsterraClient } from "../adsterra-roi/client";
 import { campaignKey, sortedIds } from "./canonical";
 import { OperationError, type ListKind, type Snapshot } from "./types";
 import type { OperationBudget } from "./budget";
+import { ProviderBodyLimitError, ProviderResponseReadError } from "./budget";
+import { diagnosticStage, diagnosticText, providerReasons, type OperationDiagnostic } from "./diagnostics";
 import { MarkerPersistenceUncertain, type CampaignOperationStore, type Fence, type WriteMarker } from "./repository";
 
 const base = "https://api3.adsterratools.com/advertiser";
@@ -33,6 +35,10 @@ export class PlacementProvider {
   ambiguous = false;
   notDispatchedStatus: "PARTIAL" | "RECONFIRM_REQUIRED" | null = null;
   readonly warnings: string[] = [];
+  readonly diagnostics: OperationDiagnostic[] = [];
+  recordDiagnostic(entry: OperationDiagnostic) {
+    if (this.diagnostics.length < 4 && !this.diagnostics.some((e) => JSON.stringify(e) === JSON.stringify(entry))) this.diagnostics.push(entry);
+  }
   beforeMutation?: () => Promise<void>;
   constructor(private readonly token: string, private readonly campaignId: string, private readonly budget: OperationBudget,
     private readonly store: CampaignOperationStore, private readonly fetcher: typeof fetch = fetch) {
@@ -43,6 +49,7 @@ export class PlacementProvider {
     const url = new URL(String(input));
     if (url.origin !== "https://api3.adsterratools.com" || !url.pathname.startsWith("/advertiser/")) throw new OperationError("Endpoint Adsterra tidak diizinkan.");
     const write = init.method !== undefined && init.method !== "GET";
+    const stage = diagnosticStage(url.pathname, init.method ?? "GET");
     let marker: WriteMarker | undefined;
     let dispatched = false;
     let response: Response;
@@ -69,6 +76,9 @@ export class PlacementProvider {
         return this.fetcher(request, options);
       });
     } catch (error) {
+      if (dispatched || !write) this.recordDiagnostic({ stage, kind: error instanceof ProviderBodyLimitError ? "BODY_LIMIT" : "REQUEST_INCOMPLETE",
+        httpStatus: error instanceof ProviderResponseReadError ? error.httpStatus : null,
+        reasons: [error instanceof ProviderBodyLimitError ? "Response body limit exceeded" : "Request did not complete"] });
       if (write && dispatched) {
         this.ambiguous = true;
         throw new OperationError("Request write terkirim/belum pasti; tidak diulang otomatis.");
@@ -82,21 +92,33 @@ export class PlacementProvider {
       }
       throw error instanceof OperationError ? error : new OperationError(write ? "Validasi sebelum dispatch gagal; write tidak dikirim." : "GET Adsterra gagal/timeout.");
     }
+    if (!response.ok) {
+      let body: unknown;
+      try { body = JSON.parse(await response.clone().text()); } catch { /* Never expose raw/invalid error bodies. */ }
+      this.recordDiagnostic({ stage, kind: "HTTP_ERROR", httpStatus: response.status, reasons: providerReasons(body) });
+    }
     if (write) {
       // A response arrived. A 4xx still needs GET verification of partial effects.
       await this.store.acknowledged(this.fence!);
-      if (!response.ok) this.warnings.push(`Write menerima HTTP ${response.status}; hasil dinilai melalui GET, bukan asumsi sukses/gagal.`);
+      if (!response.ok) this.warnings.push(`${diagnosticText({ stage, kind: "HTTP_ERROR", httpStatus: response.status, reasons: this.diagnostics.find((e) => e.stage === stage && e.httpStatus === response.status)?.reasons ?? ["Provider reason unavailable"] })}. Hasil dinilai melalui GET, tanpa retry write.`);
     }
     return response;
   };
-  private async call(path: string, method = "GET", payload?: object) {
+  private async call<T = unknown>(path: string, method = "GET", payload?: object, parse?: (body: unknown) => T): Promise<T> {
     const response = await this.transport(`${base}${path}`, { method, headers: { "X-API-Key": this.token, Accept: "application/json", ...(payload ? { "Content-Type": "application/json" } : {}) }, body: payload ? JSON.stringify(payload) : undefined });
     if (!response.ok) throw new OperationError(`API Adsterra HTTP ${response.status}.`);
-    if (response.status === 204) throw new OperationError("API tidak mengembalikan bukti daftar; bukan daftar kosong.");
-    try { return await response.json() as unknown; } catch { throw new OperationError("Respons API Adsterra tidak valid."); }
+    try {
+      if (response.status === 204) throw new OperationError("API tidak mengembalikan bukti daftar; bukan daftar kosong.");
+      const body: unknown = await response.json();
+      return parse ? parse(body) : body as T;
+    } catch (error) {
+      this.recordDiagnostic({ stage: diagnosticStage(path, method), kind: "INVALID_RESPONSE", httpStatus: response.status, reasons: ["Invalid API response"] });
+      if (error instanceof OperationError) throw error;
+      throw new OperationError("Respons API Adsterra tidak valid; bukan bukti daftar kosong.");
+    }
   }
   async campaign(): Promise<Snapshot["campaign"]> {
-    return parseCampaignInfo(await this.call(`/campaign/${this.campaignId}.json`), this.campaignId);
+    return this.call(`/campaign/${this.campaignId}.json`, "GET", undefined, (body) => parseCampaignInfo(body, this.campaignId));
   }
   bidClient() {
     const scoped = (id: string) => { if (campaignKey(id) !== this.campaignId) throw new OperationError("Scope write Custom Bid berbeda dari guard."); return this.campaignId; };
@@ -113,7 +135,7 @@ export class PlacementProvider {
       deleteCustomBids: (id: string, bids: Parameters<AdsterraClient["deleteCustomBids"]>[1]) => this.legacy.deleteCustomBids(scoped(id), bids),
     };
   }
-  async list(kind: ListKind) { return parsePlacementList(await this.call(`/campaign/${this.campaignId}/linking/${kind.toLowerCase()}.json`), kind); }
+  async list(kind: ListKind) { return this.call(`/campaign/${this.campaignId}/linking/${kind.toLowerCase()}.json`, "GET", undefined, (body) => parsePlacementList(body, kind)); }
   async clear(kind: ListKind) {
     const data = kind === "BLACKLIST"
       ? await this.call("/linking/blacklist/clean.json", "POST", { campaign_id: Number(this.campaignId) })
@@ -124,7 +146,6 @@ export class PlacementProvider {
       || !Array.isArray((data as Record<string, unknown>).unprocessedPairs)) throw new OperationError("Respons clear blacklist belum valid; periksa GET.");
   }
   async put(kind: ListKind, ids: string[]) {
-    const data = await this.call(`/linking/${kind.toLowerCase()}.json`, "PUT", { campaign_id: Number(this.campaignId), placement_ids: ids.map((id) => /^\d+$/.test(id) ? Number(id) : id) });
-    parsePlacementList(data, kind); // GET of BOTH lists is still mandatory
+    await this.call(`/linking/${kind.toLowerCase()}.json`, "PUT", { campaign_id: Number(this.campaignId), placement_ids: ids.map((id) => /^\d+$/.test(id) ? Number(id) : id) }, (body) => parsePlacementList(body, kind)); // GET of BOTH lists is still mandatory
   }
 }

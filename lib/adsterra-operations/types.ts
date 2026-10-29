@@ -1,4 +1,5 @@
 import type { AdsterraCustomBid } from "../adsterra-roi/types";
+import type { OperationDiagnostic } from "./diagnostics";
 
 export type ListKind = "BLACKLIST" | "WHITELIST";
 export type MethodState = {
@@ -41,5 +42,7 @@ export type ApplicationResult = {
   actual: { blacklist: string[]; whitelist: string[]; bids: AdsterraCustomBid[] } | null;
   metadata: "RECORDED" | "FAILED" | "NOT_REQUIRED";
   lastBlacklistReplacedAt?: string | null;
+  diagnostics?: OperationDiagnostic[];
+  writes?: number;
 };
 export class OperationError extends Error { constructor(message: string) { super(message); this.name = "OperationError"; } }

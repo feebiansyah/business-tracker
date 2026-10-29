@@ -5,6 +5,7 @@ import { cancelAdsterraPlacementApplication, confirmAdsterraOperationRecovery, e
 import type { ApplicationResult, ListKind, Preview } from "@/lib/adsterra-operations/types";
 import { useAdsterraOperation } from "./operation-context";
 import { MethodBadge, OperationDialog, OperationNotice } from "./operation-dialog";
+import { OperationDiagnostics } from "./operation-diagnostics";
 
 type Recovery = Extract<Awaited<ReturnType<typeof prepareAdsterraOperationRecovery>>, { success: true }>["preview"];
 const key = "placement-application";
@@ -83,6 +84,7 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
     </div>}
     {recovery && <div className="space-y-2">
       <p className="font-semibold">Campaign {recovery.campaignId}: {recovery.status} / {recovery.phase}; protective OFF: {recovery.protectiveOffStatus}</p>
+      <OperationDiagnostics origin={recovery.origin}/>
       <p>{recovery.message}</p><Ids label="Blacklist API aktual" ids={recovery.blacklist}/><Ids label="Whitelist API aktual" ids={recovery.whitelist}/><p>{recovery.bidCount} override Custom Bid aktual.</p>
       {recovery.blockers.map((reason) => <p key={reason} role="alert" className="text-red-700">{reason}</p>)}
     </div>}

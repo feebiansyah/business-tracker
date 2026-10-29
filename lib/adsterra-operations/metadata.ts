@@ -5,6 +5,7 @@ import type { ApplicationResult, MethodState, Scope } from "./types";
 import { OperationError } from "./types";
 import { campaignKey } from "./canonical";
 import { listDigest } from "./method-state";
+import { diagnosticSummary } from "./diagnostics";
 
 /** Short DB-only transaction: lock the same fence used by recovery/config edits. */
 export async function finalizeAdsterraApplication(db: Pick<PrismaClient, "$transaction">,
@@ -38,7 +39,7 @@ export async function finalizeAdsterraApplication(db: Pick<PrismaClient, "$trans
       campaignId: fence.campaignId, operationId: fence.operationId, generation: fence.generation,
       status: "RUNNING", uncertain: false, ...method,
     }, data: { methodReady: true, approvedBlacklistHash: listDigest(actual.blacklist), approvedWhitelistHash: listDigest(actual.whitelist),
-      status: result.status, phase: "FINISHED", summary: "Kedua daftar dan dampak bid terverifikasi; kesiapan diterbitkan atomik dengan metadata." } });
+      status: result.status, phase: "FINISHED", summary: diagnosticSummary({ ...result, metadata: "RECORDED" }, result.writes ?? 0) } });
     if (finished.count !== 1) throw new OperationError("Fencing finalisasi berubah; kesiapan dan metadata tidak dicatat.");
     budget.check();
   }, { isolationLevel: "Serializable", maxWait: Math.min(5000, budget.remaining()), timeout: Math.min(5000, budget.remaining()) }));
