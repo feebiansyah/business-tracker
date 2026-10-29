@@ -17,6 +17,7 @@ const statusLabels = { ACTIVE: "Active", INACTIVE: "Inactive", LIMITED: "Limit",
 
 export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connected }: { shopeeAccountId: number; campaigns: Campaign[]; connected: boolean }) {
   const operation = useAdsterraOperation();
+  const { revision, readRevision } = operation;
   const [selected, setSelected] = useState<Campaign | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusesBusy, setStatusesBusy] = useState(false);
@@ -29,22 +30,32 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const lock = useRef(false);
-  const statusLock = useRef(false);
+  const statusSequence = useRef(0);
   const toggleLocks = useRef(new Set<number>());
   const autoScheduleLocks = useRef(new Set<number>());
   const placementLists = useAdsterraPlacementLists(shopeeAccountId, connected && campaigns.length > 0);
 
   const refreshStatuses = useCallback(async () => {
-    if (!connected || campaigns.length === 0 || statusLock.current) return;
-    statusLock.current = true; setStatusesBusy(true); setError("");
+    if (campaigns.length === 0) return;
+    const request = ++statusSequence.current, startedRevision = readRevision();
+    setStatusesBusy(true); setError("");
     try {
       const result = await getAdsterraCampaignStatusesAction(shopeeAccountId);
+      if (statusSequence.current !== request || readRevision() !== startedRevision) return;
       if (!result.success) { setError(result.message); return; }
       setStatusByConfig(Object.fromEntries(result.statuses.map((item) => [item.configId, { campaignStatus: item.campaignStatus, error: item.error }])));
-    } finally { statusLock.current = false; setStatusesBusy(false); }
-  }, [campaigns.length, connected, shopeeAccountId]);
+      setAutoScheduleByConfig(Object.fromEntries(result.statuses.map((item) => [item.configId, item.autoScheduleEnabled])));
+    } catch {
+      if (statusSequence.current === request && readRevision() === startedRevision) setError("Status/Auto terbaru gagal dimuat; data sebelumnya belum diperbarui.");
+    } finally { if (statusSequence.current === request && readRevision() === startedRevision) setStatusesBusy(false); }
+  }, [campaigns.length, shopeeAccountId, readRevision]);
 
-  useEffect(() => { void refreshStatuses(); }, [refreshStatuses]);
+  useEffect(() => {
+    let disposed = false;
+    const sequence = statusSequence;
+    queueMicrotask(() => { if (!disposed) void refreshStatuses(); });
+    return () => { disposed = true; sequence.current++; };
+  }, [refreshStatuses, revision, connected]);
 
   async function sync(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (lock.current) return;
@@ -57,10 +68,12 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
   async function toggleCampaign(campaign: Campaign, desiredActive: boolean) {
     if (toggleLocks.current.has(campaign.id)) return false;
     if (!operation.begin("campaign-toggle")) return false;
+    const startedRevision = readRevision();
     toggleLocks.current.add(campaign.id); setTogglingIds((current) => new Set(current).add(campaign.id)); setMessage(""); setError(""); setConfirmationError("");
     try {
       const result = await setAdsterraCampaignActiveAction(shopeeAccountId, campaign.id, desiredActive);
-      if (result.campaignStatus) setStatusByConfig((current) => ({ ...current, [campaign.id]: { campaignStatus: result.campaignStatus, error: result.success ? null : result.message } }));
+      if (readRevision() !== startedRevision) return false;
+      if (readRevision() === startedRevision && result.campaignStatus) setStatusByConfig((current) => ({ ...current, [campaign.id]: { campaignStatus: result.campaignStatus, error: result.success ? null : result.message } }));
       if (result.success) { setMessage(`Status ${campaign.label || campaign.campaignId} berhasil diverifikasi: ${statusLabels[result.campaignStatus.status]}.`); return true; }
       setError(result.message); setConfirmationError(result.message); return false;
     } finally {
@@ -79,13 +92,15 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
   async function toggleAutoSchedule(campaign: Campaign, enabled: boolean) {
     if (autoScheduleLocks.current.has(campaign.id)) return;
     if (!operation.begin("auto-flag")) return;
+    const startedRevision = readRevision();
     autoScheduleLocks.current.add(campaign.id);
     setAutoScheduleBusyIds((current) => new Set(current).add(campaign.id));
     setMessage(""); setError("");
     try {
       const result = await setAdsterraAutoScheduleEnabledAction(shopeeAccountId, campaign.id, enabled);
+      if (readRevision() !== startedRevision) return;
       if (!result.success) { setError(result.message); return; }
-      setAutoScheduleByConfig((current) => ({ ...current, [campaign.id]: result.autoScheduleEnabled }));
+      if (readRevision() === startedRevision) setAutoScheduleByConfig((current) => ({ ...current, [campaign.id]: result.autoScheduleEnabled }));
       setMessage(`Auto ON/OFF ${campaign.label || campaign.campaignId} ${result.autoScheduleEnabled ? "diaktifkan" : "dinonaktifkan"}. ${"warning" in result ? result.warning : ""}`);
     } finally {
       operation.end("auto-flag", true);

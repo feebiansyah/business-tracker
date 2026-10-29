@@ -2,7 +2,7 @@ import { AdsterraClient } from "../adsterra-roi/client";
 import { campaignKey, sortedIds } from "./canonical";
 import { OperationError, type ListKind, type Snapshot } from "./types";
 import type { OperationBudget } from "./budget";
-import type { CampaignOperationStore, Fence } from "./repository";
+import { MarkerPersistenceUncertain, type CampaignOperationStore, type Fence, type WriteMarker } from "./repository";
 
 const base = "https://api3.adsterratools.com/advertiser";
 export function parsePlacementList(body: unknown, kind: ListKind): string[] {
@@ -25,6 +25,7 @@ export class PlacementProvider {
   requireInactive = false;
   sent = 0;
   ambiguous = false;
+  notDispatchedStatus: "PARTIAL" | "RECONFIRM_REQUIRED" | null = null;
   readonly warnings: string[] = [];
   beforeMutation?: () => Promise<void>;
   constructor(private readonly token: string, private readonly campaignId: string, private readonly budget: OperationBudget,
@@ -36,27 +37,44 @@ export class PlacementProvider {
     const url = new URL(String(input));
     if (url.origin !== "https://api3.adsterratools.com" || !url.pathname.startsWith("/advertiser/")) throw new OperationError("Endpoint Adsterra tidak diizinkan.");
     const write = init.method !== undefined && init.method !== "GET";
-    if (write) {
-      if (!this.fence) throw new OperationError("Mutasi tanpa guard ditolak.");
-      this.budget.check(20_000);
-      await this.beforeMutation?.();
-      if (this.expiresAt !== undefined && this.budget.now() >= this.expiresAt) throw new OperationError("Konfirmasi kedaluwarsa sebelum mutasi. Tidak meneruskan write.");
-      const phase = url.pathname.includes("custom_bid") ? `CUSTOM_BID_${init.method}`
-        : url.pathname.includes("linking") ? `${init.method === "POST" ? "CLEAR" : "PUT"}_${url.pathname.includes("blacklist") ? "BLACKLIST" : "WHITELIST"}` : "CAMPAIGN_STATUS_WRITE";
-      await this.store.beforeWrite(this.fence, phase);
-      // Recheck scope/Auto after the database await too. No write continuation
-      // survives a changed generation (including a concurrent Auto disable).
-      await this.beforeMutation?.();
-      await this.store.dispatchAllowed(this.fence);
-      this.budget.check(20_000);
-      if (this.expiresAt !== undefined && this.budget.now() >= this.expiresAt) throw new OperationError("Konfirmasi kedaluwarsa sebelum dispatch.");
-      this.sent++;
-    }
+    let marker: WriteMarker | undefined;
+    let dispatched = false;
     let response: Response;
-    try { response = await this.budget.request(input, init, this.fetcher); }
-    catch {
-      if (write) this.ambiguous = true;
-      throw new OperationError(write ? "Request write terkirim/belum pasti; tidak diulang otomatis." : "GET Adsterra gagal/timeout.");
+    try {
+      if (write) {
+        if (this.notDispatchedStatus) throw new OperationError("Operasi sudah dihentikan sebelum dispatch; tidak meneruskan write lain.");
+        if (!this.fence) throw new OperationError("Mutasi tanpa guard ditolak.");
+        this.budget.check(20_000);
+        await this.beforeMutation?.();
+        if (this.expiresAt !== undefined && this.budget.now() >= this.expiresAt) throw new OperationError("Konfirmasi kedaluwarsa sebelum mutasi. Tidak meneruskan write.");
+        const phase = url.pathname.includes("custom_bid") ? `CUSTOM_BID_${init.method}`
+          : url.pathname.includes("linking") ? `${init.method === "POST" ? "CLEAR" : "PUT"}_${url.pathname.includes("blacklist") ? "BLACKLIST" : "WHITELIST"}` : "CAMPAIGN_STATUS_WRITE";
+        marker = await this.store.beforeWrite(this.fence, phase);
+        // Recheck scope/Auto after the database await too. No write continuation
+        // survives a changed generation (including a concurrent Auto disable).
+        await this.beforeMutation?.();
+        await this.store.dispatchAllowed(this.fence);
+        this.budget.check(20_000);
+        if (this.expiresAt !== undefined && this.budget.now() >= this.expiresAt) throw new OperationError("Konfirmasi kedaluwarsa sebelum dispatch.");
+      }
+      response = await this.budget.request(input, init, (request, options) => {
+        // Count only actual entry into HTTP transport, not failed local validation.
+        if (write) { this.store.markDispatched(marker!); dispatched = true; this.sent++; }
+        return this.fetcher(request, options);
+      });
+    } catch (error) {
+      if (write && dispatched) {
+        this.ambiguous = true;
+        throw new OperationError("Request write terkirim/belum pasti; tidak diulang otomatis.");
+      }
+      if (write && error instanceof MarkerPersistenceUncertain) this.ambiguous = true;
+      if (write && marker) {
+        // Only this awaited marker receipt plus no transport entry permits CAS
+        // settlement. No GET, pending DB query, or changed fence is proof.
+        try { this.notDispatchedStatus = await this.store.settleNotDispatched(marker, this.sent > 0); }
+        catch { this.ambiguous = true; throw new OperationError("HTTP belum dimulai, tetapi penyelesaian marker DB/fencing belum pasti. Guard tetap diblokir."); }
+      }
+      throw error instanceof OperationError ? error : new OperationError(write ? "Validasi sebelum dispatch gagal; write tidak dikirim." : "GET Adsterra gagal/timeout.");
     }
     if (write) {
       // A response arrived. A 4xx still needs GET verification of partial effects.

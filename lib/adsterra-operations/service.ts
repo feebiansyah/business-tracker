@@ -3,6 +3,7 @@ import { digest } from "./canonical";
 import { signConfirmation, verifyConfirmation } from "./confirmation";
 import { applyPlacementPlan } from "./application";
 import { OperationError, type ApplicationResult, type Confirmation, type ListKind, type Preview } from "./types";
+import type { Fence } from "./repository";
 
 type Context = Awaited<ReturnType<typeof operationContext>>;
 export async function prepareApplication(ctx: Context, owner: string, data: FormData, kind: ListKind): Promise<Preview> {
@@ -22,7 +23,7 @@ export async function prepareApplication(ctx: Context, owner: string, data: Form
     providerStatus: ["", "INACTIVE", "LIMITED", "ACTIVE", "NOT_IN_USE"][before.campaign.active], autoEnabledAliases: before.aliases.filter((a) => a.autoScheduleEnabled).map((a) => a.id) };
 }
 export async function executeApplication(ctx: Context, owner: string, data: FormData, token: unknown,
-  record: (at: Date) => Promise<unknown>): Promise<ApplicationResult> {
+  record: (at: Date, fence: Fence) => Promise<unknown>): Promise<ApplicationResult> {
   const signed = verifyConfirmation(token, owner, "ADSTERRA_LIST_APPLY_V1", ctx.budget.now());
   if (signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId || signed.campaignId !== ctx.scope.campaignId) throw new OperationError("Scope konfirmasi berbeda.");
   const fence = { campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation };
@@ -37,8 +38,14 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
   } catch {
     result = { status: ctx.provider.sent ? "UNVERIFIED" : "RECONFIRM_REQUIRED", phase: "PREFLIGHT", message: "Preflight gagal/timeout. Konfirmasi tidak dapat dipakai ulang. Periksa keadaan operasi sebelum melanjutkan.", actual: null, writeWarnings: [], metadata: "NOT_REQUIRED" };
   }
+  if (ctx.provider.notDispatchedStatus) {
+    return { ...result, status: ctx.provider.notDispatchedStatus, phase: "NOT_DISPATCHED", metadata: "NOT_REQUIRED",
+      message: ctx.provider.notDispatchedStatus === "PARTIAL"
+        ? "Langkah terakhir terbukti belum dikirim dan marker diselesaikan. Langkah sebelumnya mungkin sudah berubah; periksa hasil parsial tanpa retry otomatis."
+        : "HTTP write terbukti belum dimulai dan marker diselesaikan dengan fencing. Siapkan konfirmasi baru; tidak ada retry otomatis." };
+  }
   if (result.status === "VERIFIED" && signed.kind === "BLACKLIST") {
-    try { const at = new Date(ctx.budget.now()); await ctx.budget.wait(record(at)); result.metadata = "RECORDED"; result.lastBlacklistReplacedAt = at.toISOString(); }
+    try { const at = new Date(ctx.budget.now()); await ctx.budget.wait(record(at, fence)); result.metadata = "RECORDED"; result.lastBlacklistReplacedAt = at.toISOString(); }
     catch { result.metadata = "FAILED"; result.status = "PARTIAL"; result.message += " Pencatatan timestamp gagal; hasil provider tetap ditampilkan, jangan ulangi write untuk memperbaiki metadata."; }
   }
   try { result.status = await ctx.store.finish(fence, result.status, JSON.stringify({ status: result.status, phase: result.phase, metadata: result.metadata, writes: ctx.provider.sent })) as ApplicationResult["status"]; }

@@ -101,15 +101,21 @@ export async function getAdsterraCampaignStatusesAction(shopeeAccountId: number)
   try {
     const account = await prisma.shopeeAccount.findUnique({ where: { id: shopeeAccountId }, select: { id: true } });
     if (!account) return { success: false as const, message: "Akun Shopee tidak ditemukan." };
-    const configs = await prisma.adsterraCampaignConfig.findMany({ where: { shopeeAccountId }, select: { id: true, campaignId: true }, orderBy: { id: "asc" } });
+    const configs = await prisma.adsterraCampaignConfig.findMany({ where: { shopeeAccountId }, select: { id: true, campaignId: true, autoScheduleEnabled: true }, orderBy: { id: "asc" } });
     if (configs.length === 0) return { success: true as const, statuses: [] };
-    const client = await scopedAdsterraClient(shopeeAccountId);
-    const statuses: Array<{ configId: number; campaignStatus: AdsterraCampaignStatusResult | null; error: string | null }> = [];
+    const statuses: Array<{ configId: number; autoScheduleEnabled: boolean; campaignStatus: AdsterraCampaignStatusResult | null; error: string | null }> = [];
+    let client: Awaited<ReturnType<typeof scopedAdsterraClient>>;
+    try { client = await scopedAdsterraClient(shopeeAccountId); }
+    catch (error) {
+      // Auto flags remain authoritative even without provider credentials.
+      return { success: true as const, statuses: configs.map((config) => ({ configId: config.id,
+        autoScheduleEnabled: config.autoScheduleEnabled, campaignStatus: null, error: campaignStatusErrorMessage(error) })) };
+    }
     for (const config of configs) {
       try {
-        statuses.push({ configId: config.id, campaignStatus: await client.getCampaignStatus(config.campaignId), error: null });
+        statuses.push({ configId: config.id, autoScheduleEnabled: config.autoScheduleEnabled, campaignStatus: await client.getCampaignStatus(config.campaignId), error: null });
       } catch (error) {
-        statuses.push({ configId: config.id, campaignStatus: null, error: campaignStatusErrorMessage(error) });
+        statuses.push({ configId: config.id, autoScheduleEnabled: config.autoScheduleEnabled, campaignStatus: null, error: campaignStatusErrorMessage(error) });
       }
     }
     return { success: true as const, statuses };

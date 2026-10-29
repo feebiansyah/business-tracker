@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { markBlacklistReplaced } from "@/lib/traffic-roi/replacement-timestamp";
+import { recordAdsterraBlacklistTimestamp } from "@/lib/adsterra-operations/metadata";
 import { OperationBudget } from "@/lib/adsterra-operations/budget";
 import { operationContext, parseListKind, publicOperationError, requireOperationUser } from "@/lib/adsterra-operations/runtime";
 import { prepareApplication, executeApplication } from "@/lib/adsterra-operations/service";
@@ -21,7 +21,7 @@ export async function executeAdsterraPlacementApplication(accountId: unknown, da
   const budget = new OperationBudget(), owner = await requireOperationUser(budget);
   try {
     const ctx = await operationContext(accountId, data.get("configId"), budget);
-    const result = await executeApplication(ctx, owner, data, token, (at) => markBlacklistReplaced(prisma, "ADSTERRA", ctx.scope.shopeeAccountId, ctx.scope.configId, at));
+    const result = await executeApplication(ctx, owner, data, token, (at, fence) => recordAdsterraBlacklistTimestamp(prisma, fence, ctx.scope, at, budget));
     revalidatePath(`/shopee/${ctx.scope.shopeeAccountId}/adsterra-roi`);
     return { success: true as const, result };
   } catch (error) { return { success: false as const, message: publicOperationError(error) }; }

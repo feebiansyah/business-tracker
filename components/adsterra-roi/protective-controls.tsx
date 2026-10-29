@@ -2,9 +2,11 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { setAdsterraAutoScheduleEnabledAction, setAdsterraCampaignActiveAction } from "@/app/shopee/[id]/adsterra-roi/actions";
+import { useAdsterraOperation } from "./operation-context";
 
 /** Deliberately outside the workspace lock: no activation or list writes here. */
 export function AdsterraProtectiveControls({ accountId, campaigns }: { accountId: number; campaigns: { id: number; campaignId: string; label: string | null }[] }) {
+  const operation = useAdsterraOperation();
   const [target, setTarget] = useState(String(campaigns[0]?.id ?? ""));
   const [offBusy, setOffBusy] = useState(false), [autoBusy, setAutoBusy] = useState(false);
   const [messages, setMessages] = useState({ off: "", auto: "" });
@@ -24,7 +26,7 @@ export function AdsterraProtectiveControls({ accountId, campaigns }: { accountId
         show(result.success ? `Auto konfigurasi ini nonaktif. ${"warning" in result ? result.warning : ""} Periksa alias lain secara terpisah.` : result.message);
       }
     } catch { show("Hasil belum diterima; periksa operasi. Tidak mengulang request otomatis."); }
-    finally { locks.current[slot] = false; (off ? setOffBusy : setAutoBusy)(false); }
+    finally { locks.current[slot] = false; (off ? setOffBusy : setAutoBusy)(false); operation.refresh(); }
   }
   return <details className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
     <summary className="cursor-pointer font-medium">Pengaman campaign — tetap tersedia saat operasi belum pasti</summary>

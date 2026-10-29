@@ -6,12 +6,15 @@ import type { OperationBudget } from "./budget";
 
 export type OperationRow = AdsterraCampaignOperation;
 export type Fence = { campaignId: string; operationId: string; generation: number; protective?: boolean };
+export type WriteMarker = { readonly fence: Fence; readonly phase: string };
+export class MarkerPersistenceUncertain extends OperationError {}
 const terminal = ["IDLE", "VERIFIED", "NO_CHANGE", "RECONFIRM_REQUIRED"];
 export const offBlocked = (r: OperationRow) => !terminal.includes(r.protectiveOffStatus) || r.protectiveOffUncertain;
 const available = (r: OperationRow, now: number) => !r.uncertain && !offBlocked(r)
   && (terminal.includes(r.status) || (r.status === "PREPARED" && !!r.expiresAt && r.expiresAt.getTime() <= now));
 
 export class CampaignOperationStore {
+  private readonly markers = new WeakSet<WriteMarker>();
   constructor(private readonly db: Pick<PrismaClient, "adsterraCampaignOperation">, private readonly budget: OperationBudget) {}
   async read(id: string) { return this.budget.wait(this.db.adsterraCampaignOperation.findUnique({ where: { campaignId: campaignKey(id) } })); }
   private async ensure(id: string) {
@@ -71,17 +74,55 @@ export class CampaignOperationStore {
   }
   async beforeWrite(f: Fence, phase: string) {
     const row = await this.assert(f);
-    if (f.protective) {
-      await this.updateOff(f, { protectiveOffUncertain: true, protectiveOffSummary: phase });
-    } else {
-      const changed = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({
-        where: { campaignId: f.campaignId, operationId: f.operationId, generation: f.generation, status: "RUNNING", uncertain: false,
-          protectiveOffGeneration: row.protectiveOffGeneration, protectiveOffStatus: row.protectiveOffStatus, protectiveOffUncertain: false },
-        data: { phase, uncertain: true },
+    let changed: { count: number };
+    try {
+      changed = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({
+        where: f.protective
+          ? { campaignId: f.campaignId, protectiveOffId: f.operationId, protectiveOffGeneration: f.generation,
+            protectiveOffStatus: "RUNNING", protectiveOffUncertain: false }
+          : { campaignId: f.campaignId, operationId: f.operationId, generation: f.generation, status: "RUNNING", uncertain: false,
+            protectiveOffGeneration: row.protectiveOffGeneration, protectiveOffStatus: row.protectiveOffStatus, protectiveOffUncertain: false },
+        data: f.protective ? { protectiveOffUncertain: true, protectiveOffSummary: phase } : { phase, uncertain: true },
       }));
-      if (changed.count !== 1) throw new OperationError("Guard berubah sebelum dispatch. Write tidak dikirim.");
+    } catch {
+      // No receipt: a late marker query may still commit. sent===0 proves nothing.
+      throw new MarkerPersistenceUncertain("Pencatatan marker database belum pasti. Tidak ada dispatch HTTP; guard tetap diblokir.");
     }
-    this.budget.check(); // a late DB result can never dispatch after the deadline
+    if (changed.count !== 1) throw new OperationError("Guard berubah sebelum dispatch. Write tidak dikirim.");
+    // Return proof before any further validation/budget check can throw.
+    const marker: WriteMarker = { fence: { ...f }, phase };
+    this.markers.add(marker);
+    return marker;
+  }
+  async settleNotDispatched(marker: WriteMarker, hadEarlierDispatch: boolean) {
+    if (!this.markers.delete(marker)) throw new OperationError("Bukti marker tidak tersedia/sudah digunakan.");
+    const { fence: f, phase } = marker;
+    const status = hadEarlierDispatch ? "PARTIAL" : "RECONFIRM_REQUIRED";
+    const changed = await this.budget.settle(this.db.adsterraCampaignOperation.updateMany({
+      where: f.protective
+        ? { campaignId: f.campaignId, protectiveOffId: f.operationId, protectiveOffGeneration: f.generation,
+          protectiveOffStatus: "RUNNING", protectiveOffUncertain: true, protectiveOffSummary: phase }
+        : { campaignId: f.campaignId, operationId: f.operationId, generation: f.generation,
+          status: "RUNNING", uncertain: true, phase },
+      // A timed-out cleanup may commit late: keep RUNNING until this proof write
+      // is acknowledged, so that late cleanup alone can never release the slot.
+      data: f.protective ? { protectiveOffUncertain: false, protectiveOffSummary: "NOT_DISPATCHED" }
+        : { uncertain: false, phase: "NOT_DISPATCHED" },
+    }));
+    if (changed.count !== 1) throw new OperationError("Generation/marker berubah; ketidakpastian tidak dibuka.");
+    const finished = await this.budget.settle(this.db.adsterraCampaignOperation.updateMany({
+      where: f.protective
+        ? { campaignId: f.campaignId, protectiveOffId: f.operationId, protectiveOffGeneration: f.generation,
+          protectiveOffStatus: "RUNNING", protectiveOffUncertain: false, protectiveOffSummary: "NOT_DISPATCHED" }
+        : { campaignId: f.campaignId, operationId: f.operationId, generation: f.generation,
+          status: "RUNNING", uncertain: false, phase: "NOT_DISPATCHED" },
+      data: f.protective ? { protectiveOffStatus: status } : { status },
+    }));
+    if (finished.count !== 1) throw new OperationError("Generation berubah saat menyelesaikan non-dispatch; guard tidak dibuka oleh proses lama.");
+    return status;
+  }
+  markDispatched(marker: WriteMarker) {
+    if (!this.markers.delete(marker)) throw new OperationError("Bukti marker sebelum dispatch tidak tersedia.");
   }
   async acknowledged(f: Fence) {
     if (f.protective) await this.updateOff(f, { protectiveOffUncertain: false });

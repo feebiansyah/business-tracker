@@ -26,6 +26,7 @@ export async function runCoordinatedWrite<T>(input: {
     await ctx.provider.campaign(); // validates real identity before any write
     await input.authorize?.();
     const result = await work(ctx.provider, ctx.scope.campaignId);
+    if (ctx.provider.notDispatchedStatus) throw new OperationError("Validasi/deadline berubah sebelum HTTP. Marker diselesaikan secara fenced; tidak ada retry write otomatis.");
     const row = await ctx.store.read(ctx.scope.campaignId);
     const overlappingOn = input.protective && row?.status === "RUNNING" && ["ACTIVATE", "SCHEDULE_ON"].includes(row.action);
     const status = await ctx.store.finish(fence, ctx.provider.ambiguous || overlappingOn ? "UNVERIFIED" : verified(result) ? "VERIFIED" : "PARTIAL",
@@ -34,7 +35,9 @@ export async function runCoordinatedWrite<T>(input: {
     return result;
   } catch (error) {
     // Never retry work/POST. Failure to record leaves the durable RUNNING guard.
-    try { await ctx.store.finish(fence, ctx.provider.sent ? "UNVERIFIED" : "RECONFIRM_REQUIRED", "Operasi dihentikan; periksa keadaan provider/metadata. Tidak ada retry otomatis."); } catch { /* preserve original safety failure */ }
+    if (!ctx.provider.notDispatchedStatus) {
+      try { await ctx.store.finish(fence, ctx.provider.sent || ctx.provider.ambiguous ? "UNVERIFIED" : "RECONFIRM_REQUIRED", "Operasi dihentikan; periksa keadaan provider/metadata. Tidak ada retry otomatis."); } catch { /* preserve original safety failure */ }
+    }
     throw error;
   }
 }
