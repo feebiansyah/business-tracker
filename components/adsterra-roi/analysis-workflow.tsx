@@ -15,6 +15,7 @@ import { PlacementApplication } from "./placement-application";
 import { useAdsterraOperation } from "./operation-context";
 import { getAdsterraApplicationMethod } from "@/app/shopee/[id]/adsterra-roi/method-actions";
 import type { MethodState } from "@/lib/adsterra-operations/types";
+import { MethodBadge } from "./operation-dialog";
 
 type Result = { dateFrom: string; dateTill: string; fxRate: string; config: AdsterraAnalysisConfig; analysis: AdsterraRoiAnalysis };
 
@@ -130,27 +131,27 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
   };
 
   return <section className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-    <div><h3 className="font-semibold">Analisa Adsterra ROI</h3><p className="text-sm text-slate-500">Statistik Placement Adsterra dipadankan dengan Tag_link3 Shopee. Daftar hanya berubah setelah konfirmasi eksplisit.</p></div>
-    <div className="space-y-1 text-sm"><p className="font-medium">Metode aplikasi: {methodBusy ? "Memuat..." : methodError ? "Belum tersedia" : listKind ?? (selectedConfig ? "Belum ditetapkan" : "Pilih campaign")}</p><p className="text-xs text-slate-500">{methodError || "Metode ditetapkan di tab Campaign, bukan mode editor Adsterra. Placement tidak dapat mengganti metode atau mengosongkan daftar berlawanan."}</p>{selectedConfig && !methodBusy && !methodError && !listKind && <p className="text-amber-800">Buka tab Campaign untuk Tetapkan Metode dahulu.</p>}</div>
+    <div><h3 className="font-semibold">Analisa Placement</h3><p className="text-xs text-slate-500">Analisis → Copy ID → Siapkan Penerapan → Konfirmasi.</p></div>
+    <div className="flex flex-wrap items-center gap-2 text-sm"><span>Metode aplikasi:</span>{methodBusy ? <span className="text-xs text-slate-500">Memuat…</span> : methodError ? <details className="text-xs text-red-700"><summary className="cursor-pointer">Gagal dibaca · Detail</summary><p className="mt-1 max-w-lg">{methodError}</p></details> : selectedConfig ? <MethodBadge method={listKind}/> : <span className="text-xs text-slate-500">Pilih campaign</span>}{selectedConfig && !methodBusy && !methodError && !listKind && <p className="text-xs text-amber-800">Atur metode di tab Campaign dahulu.</p>}</div>
     {!connected && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Koneksi Adsterra belum dikonfigurasi.</p>}
     <form onSubmit={submitAnalysis} onChange={invalidateAnalysis} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      <label className="text-sm font-medium">Campaign<select name="configId" value={selectedConfig} onChange={(e) => setSelectedConfig(e.target.value)} required disabled={busy || replacing || writingBid || !connected} className="mt-1 h-9 w-full rounded-lg border bg-white px-3"><option value="">Pilih campaign</option>{configs.map((config) => <option key={config.id} value={config.id}>{config.label || config.campaignId}</option>)}</select></label>
-      <label className="text-sm font-medium">Tanggal Mulai<input type="date" name="dateFrom" required disabled={busy || replacing || writingBid} className="mt-1 h-9 w-full rounded-lg border px-3"/></label>
-      <label className="text-sm font-medium">Tanggal Akhir<input type="date" name="dateTill" required disabled={busy || replacing || writingBid} className="mt-1 h-9 w-full rounded-lg border px-3"/></label>
-      <label className="text-sm font-medium">Kurs USD → IDR<input name="fxRate" defaultValue="16500" inputMode="decimal" required disabled={busy || replacing || writingBid} className="mt-1 h-9 w-full rounded-lg border px-3"/></label>
-      <label className="text-sm font-medium">CSV Komisi Shopee<input type="file" name="file" accept=".csv,text/csv,application/vnd.ms-excel" required disabled={busy || replacing || writingBid} className="mt-1 block max-w-full text-sm"/></label>
+      <label className="min-w-0 text-sm font-medium">Campaign<select name="configId" value={selectedConfig} onChange={(e) => setSelectedConfig(e.target.value)} required disabled={busy || replacing || writingBid || !connected} className="mt-1 h-9 w-full min-w-0 rounded-lg border bg-white px-3"><option value="">Pilih campaign</option>{configs.map((config) => <option key={config.id} value={config.id}>{config.label || config.campaignId}</option>)}</select></label>
+      <label className="min-w-0 text-sm font-medium">Tanggal Mulai<input type="date" name="dateFrom" required disabled={busy || replacing || writingBid} className="mt-1 h-9 w-full min-w-0 rounded-lg border px-3"/></label>
+      <label className="min-w-0 text-sm font-medium">Tanggal Akhir<input type="date" name="dateTill" required disabled={busy || replacing || writingBid} className="mt-1 h-9 w-full min-w-0 rounded-lg border px-3"/></label>
+      <label className="min-w-0 text-sm font-medium">Kurs USD → IDR<input name="fxRate" defaultValue="16500" inputMode="decimal" required disabled={busy || replacing || writingBid} className="mt-1 h-9 w-full min-w-0 rounded-lg border px-3"/></label>
+      <label className="min-w-0 text-sm font-medium">CSV Komisi Shopee<input type="file" name="file" accept=".csv,text/csv,application/vnd.ms-excel" required disabled={busy || replacing || writingBid} className="mt-1 block w-full min-w-0 max-w-full text-sm"/></label>
       <Button disabled={busy || replacing || writingBid || methodBusy || !listKind || !connected || !configs.length}>{busy ? "Menganalisis..." : "Analisa"}</Button>
     </form>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     {success && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{success}</p>}
     {result && resultKind && <>
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-slate-700">
-        <p className="font-medium text-slate-900">Aturan Kandidat {resultKind === "BLACKLIST" ? "Blacklist" : "Whitelist"}</p>
+      <details className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-slate-700">
+        <summary className="cursor-pointer font-medium text-slate-900">Detail aturan {resultKind === "BLACKLIST" ? "Blacklist" : "Whitelist"}</summary>
         {resultKind === "BLACKLIST"
           ? <><p className="mt-1">Aman jika ROI ≥20% ATAU (ROI &gt;10% DAN CTR &gt;8%). Dengan Biaya Iklan ≥ Rp1.000, placement yang tidak memenuhi kedua jalur AMAN tersebut menjadi kandidat blacklist pada periode analisis. Biaya di bawah Rp1.000 tetap Belum Cukup Spend. CTR dihitung dari klik / impresi × 100; impresi nol membuat CTR tidak tersedia, tetapi jalur ROI ≥20% tetap dapat membuat placement AMAN.</p><p>Jika Replace Blacklist dikonfirmasi, placement lainnya akan dikeluarkan dari blacklist.</p></>
           : <p className="mt-1">Kandidat Whitelist wajib Biaya Iklan ≥ Rp1.000 DAN (ROI ≥20% ATAU (ROI &gt;10% DAN CTR &gt;8%)). Batas biaya wajib untuk kedua jalur. CTR dihitung dari klik / impresi × 100; impresi nol membuat CTR tidak tersedia, tetapi ROI ≥20% tetap dapat memenuhi syarat. Biaya belum cukup, ROI null, serta data invalid/unknown tidak otomatis menjadi kandidat.</p>}
         <p className="mt-1 font-medium">Status tabel adalah hasil analisis periode ini, bukan status placement yang sedang diterapkan di provider.</p>
-      </div>
+      </details>
       <AnalysisResult key={analysisVersion} result={result} listKind={resultKind} shopeeName={shopeeAccountName} lastBlacklistReplacedAt={lastBlacklistReplacedAt} customBids={customBids} onSaveBid={saveBid} onDeleteBid={deleteBid} writingBid={writingBid || replacing}/>
       <PlacementApplication key={`${analysisVersion}:${resultKind}`} accountId={shopeeAccountId} configId={result.config.id} kind={resultKind} candidateCount={resultKind === "BLACKLIST" ? result.analysis.candidatePlacements.length : adsterraWhitelistCandidates(result.analysis.rows).length} getData={() => lastAnalysisForm.current ? cloneFormData(lastAnalysisForm.current) : null} onResult={(response) => {
         if (response.lastBlacklistReplacedAt) setLastBlacklistReplacedAt(response.lastBlacklistReplacedAt);
@@ -164,8 +165,17 @@ function AnalysisResult({ result, listKind, shopeeName, lastBlacklistReplacedAt,
   const analysis = result.analysis;
   const candidateIds = useMemo(() => listKind === "BLACKLIST" ? analysis.candidatePlacements : adsterraWhitelistCandidates(analysis.rows), [analysis, listKind]);
   const clicks = analysis.rows.reduce((sum, row) => sum + row.clicks, 0);
-  const stats = [["Biaya Iklan", formatIdr(analysis.totalCostIdr), formatUsd(analysis.totalSpentUsd)], ["Komisi Bersih Shopee", formatIdr(analysis.totalCommission), ""], ["Profit", formatIdr(analysis.totalProfit), ""], ["ROI", formatPercent(analysis.roi), ""], ["Klik Iklan", new Intl.NumberFormat("id-ID").format(clicks), ""], [listKind === "BLACKLIST" ? "Kandidat Blacklist" : "Kandidat Whitelist", String(candidateIds.length), listKind === "BLACKLIST" ? "Biaya ≥ Rp1.000; tidak memenuhi kedua jalur AMAN. Aman jika ROI ≥20% ATAU (ROI >10% DAN CTR >8%)." : "Biaya ≥ Rp1.000 DAN (ROI ≥20% ATAU (ROI >10% DAN CTR >8%)); data valid wajib."]];
-  return <div className="space-y-4"><div className="grid gap-1 rounded-lg border bg-slate-50 p-3 text-sm sm:grid-cols-2"><p>Shopee Account: <b>{shopeeName}</b></p><p>Campaign: <b>{result.config.label || result.config.campaignId}</b></p><p>Tag Link 1: <b>{result.config.sourceTag}</b></p><p>Periode: <b>{result.dateFrom} – {result.dateTill}</b></p><p>Kurs: <b>{formatIdr(result.fxRate)} / USD</b></p><p>Terakhir Replace Blacklist: <b>{formatBlacklistReplacementTime(lastBlacklistReplacedAt)}</b></p></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{stats.map(([label, value, detail]) => <div key={label} className="rounded-lg border bg-slate-50 p-3"><p className="text-xs font-medium uppercase text-slate-500">{label}</p><p className="font-semibold">{value}</p>{detail && <p className="text-xs text-slate-500">{detail}</p>}</div>)}</div><p className="text-xs text-slate-500">Isi harga per Placement untuk Custom Bid Indonesia (ID), lalu klik Simpan. Nilai GLOBAL hanya ditampilkan dan tidak ikut diubah. Harga bid tidak dikonversi kurs.</p>{customBids && !customBids.success && <p role="status" className="text-sm text-amber-800">{customBids.message}</p>}<PlacementTable analysis={analysis} listKind={listKind} customBids={customBids} onSaveBid={onSaveBid} onDeleteBid={onDeleteBid} writeBusy={writingBid}/><TrafficRoiCandidateList key={listKind} ids={candidateIds} noun="Placement" copyLabel={listKind === "BLACKLIST" ? "Copy Placement" : "Copy Placement Whitelist"} listKind={listKind === "BLACKLIST" ? "blacklist" : "whitelist"}/></div>;
+  const stats = [["Biaya Iklan", formatIdr(analysis.totalCostIdr), formatUsd(analysis.totalSpentUsd)], ["Komisi Bersih Shopee", formatIdr(analysis.totalCommission), ""], ["Profit", formatIdr(analysis.totalProfit), ""], ["ROI", formatPercent(analysis.roi), ""], ["Klik Iklan", new Intl.NumberFormat("id-ID").format(clicks), ""], [listKind === "BLACKLIST" ? "Kandidat Blacklist" : "Kandidat Whitelist", String(candidateIds.length), ""]];
+  return <div className="min-w-0 space-y-3">
+    <div className="grid gap-1 rounded-lg bg-slate-50 p-3 text-xs sm:grid-cols-2">
+      <p className="break-words">Shopee: <b>{shopeeName}</b></p><p className="break-words">Campaign: <b>{result.config.label || result.config.campaignId}</b></p><p className="break-all">Tag Link 1: <b>{result.config.sourceTag}</b></p><p>Periode: <b>{result.dateFrom} – {result.dateTill}</b></p><p>Kurs: <b>{formatIdr(result.fxRate)} / USD</b></p><p>Terakhir Replace Blacklist: <b>{formatBlacklistReplacementTime(lastBlacklistReplacedAt)}</b></p>
+    </div>
+    <div className="grid grid-cols-2 gap-2 xl:grid-cols-6">{stats.map(([label, value, detail]) => <div key={label} className="min-w-0 rounded-lg border bg-slate-50 p-2"><p className="text-xs font-medium text-slate-500">{label}</p><p className="break-words font-semibold">{value}</p>{detail && <p className="text-xs text-slate-500">{detail}</p>}</div>)}</div>
+    <TrafficRoiCandidateList key={listKind} ids={candidateIds} noun="Placement" copyLabel={listKind === "BLACKLIST" ? "Copy Placement" : "Copy Placement Whitelist"} listKind={listKind === "BLACKLIST" ? "blacklist" : "whitelist"}/>
+    <details className="text-xs text-slate-500"><summary className="cursor-pointer">Detail Custom Bid</summary><p className="mt-1">Isi harga per Placement untuk Custom Bid Indonesia (ID), lalu klik Simpan. Nilai GLOBAL hanya ditampilkan dan tidak ikut diubah. Harga bid tidak dikonversi kurs.</p></details>
+    {customBids && !customBids.success && <p role="status" className="text-sm text-amber-800">{customBids.message}</p>}
+    <PlacementTable analysis={analysis} listKind={listKind} customBids={customBids} onSaveBid={onSaveBid} onDeleteBid={onDeleteBid} writeBusy={writingBid}/>
+  </div>;
 }
 
 function cloneFormData(source: FormData) { const clone = new FormData(); for (const [key, value] of source.entries()) clone.append(key, value); return clone; }

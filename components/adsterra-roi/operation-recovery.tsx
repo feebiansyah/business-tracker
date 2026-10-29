@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { prepareAdsterraOperationRecovery, confirmAdsterraOperationRecovery } from "@/app/shopee/[id]/adsterra-roi/placement-application-actions";
 import { useAdsterraOperation } from "./operation-context";
+import { OperationDialog, OperationNotice } from "./operation-dialog";
 type Preview = Extract<Awaited<ReturnType<typeof prepareAdsterraOperationRecovery>>, { success: true }>["preview"];
 
 /** Recovery is available even with an unset method, failed first setup, or no CSV. */
@@ -31,13 +32,15 @@ export function AdsterraOperationRecovery({ accountId, campaigns }: {
     } catch { setMessage("Pencatatan recovery belum pasti. Tidak mengulang otomatis."); }
     finally { pending.current = false; setBusy(false); setPreview(null); operation.end(key, true); }
   }
-  return <details className="rounded-lg border bg-white p-3 text-sm"><summary className="cursor-pointer font-medium">Periksa / Pulihkan Operasi (tanpa analisis)</summary>
+  return <><details className="rounded-lg border bg-white p-3 text-sm"><summary className="cursor-pointer font-medium">Periksa / Pulihkan Operasi (tanpa CSV)</summary>
     <div className="mt-2 flex flex-wrap gap-2"><select aria-label="Campaign untuk recovery" value={config} disabled={operation.busy || busy} className="h-9 max-w-full rounded border px-2" onChange={(e) => { setConfig(e.target.value); setPreview(null); }}>
       {campaigns.map((c) => <option key={c.id} value={c.id}>{c.label || c.campaignId} ({c.campaignId})</option>)}
     </select><Button type="button" variant="ghost" disabled={operation.busy || busy || !config} onClick={() => void prepare()}>Periksa Operasi</Button></div>
-    {preview && <div className="mt-2 space-y-2"><p>{preview.campaignId}: {preview.status} / {preview.phase}; protective OFF: {preview.protectiveOffStatus}.</p><p>{preview.message}</p>
+    <OperationNotice message={message}/>
+  </details>{preview && <OperationDialog title="Konfirmasi pemulihan operasi" busy={busy} onClose={() => { setPreview(null); operation.end(key); }}>
+      <p className="font-medium">Campaign {preview.campaignId}: {preview.status} / {preview.phase}; protective OFF: {preview.protectiveOffStatus}.</p><p>{preview.message}</p>
+      <p>Blacklist API: {preview.blacklist.length} · Whitelist API: {preview.whitelist.length} · Custom Bid: {preview.bidCount} override.</p>
       {preview.blockers.map((reason) => <p key={reason} role="alert" className="text-red-700">{reason}</p>)}
-      <Button type="button" variant="ghost" disabled={busy} onClick={() => { setPreview(null); operation.end(key); }}>Tutup</Button><Button type="button" disabled={busy || !preview.token} onClick={() => void confirm()}>Konfirmasi Pengakuan Snapshot</Button></div>}
-    {message && <p role="status" className="mt-2">{message}</p>}
-  </details>;
+      <div className="flex flex-wrap gap-2"><Button type="button" variant="ghost" disabled={busy} onClick={() => { setPreview(null); operation.end(key); }}>Tutup</Button><Button type="button" disabled={busy || !preview.token} onClick={() => void confirm()}>Konfirmasi Pengakuan Snapshot</Button></div>
+    </OperationDialog>}</>;
 }

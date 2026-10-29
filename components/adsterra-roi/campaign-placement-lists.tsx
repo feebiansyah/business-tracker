@@ -81,18 +81,19 @@ const readTime = new Intl.DateTimeFormat("id-ID", {
   dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Jakarta",
 });
 
-export function PlacementListReadout({ value, busy, connected, error }: {
-  value?: PlacementListRead; busy: boolean; connected: boolean; error: string | null;
+export function PlacementListReadout({ label, value, busy, connected, error }: {
+  label: string; value?: PlacementListRead; busy: boolean; connected: boolean; error: string | null;
 }) {
-  if (!connected) return <span className="text-xs text-slate-500">Belum tersedia: belum terhubung.</span>;
-  if (!value && busy) return <span role="status" className="text-xs text-slate-500">Belum dibaca; menunggu batch berikutnya.</span>;
-  if (!value && error) return <span className="text-xs text-red-600">Belum dibaca. {error}</span>;
-  if (!value) return <span className="text-xs text-slate-500">Belum dibaca. Silakan Refresh Semua.</span>;
-  const timestamp = value.status === "SUCCESS" ? value.readAt : value.attemptedAt;
-  return <div className="min-w-40 max-w-64 space-y-1">
-    {value.status === "SUCCESS"
-      ? <p className="font-medium text-slate-900">{value.count.toLocaleString("id-ID")} placement{value.count === 0 ? " (kosong)" : ""}</p>
-      : <><p className={value.status === "ERROR" ? "text-red-600" : "text-amber-700"}>{value.status === "ERROR" ? "Gagal dimuat" : "Belum tersedia"}</p><p className="text-xs text-slate-500">{value.message}</p></>}
-    <p className="text-xs text-slate-500">{value.status === "SUCCESS" ? "Dibaca" : "Dicoba"}: <time dateTime={timestamp}>{readTime.format(new Date(timestamp))} WIB</time></p>
+  const timestamp = value && (value.status === "SUCCESS" ? value.readAt : value.attemptedAt);
+  const status = !connected ? "Belum terhubung" : value?.status === "SUCCESS"
+    ? `${value.count.toLocaleString("id-ID")}${value.count === 0 ? " (kosong)" : ""}`
+    : value?.status === "ERROR" ? "Gagal" : value ? "Belum tersedia" : busy ? "Memuat…" : "Belum dibaca";
+  return <div className="flex min-w-40 max-w-64 flex-wrap items-baseline gap-x-2 text-xs">
+    <span className="font-medium text-slate-700">{label}:</span><span className={value?.status === "ERROR" ? "text-red-700" : "text-slate-700"}>{status}</span>
+    <details className="text-slate-500"><summary className="cursor-pointer" aria-label={`Detail ${label}`}>Detail</summary>
+      {timestamp && <p className="mt-1">{value?.status === "SUCCESS" ? "Dibaca" : "Dicoba"}: <time dateTime={timestamp}>{readTime.format(new Date(timestamp))} WIB</time></p>}
+      <p className="mt-1 break-words">{!connected ? "Koneksi Adsterra belum dikonfigurasi." : value?.status === "SUCCESS" ? `${value.count} placement dari API; bukan mode editor Adsterra.`
+        : value ? value.message : error ?? (busy ? "Menunggu batch pembacaan." : "Silakan Refresh Semua Daftar API.")}</p>
+    </details>
   </div>;
 }
