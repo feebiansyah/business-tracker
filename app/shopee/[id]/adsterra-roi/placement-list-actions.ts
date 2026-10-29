@@ -53,6 +53,9 @@ export async function getAdsterraPlacementListsAction(shopeeAccountId: unknown):
             select: { id: true, shopeeAccountId: true, campaignId: true }, orderBy: { id: "asc" } });
         },
         loadCredential: (accountId) => getEncryptedTrafficCredential(prisma, accountId, "ADSTERRA"),
+        loadMethods: (ids) => prisma.adsterraCampaignOperation.findMany({ where: { campaignId: { in: ids } }, select: {
+          campaignId: true, placementMethod: true, methodVersion: true, methodReady: true, approvedBlacklistHash: true, approvedWhitelistHash: true,
+        } }),
         decrypt: decryptTrafficSecret,
       }, controller.signal, deadlineAt));
       return { success: true, lists };

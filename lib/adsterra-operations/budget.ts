@@ -11,6 +11,7 @@ export class OperationBudget {
   }
   remaining() { return Math.max(0, this.deadline - this.now() - this.cleanupReserve); }
   check(reserve = 0) { if (this.remaining() <= reserve) throw new OperationError("Batas waktu operasi tercapai. Write tidak diulang otomatis; periksa hasil/operasi tertunda."); }
+  requireRequests(count: number) { if (this.requests + count > 40) throw new OperationError("Sisa request tidak cukup untuk mutasi dan verifikasi lengkap. Tidak mengirim write."); }
   async wait<T>(promise: Promise<T>): Promise<T> {
     this.check();
     return this.waitWithin(promise, this.remaining());

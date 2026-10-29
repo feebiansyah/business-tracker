@@ -61,7 +61,7 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
     finally { setPreview(null); setRecovery(null); pending.current = false; setBusy(false); operation.end(key, true); }
   }
   return <section aria-label="Penerapan daftar placement" className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-    <p>Jenis pilihan adalah daftar tujuan, bukan mode editor. Penerapan menghitung ulang analisis server. Clear daftar berlawanan hanya setelah konfirmasi, provider INACTIVE, dan seluruh Auto terkait nonaktif. PUT harian tanpa clear tidak memerlukan OFF.</p>
+    <p>Metode mengikuti pengaturan Campaign, bukan mode editor. Penerapan menghitung ulang analisis server. Placement tidak dapat clear atau mengganti metode; daftar berlawanan wajib terverifikasi kosong. PUT harian tidak memerlukan OFF.</p>
     <div className="flex flex-wrap gap-2"><Button type="button" disabled={operation.busy || busy || (kind === "WHITELIST" && !candidateCount)} onClick={() => void prepare()}>Siapkan Penerapan {kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}</Button><Button type="button" variant="ghost" disabled={operation.busy || busy} onClick={() => void prepare(true)}>Periksa / Pulihkan Operasi</Button></div>
     {kind === "WHITELIST" && !candidateCount && <p>Whitelist kosong ditolak; tidak ada daftar provider yang akan dikosongkan.</p>}
     {preview && <div className="space-y-2 rounded-lg border bg-white p-3" role="region" aria-label="Konfirmasi penerapan">
@@ -69,7 +69,8 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
       <p>{preview.scope.label} · Campaign {preview.scope.campaignId} · {preview.dateFrom}–{preview.dateTill} · Kurs {preview.fxRate}</p>
       <p>Status provider: {preview.providerStatus}. Alias Auto aktif: {preview.autoEnabledAliases.join(", ") || "tidak ada"}. Konfirmasi berlaku sampai {new Date(preview.expiresAt).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta" })} WIB.</p>
       <Ids label="Target" ids={preview.target}/><Ids label="Penambahan" ids={preview.added}/><Ids label="Penghapusan dari daftar tujuan" ids={preview.removed}/>
-      <Ids label={`Daftar berlawanan yang akan dikosongkan (${preview.kind === "BLACKLIST" ? "Whitelist" : "Blacklist"})`} ids={preview.opposite}/>
+      {preview.kind === "BLACKLIST" && !preview.target.length && <p className="font-medium text-amber-900">Blacklist API kosong tidak mengecualikan placement apa pun. Kesiapan hanya diterbitkan setelah penerapan eksplisit ini terverifikasi.</p>}
+      <Ids label={`Daftar berlawanan (wajib kosong; tidak diubah di Placement)`} ids={preview.opposite}/>
       <Ids label="Blacklist API sebelum" ids={preview.currentBlacklist}/><Ids label="Whitelist API sebelum" ids={preview.currentWhitelist}/>
       <p className="font-medium">Dampak Custom Bid: {preview.resetBids.length ? `${preview.resetBids.length} override seluruh GEO berikut akan dihapus setelah blacklist terverifikasi. Bid tidak dipulihkan saat placement ON kembali.` : "Tidak ada penghapusan bid yang direncanakan. Whitelist/clear sendiri tidak menghapus bid."}</p>
       {!!preview.resetBids.length && <p className="break-words text-xs">{preview.resetBids.map((b) => `${b.placementId} / ${b.countryCode} / ${b.price}`).join("; ")}</p>}

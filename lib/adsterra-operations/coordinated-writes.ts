@@ -21,10 +21,15 @@ export async function runCoordinatedWrite<T>(input: {
     : await ctx.store.reserve(ctx.scope.campaignId, input.owner, input.action);
   ctx.provider.fence = fence;
   const scopeCheck = ctx.provider.beforeMutation;
-  ctx.provider.beforeMutation = async () => { await scopeCheck?.(); await input.authorize?.(); };
+  const activating = ["ACTIVATE", "SCHEDULE_ON"].includes(input.action);
+  ctx.provider.beforeMutation = async () => {
+    await scopeCheck?.(); await input.authorize?.();
+    if (activating) await ctx.activationReady();
+  };
   try {
     await ctx.provider.campaign(); // validates real identity before any write
     await input.authorize?.();
+    if (activating) await ctx.activationReady(); // also guards an already-ACTIVE no-op
     const result = await work(ctx.provider, ctx.scope.campaignId);
     if (ctx.provider.notDispatchedStatus) throw new OperationError("Validasi/deadline berubah sebelum HTTP. Marker diselesaikan secara fenced; tidak ada retry write otomatis.");
     const row = await ctx.store.read(ctx.scope.campaignId);
@@ -77,14 +82,18 @@ export async function coordinatedAutoDisable(accountId: number, configId: number
 export async function coordinatedAutoEnable(accountId: number, configId: number, owner: string, budget: OperationBudget) {
   const ctx = await operationContext(accountId, configId, budget);
   const fence = await ctx.store.reserve(ctx.scope.campaignId, owner, "AUTO_ENABLE");
+  let flagMayHaveStarted = false;
   try {
     const fresh = await loadOperationScope(accountId, configId, budget);
     if (fresh.scopeHash !== ctx.scopeHash) throw new OperationError("Scope berubah sebelum mengaktifkan Auto.");
+    const method = await ctx.activationReady();
     // Mark pending before even the DB flag write: a timed-out query can finish late.
+    flagMayHaveStarted = true;
     await ctx.store.beforeWrite(fence, "AUTO_FLAG_PENDING");
     const changed = await budget.wait(prisma.$transaction(async (tx) => {
       const owned = await tx.adsterraCampaignOperation.updateMany({ where: { campaignId: fence.campaignId,
         operationId: fence.operationId, generation: fence.generation, status: "RUNNING", uncertain: true,
+        ...method,
         protectiveOffStatus: { in: ["IDLE", "VERIFIED", "NO_CHANGE", "RECONFIRM_REQUIRED"] }, protectiveOffUncertain: false },
       data: { phase: "AUTO_FLAG_PENDING" } });
       if (owned.count !== 1) throw new OperationError("Auto enable dibatalkan generation lain; flag tidak diaktifkan.");
@@ -96,7 +105,9 @@ export async function coordinatedAutoEnable(accountId: number, configId: number,
     await ctx.store.finish(fence, "VERIFIED", "Auto ON/OFF diaktifkan eksplisit oleh operator.");
     return { autoScheduleEnabled: true };
   } catch (error) {
-    try { await ctx.store.finish(fence, "UNVERIFIED", "Hasil pengaktifan Auto belum pasti; periksa ulang flag, jangan otomatis membuka guard."); } catch { /* durable guard remains */ }
+    try { await ctx.store.finish(fence, flagMayHaveStarted ? "UNVERIFIED" : "RECONFIRM_REQUIRED", flagMayHaveStarted
+      ? "Hasil pengaktifan Auto belum pasti; periksa ulang flag, jangan otomatis membuka guard."
+      : "Prasyarat Auto belum terpenuhi; marker/penulisan flag belum dimulai."); } catch { /* durable guard remains */ }
     throw error;
   }
 }

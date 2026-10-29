@@ -3,6 +3,8 @@ import type { PrismaClient, AdsterraCampaignOperation } from "../generated/prism
 import { campaignKey } from "./canonical";
 import { OperationError } from "./types";
 import type { OperationBudget } from "./budget";
+import type { ListKind, MethodState } from "./types";
+import { storedMethod, listDigest } from "./method-state";
 
 export type OperationRow = AdsterraCampaignOperation;
 export type Fence = { campaignId: string; operationId: string; generation: number; protective?: boolean };
@@ -17,6 +19,26 @@ export class CampaignOperationStore {
   private readonly markers = new WeakSet<WriteMarker>();
   constructor(private readonly db: Pick<PrismaClient, "adsterraCampaignOperation">, private readonly budget: OperationBudget) {}
   async read(id: string) { return this.budget.wait(this.db.adsterraCampaignOperation.findUnique({ where: { campaignId: campaignKey(id) } })); }
+  async method(id: string) { return storedMethod(await this.read(id)); }
+  async invalidateMethod(f: Fence, expected: MethodState) {
+    await this.assert(f);
+    const changed = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({ where: {
+      campaignId: f.campaignId, operationId: f.operationId, generation: f.generation, status: "RUNNING", uncertain: false,
+      ...expected, protectiveOffStatus: { in: terminal }, protectiveOffUncertain: false,
+    }, data: { methodVersion: { increment: 1 }, methodReady: false, phase: "METHOD_INVALIDATED" } }));
+    if (changed.count !== 1) throw new OperationError("Versi/metode/fencing berubah sebelum invalidasi. Tidak ada dispatch.");
+    return { ...expected, methodVersion: expected.methodVersion + 1, methodReady: false };
+  }
+  async finalizeMethod(f: Fence, expected: MethodState, kind: ListKind, ready: boolean, lists: { blacklist: string[]; whitelist: string[] }) {
+    await this.assert(f);
+    const changed = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({ where: {
+      campaignId: f.campaignId, operationId: f.operationId, generation: f.generation, status: "RUNNING", uncertain: false, ...expected,
+      protectiveOffStatus: { in: terminal }, protectiveOffUncertain: false,
+    }, data: { placementMethod: kind, methodReady: ready, approvedBlacklistHash: listDigest(lists.blacklist),
+      approvedWhitelistHash: listDigest(lists.whitelist), status: "VERIFIED", phase: "METHOD_CONFIRMED",
+      summary: ready ? "Metode aplikasi diadopsi eksplisit; tanpa write provider/reset bid." : "Metode aplikasi ditetapkan; belum diterapkan dan aktivasi baru diblokir." } }));
+    if (changed.count !== 1) throw new OperationError("Finalisasi metode gagal; kesiapan tidak diterbitkan oleh proses lama.");
+  }
   private async ensure(id: string) {
     const campaignId = campaignKey(id);
     let row = await this.read(campaignId);
@@ -163,6 +185,7 @@ export class CampaignOperationStore {
       where: { campaignId: row.campaignId, operationId: row.operationId, generation: row.generation, status: row.status,
         uncertain: false, protectiveOffGeneration: row.protectiveOffGeneration, protectiveOffStatus: row.protectiveOffStatus, protectiveOffUncertain: false },
       data: { operationId: randomUUID(), generation: { increment: 1 }, owner, action: "RECOVER", status: "VERIFIED", phase: "ACKNOWLEDGED_CURRENT",
+        methodVersion: { increment: 1 }, methodReady: false,
         confirmationHash: null, expiresAt: null, summary: summary.slice(0, 2000), protectiveOffId: null,
         protectiveOffGeneration: { increment: 1 }, protectiveOffStatus: "VERIFIED", protectiveOffSummary: "Diakui operator; tidak ada write/retry provider." },
     }));

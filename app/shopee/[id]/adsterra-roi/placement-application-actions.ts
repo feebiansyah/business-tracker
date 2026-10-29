@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { recordAdsterraBlacklistTimestamp } from "@/lib/adsterra-operations/metadata";
+import { finalizeAdsterraApplication } from "@/lib/adsterra-operations/metadata";
 import { OperationBudget } from "@/lib/adsterra-operations/budget";
 import { operationContext, parseListKind, publicOperationError, requireOperationUser } from "@/lib/adsterra-operations/runtime";
 import { prepareApplication, executeApplication } from "@/lib/adsterra-operations/service";
@@ -21,7 +21,7 @@ export async function executeAdsterraPlacementApplication(accountId: unknown, da
   const budget = new OperationBudget(), owner = await requireOperationUser(budget);
   try {
     const ctx = await operationContext(accountId, data.get("configId"), budget);
-    const result = await executeApplication(ctx, owner, data, token, (at, fence) => recordAdsterraBlacklistTimestamp(prisma, fence, ctx.scope, at, budget));
+    const result = await executeApplication(ctx, owner, data, token, (at, fence, method, result) => finalizeAdsterraApplication(prisma, fence, ctx.scope, method, result, at, budget));
     revalidatePath(`/shopee/${ctx.scope.shopeeAccountId}/adsterra-roi`);
     return { success: true as const, result };
   } catch (error) { return { success: false as const, message: publicOperationError(error) }; }
@@ -30,7 +30,7 @@ export async function cancelAdsterraPlacementApplication(accountId: unknown, con
   const budget = new OperationBudget(), owner = await requireOperationUser(budget);
   try {
     const ctx = await operationContext(accountId, configId, budget);
-    const signed = verifyConfirmation(token, owner, "ADSTERRA_LIST_APPLY_V1", budget.now());
+    const signed = verifyConfirmation(token, owner, "ADSTERRA_LIST_APPLY_V2", budget.now());
     if (signed.campaignId !== ctx.scope.campaignId || signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId) throw new Error("SCOPE");
     await ctx.store.cancel({ campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation }, owner, digest(token));
     return { success: true as const };

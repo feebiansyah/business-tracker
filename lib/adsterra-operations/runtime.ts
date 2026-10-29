@@ -12,7 +12,8 @@ import { OperationBudget } from "./budget";
 import { CampaignOperationStore } from "./repository";
 import { PlacementProvider } from "./provider";
 import { planApplication } from "./application";
-import { OperationError, type ListKind, type Snapshot } from "./types";
+import { OperationError, type ListKind, type MethodState, type Snapshot } from "./types";
+import { requireActivationReady } from "./method-state";
 
 export async function requireOperationUser(budget: OperationBudget) {
   let user: Awaited<ReturnType<typeof resolveSessionUser>>;
@@ -62,13 +63,30 @@ export async function operationContext(account: unknown, config: unknown, budget
     const campaign = await provider.campaign();
     const blacklist = await provider.list("BLACKLIST"), whitelist = await provider.list("WHITELIST");
     const bids = await provider.legacy.getCustomBids(loaded.scope.campaignId);
+    const method = await store.method(loaded.scope.campaignId);
     try {
       const fresh = await loadOperationScope(account, config, budget);
-      return { campaign, blacklist, whitelist, bids, aliases: fresh.aliases,
+      return { campaign, blacklist, whitelist, bids, method, aliases: fresh.aliases,
         scopeHash: fresh.scope.campaignId === loaded.scope.campaignId ? fresh.scopeHash : "SCOPE_CHANGED" };
-    } catch { return { campaign, blacklist, whitelist, bids, aliases: loaded.aliases, scopeHash: "SCOPE_UNAVAILABLE" }; }
+    } catch { return { campaign, blacklist, whitelist, bids, method, aliases: loaded.aliases, scopeHash: "SCOPE_UNAVAILABLE" }; }
+  }
+  async function activationReady() {
+    budget.requireRequests(3);
+    const method = await store.method(loaded.scope.campaignId);
+    const campaign = await provider.campaign(), blacklist = await provider.list("BLACKLIST"), whitelist = await provider.list("WHITELIST");
+    return requireActivationReady({ method, campaign, blacklist, whitelist });
+  }
+  function bindMethod(expected: MethodState, placement = false) {
+    const original = provider.beforeMutation;
+    provider.beforeMutation = async () => {
+      await original?.();
+      if (digest(await store.method(loaded.scope.campaignId)) !== digest(expected)) throw new OperationError("Metode/versi/kesiapan berubah sebelum dispatch.");
+      if (placement && (await provider.list(expected.placementMethod === "BLACKLIST" ? "WHITELIST" : "BLACKLIST")).length) throw new OperationError("Daftar berlawanan terisi; Placement tidak boleh clear. Kembali ke Campaign.");
+    };
   }
   async function plan(data: FormData, kind: ListKind) {
+    const method = await store.method(loaded.scope.campaignId);
+    if (!method.placementMethod || method.placementMethod !== kind) throw new OperationError("Placement harus mengikuti metode tersimpan. Tetapkan/ubah metode di Campaign.");
     const upload = await budget.wait(readCsvUpload(loaded.scope.shopeeAccountId, data));
     const analysis = await buildAdsterraRoiAnalysis({ shopeeAccountId: loaded.scope.shopeeAccountId, configId: loaded.scope.configId,
       dateFrom: data.get("dateFrom"), dateTill: data.get("dateTill"), fxRate: data.get("fxRate"), ...upload }, {
@@ -81,7 +99,7 @@ export async function operationContext(account: unknown, config: unknown, budget
       inputHash: digest([digest(Buffer.from(upload.bytes).toString("base64")), analysis.dateFrom, analysis.dateTill, analysis.fxRate, loaded.scope]),
     });
   }
-  return { ...loaded, budget, provider, store, snapshot, plan };
+  return { ...loaded, budget, provider, store, snapshot, plan, activationReady, bindMethod };
 }
 export function publicOperationError(error: unknown) {
   return error instanceof OperationError ? error.message

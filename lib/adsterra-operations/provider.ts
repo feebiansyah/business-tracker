@@ -5,6 +5,12 @@ import type { OperationBudget } from "./budget";
 import { MarkerPersistenceUncertain, type CampaignOperationStore, type Fence, type WriteMarker } from "./repository";
 
 const base = "https://api3.adsterratools.com/advertiser";
+export function parseCampaignInfo(data: unknown, expectedId: string): Snapshot["campaign"] {
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new OperationError("Identitas campaign API tidak tersedia.");
+  const r = data as Record<string, unknown>;
+  if (campaignKey(String(r.id)) !== expectedId || ![1, 2, 3, 4].includes(r.active as number)) throw new OperationError("Identitas/status campaign API belum terbukti.");
+  return { id: expectedId, active: r.active as 1 | 2 | 3 | 4, pricing: typeof r.pricing_type === "string" && r.pricing_type.trim() ? r.pricing_type.toUpperCase() : "UNKNOWN" };
+}
 export function parsePlacementList(body: unknown, kind: ListKind): string[] {
   const raw = kind === "BLACKLIST" && Array.isArray(body) && body.length === 0 ? body
     : body && typeof body === "object" && !Array.isArray(body) && !("error" in body) && !("errors" in body)
@@ -90,11 +96,7 @@ export class PlacementProvider {
     try { return await response.json() as unknown; } catch { throw new OperationError("Respons API Adsterra tidak valid."); }
   }
   async campaign(): Promise<Snapshot["campaign"]> {
-    const data = await this.call(`/campaign/${this.campaignId}.json`);
-    if (!data || typeof data !== "object" || Array.isArray(data)) throw new OperationError("Identitas campaign API tidak tersedia.");
-    const r = data as Record<string, unknown>;
-    if (campaignKey(String(r.id)) !== this.campaignId || ![1, 2, 3, 4].includes(r.active as number)) throw new OperationError("Identitas/status campaign API belum terbukti.");
-    return { id: this.campaignId, active: r.active as 1 | 2 | 3 | 4, pricing: typeof r.pricing_type === "string" && r.pricing_type.trim() ? r.pricing_type.toUpperCase() : "UNKNOWN" };
+    return parseCampaignInfo(await this.call(`/campaign/${this.campaignId}.json`), this.campaignId);
   }
   bidClient() {
     const scoped = (id: string) => { if (campaignKey(id) !== this.campaignId) throw new OperationError("Scope write Custom Bid berbeda dari guard."); return this.campaignId; };

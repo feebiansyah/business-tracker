@@ -5,6 +5,7 @@ import { digest, exactSet, sortedIds } from "./canonical";
 import { OperationError, type ApplicationPlan, type ApplicationResult, type ListKind, type Scope, type Snapshot } from "./types";
 import type { OperationBudget } from "./budget";
 import type { PlacementProvider } from "./provider";
+import { capabilityError } from "./method-state";
 
 export function bidDigest(bids: Snapshot["bids"]) {
   return digest([...bids].sort((a, b) => `${a.placementId}:${a.countryCode}`.localeCompare(`${b.placementId}:${b.countryCode}`)));
@@ -24,12 +25,10 @@ export function planApplication(input: {
   const existing = kind === "BLACKLIST" ? before.blacklist : before.whitelist;
   const opposite = kind === "BLACKLIST" ? before.whitelist : before.blacklist;
   const blockers: string[] = [];
-  if (!["CPM", "CPC", "CPA"].includes(before.campaign.pricing)) blockers.push("Dukungan pricing campaign belum terbukti; penerapan tetap baca-saja.");
-  if (kind === "WHITELIST" && !["CPM", "CPC"].includes(before.campaign.pricing)) blockers.push(before.campaign.pricing === "CPA" ? "Whitelist tidak didukung untuk campaign CPA." : "Dukungan pricing campaign untuk Whitelist belum terbukti.");
-  if (opposite.length) {
-    if (before.campaign.active !== 1) blockers.push("Clear daftar berlawanan memerlukan status provider strictly INACTIVE (LIMITED tidak cukup). Matikan secara manual dahulu.");
-    if (before.aliases.some((alias) => alias.autoScheduleEnabled)) blockers.push("Nonaktifkan Auto ON/OFF pada SEMUA konfigurasi yang menunjuk campaign fisik ini dahulu.");
-  }
+  const unsupported = capabilityError(kind, before.campaign.pricing);
+  if (unsupported) blockers.push(unsupported);
+  if (before.method.placementMethod !== kind) blockers.push("Metode aplikasi berbeda/belum ditetapkan. Gunakan Campaign; Placement tidak boleh mengganti metode.");
+  if (opposite.length) blockers.push("Daftar berlawanan terisi. Hanya Campaign yang boleh clear melalui konfirmasi metode.");
   return { scope, kind, dateFrom: input.dateFrom, dateTill: input.dateTill, fxRate: input.fxRate, target, before, opposite,
     added: target.filter((id) => !existing.includes(id)), removed: existing.filter((id) => !target.includes(id)),
     resetBids: kind === "BLACKLIST" ? before.bids.filter((bid) => target.includes(bid.placementId)) : [],
@@ -56,22 +55,11 @@ export async function applyPlacementPlan(plan: ApplicationPlan, provider: Placem
     if (plan.blockers.length) return result("RECONFIRM_REQUIRED", plan.blockers.join(" "));
     const current = await snapshot(); view(current);
     if (preconditionHash(current, plan.target, plan.kind) !== plan.preconditionHash) return result("RECONFIRM_REQUIRED", "Precondition berubah. Konfirmasi ulang sebelum mutasi.");
-    if (plan.opposite.length) {
-      phase = "CLEAR_OPPOSITE"; budget.check(35_000);
-      await attempt(() => provider.clear(plan.kind === "BLACKLIST" ? "WHITELIST" : "BLACKLIST"));
-      phase = "VERIFY_CLEAR";
-      const after = await snapshot(); view(after);
-      const opposite = plan.kind === "BLACKLIST" ? after.whitelist : after.blacklist;
-      if (provider.ambiguous) return result("UNVERIFIED", "Clear mungkin diterapkan, tetapi request belum terbukti selesai. Tidak meneruskan PUT.");
-      if (opposite.length) return result("PARTIAL", "Clear daftar berlawanan belum terverifikasi kosong. PUT target tidak dikirim.");
-      // Only the explicitly confirmed opposite-list change may be ignored here.
-      const expected = { ...plan.before, ...(plan.kind === "BLACKLIST" ? { whitelist: [] } : { blacklist: [] }) };
-      if (preconditionHash(after, plan.target, plan.kind) !== preconditionHash(expected, plan.target, plan.kind)
-        || after.campaign.active !== 1 || after.aliases.some((a) => a.autoScheduleEnabled)) return result("PARTIAL", "Prasyarat/daftar/bid berubah setelah clear. PUT tidak dikirim; konfirmasi ulang melalui pemulihan.");
-    }
+    if (plan.opposite.length) return result("RECONFIRM_REQUIRED", "Placement tidak boleh clear atau mengganti metode. Kembali ke Campaign.");
     const previousTarget = plan.kind === "BLACKLIST" ? plan.before.blacklist : plan.before.whitelist;
     if (!exactSet(previousTarget, plan.target)) {
       phase = "PUT_TARGET";
+      budget.requireRequests(16);
       await attempt(() => provider.put(plan.kind, plan.target));
     }
     phase = "VERIFY_LISTS";
@@ -79,9 +67,11 @@ export async function applyPlacementPlan(plan: ApplicationPlan, provider: Placem
     if (!desiredLists(after)) return result(provider.ambiguous ? "UNVERIFIED" : "PARTIAL", "Kedua daftar aktual belum cocok dengan target yang dikonfirmasi. Tidak ada rollback/retry.");
     if (provider.ambiguous) return result("UNVERIFIED", "GET saat ini cocok, tetapi request write lama mungkin masih diproses. Guard tetap terkunci.");
     if (after.scopeHash !== plan.before.scopeHash || digest(after.aliases) !== digest(plan.before.aliases)) return result("PARTIAL", "Scope/Auto ON/OFF berubah selama operasi; hentikan dan periksa hasil.");
+    if (digest(after.method) !== digest(plan.before.method)) return result("PARTIAL", "Metode/versi berubah selama operasi. Kesiapan tidak diterbitkan.");
     if (bidDigest(after.bids) !== bidDigest(plan.before.bids)) return result("PARTIAL", "Custom Bid berubah di luar precondition konfirmasi. Reset tidak diperluas secara diam-diam.");
     if (plan.kind === "BLACKLIST" && plan.resetBids.length) {
       phase = "RESET_CUSTOM_BIDS";
+      budget.requireRequests(9);
       await attempt(() => provider.legacy.deleteCustomBids(plan.scope.campaignId, plan.resetBids));
     }
     // Mandatory even when list/initial bid snapshot was empty or NO_CHANGE.
@@ -89,12 +79,13 @@ export async function applyPlacementPlan(plan: ApplicationPlan, provider: Placem
     after = await snapshot(); view(after);
     if (provider.ambiguous) return result("UNVERIFIED", "Write mungkin diterapkan, tetapi request belum terbukti selesai. Hasil GET tidak membuka guard otomatis.");
     if (!desiredLists(after)) return result("PARTIAL", "Verifikasi exact set kedua daftar gagal setelah operasi.");
+    if (digest(after.method) !== digest(plan.before.method)) return result("PARTIAL", "Versi metode berubah pada verifikasi akhir.");
     if (after.scopeHash !== plan.before.scopeHash || digest(after.aliases) !== digest(plan.before.aliases)) return result("PARTIAL", "Daftar provider sudah dibaca, tetapi scope/Auto berubah pada verifikasi akhir. Periksa operasi; tidak mengklaim sukses penuh.");
     const expectedBids = plan.kind === "BLACKLIST" ? plan.before.bids.filter((bid) => !plan.target.includes(bid.placementId)) : plan.before.bids;
     if (bidDigest(after.bids) !== bidDigest(expectedBids)) return result("PARTIAL", "Sebagian Custom Bid belum kosong atau snapshot bid berubah. Tidak mengklaim sukses penuh.");
     const changed = plan.opposite.length > 0 || !exactSet(previousTarget, plan.target) || plan.resetBids.length > 0;
     return result(changed ? "VERIFIED" : "NO_CHANGE", changed
-      ? "Kedua daftar dan dampak Custom Bid sudah diverifikasi. Ini bukan deteksi mode editor."
+      ? `Kedua daftar dan dampak Custom Bid sudah diverifikasi. Ini bukan deteksi mode editor.${plan.kind === "BLACKLIST" && !plan.target.length ? " Blacklist API kosong: tidak ada placement yang dikecualikan." : ""}`
       : "Kedua daftar dan Custom Bid sudah sesuai; tidak ada mutasi provider.");
   } catch {
     return result(provider.ambiguous ? "UNVERIFIED" : provider.sent ? "PARTIAL" : "RECONFIRM_REQUIRED",

@@ -188,6 +188,11 @@ model AdsterraCampaignOperation {
   protectiveOffOwner      String?   @db.VarChar(64)
   protectiveOffSummary    String?   @db.VarChar(1000)
   protectiveOffAt         DateTime?
+  placementMethod         String?   @db.VarChar(16)
+  methodVersion           Int       @default(0)
+  methodReady             Boolean   @default(false)
+  approvedBlacklistHash   String?   @db.Char(64)
+  approvedWhitelistHash   String?   @db.Char(64)
 
   @@index([status])
 }

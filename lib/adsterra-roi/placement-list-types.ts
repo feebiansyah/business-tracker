@@ -1,7 +1,7 @@
 export type PlacementListKind = "blacklist" | "whitelist";
 
 export type PlacementListRead =
-  | { status: "SUCCESS"; count: number; readAt: string }
+  | { status: "SUCCESS"; count: number; digest: string; readAt: string }
   | { status: "ERROR" | "UNAVAILABLE"; message: string; attemptedAt: string };
 
 export type CampaignPlacementLists = {
@@ -9,6 +9,7 @@ export type CampaignPlacementLists = {
   campaignId: string;
   blacklist: PlacementListRead;
   whitelist: PlacementListRead;
+  application: import("../adsterra-operations/types").MethodInfo;
 };
 
 export type PlacementListsResult =
