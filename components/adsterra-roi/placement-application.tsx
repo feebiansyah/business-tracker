@@ -2,11 +2,10 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cancelAdsterraPlacementApplication, executeAdsterraPlacementApplication, prepareAdsterraPlacementApplication } from "@/app/shopee/[id]/adsterra-roi/placement-application-actions";
-import type { ApplicationResult, ListKind, Preview } from "@/lib/adsterra-operations/types";
+import type { ApplicationResult, ListKind } from "@/lib/adsterra-operations/types";
 import { useAdsterraOperation } from "./operation-context";
-import { MethodBadge, OperationDialog, OperationNotice } from "./operation-dialog";
+import { MethodBadge, OperationNotice } from "./operation-dialog";
 import { AdsterraOperationRecovery } from "./operation-recovery";
-import { blacklistDescription } from "@/lib/adsterra-operations/list-evidence";
 
 const key = "placement-application";
 export function PlacementApplication({ accountId, configId, kind, candidateCount, getData, onResult }: {
@@ -14,11 +13,10 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
   getData(): FormData | null; onResult(result: ApplicationResult): void;
 }) {
   const operation = useAdsterraOperation(), pending = useRef(false);
-  const [preview, setPreview] = useState<Preview | null>(null);
+  const protectionKey = `${key}-${configId}`;
   const [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
   const [rejection, setRejection] = useState<ApplicationResult["whitelistRejection"]>();
-  const [selection, setSelection] = useState<ApplicationResult["whitelistRejection"]>();
-  function input(exclusion: ApplicationResult["whitelistRejection"] | null = selection) {
+  function input(exclusion: ApplicationResult["whitelistRejection"] | null = null) {
     const data = getData(); if (!data) throw new Error("STALE_ANALYSIS");
     // Never accept exclusion fields left in the CSV form or from another result.
     for (const field of ["whitelistExclusions", "whitelistRejectionToken", "whitelistRejectedIds", "whitelistPreviousExclusions"]) data.delete(field);
@@ -33,61 +31,45 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
   async function prepare(exclusion?: ApplicationResult["whitelistRejection"]) {
     if (pending.current || !operation.begin(key)) return;
     pending.current = true; setBusy(true); setMessage("");
-    let hold = false;
+    let refresh = false, stage: "prepare" | "cancel" | "execute" = "prepare";
     try {
       const data = input(exclusion ?? null);
       const response = await prepareAdsterraPlacementApplication(accountId, data, kind);
-      if (!response.success) setMessage(response.message);
-      else { setSelection(exclusion); setPreview(response.preview); hold = !!response.preview.token; }
-    } catch { setMessage("Konfirmasi belum dapat disiapkan. Tidak ada perubahan provider."); }
-    finally { pending.current = false; setBusy(false); if (!hold) operation.end(key); }
-  }
-  async function cancel() {
-    if (pending.current) return;
-    pending.current = true; setBusy(true);
-    try {
-      if (preview?.token) {
-        const response = await cancelAdsterraPlacementApplication(accountId, configId, preview.token);
-        if (!response.success) setMessage(response.message);
+      if (!response.success) { setMessage(response.message); return; }
+      const p = response.preview;
+      if (p.blockers.length || !p.token) {
+        setMessage(p.blockers.join(" ") || "Konfirmasi belum tersedia.");
+        if (p.token) { stage = "cancel"; const cancelled = await cancelAdsterraPlacementApplication(accountId, configId, p.token); if (!cancelled.success) setMessage(cancelled.message); }
+        return;
       }
-    } catch { setMessage("Pembatalan belum dapat dipastikan. Periksa Status sebelum melanjutkan."); }
-    finally { setPreview(null); pending.current = false; setBusy(false); operation.end(key); }
-  }
-  async function execute() {
-    if (pending.current || !preview?.token) return;
-    pending.current = true; setBusy(true); setMessage(""); setRejection(undefined);
-    try {
-      const data = input();
-      const response = await executeAdsterraPlacementApplication(accountId, data, preview.token);
-      if (!response.success) setMessage(response.message);
-      else { onResult(response.result); setRejection(response.result.whitelistRejection); setMessage(`${response.result.status}: ${response.result.message}`); }
-    } catch { setMessage("Hasil perubahan belum diterima. Gunakan Periksa Status; jangan ulangi write."); }
-    finally { setPreview(null); pending.current = false; setBusy(false); operation.end(key, true); }
+      const impact = p.resetBids.length
+        ? `${p.resetBids.length} override Custom Bid seluruh GEO placement blacklist terkait dihapus setelah verifikasi; tidak dipulihkan saat ON kembali.`
+        : "Custom Bid dipertahankan.";
+      if (!window.confirm(`Campaign ${p.scope.label} (${p.scope.campaignId})\nTerapkan ${p.kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}: ${p.target.length} placement final (+${p.added.length}, −${p.removed.length}).\n${p.excluded?.length ? `Dikecualikan: ${p.excluded.join(", ")}. Target lainnya tetap dapat ditolak.\n` : ""}${impact}\n${p.kind === "BLACKLIST" && !p.target.length ? "Blacklist kosong: tidak ada placement dikecualikan.\n" : ""}Konfirmasi penerapan?`)) {
+        stage = "cancel";
+        const cancelled = await cancelAdsterraPlacementApplication(accountId, configId, p.token);
+        if (!cancelled.success) setMessage(cancelled.message);
+        return;
+      }
+      stage = "execute"; refresh = true; setRejection(undefined);
+      // Reuse the exact input prepared above, including confirmed exclusions.
+      const executed = await executeAdsterraPlacementApplication(accountId, data, p.token);
+      if (!executed.success) setMessage(executed.message);
+      else { onResult(executed.result); setRejection(executed.result.whitelistRejection); setMessage(`${executed.result.status}: ${executed.result.message}`); }
+      operation.setProtectionNeeded(protectionKey, !executed.success || !["VERIFIED", "NO_CHANGE"].includes(executed.result.status));
+    } catch {
+      setMessage(stage === "prepare" ? "Konfirmasi belum dapat disiapkan. Tidak ada perubahan provider."
+        : stage === "cancel" ? "Pembatalan belum dapat dipastikan. Periksa Status sebelum melanjutkan."
+        : "Hasil perubahan belum diterima. Gunakan Periksa Status; jangan ulangi write.");
+      if (stage !== "prepare") operation.setProtectionNeeded(protectionKey, true);
+    } finally { pending.current = false; setBusy(false); operation.end(key, refresh); }
   }
   return <section aria-label="Penerapan daftar placement" className="space-y-3 text-sm">
     <div className="flex flex-wrap items-center gap-2"><MethodBadge method={kind}/><span className="text-xs text-slate-600">{candidateCount} kandidat analisis</span></div>
     <Button type="button" disabled={operation.busy || busy || (kind === "WHITELIST" && !candidateCount)} onClick={() => void prepare()}>{busy ? "Memproses…" : `Terapkan ${kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}`}</Button>
     {kind === "WHITELIST" && !candidateCount && <p>Whitelist belum memiliki kandidat. Tidak ada perubahan provider.</p>}
-    {preview && <OperationDialog title="Konfirmasi penerapan" busy={busy} onClose={() => void cancel()}>
-      <p className="font-semibold">{preview.scope.label} · Campaign {preview.scope.campaignId}</p>
-      <p>Terapkan <strong>{preview.kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}</strong> dengan <strong>{preview.target.length} placement</strong>.</p>
-      {!!preview.excluded?.length && <p className="break-words text-amber-800">Dikecualikan setelah penolakan provider: {preview.excluded.join(", ")} ({preview.excluded.length} placement). Target lain tetap dapat ditolak provider.</p>}
-      <div className="grid grid-cols-3 gap-2 rounded bg-slate-50 p-3 text-xs"><p>Target <b className="block text-base">{preview.target.length}</b></p><p>Ditambahkan <b className="block text-base">{preview.added.length}</b></p><p>Dikeluarkan <b className="block text-base">{preview.removed.length}</b></p></div>
-      <p className="font-medium text-slate-700">{preview.resetBids.length
-        ? `${preview.resetBids.length} override Custom Bid seluruh GEO milik placement blacklist terkait akan dihapus setelah blacklist terverifikasi. Bid tidak dipulihkan saat placement ON kembali.`
-        : "Custom Bid dipertahankan."}</p>
-      {preview.kind === "BLACKLIST" && !preview.target.length && <p className="font-medium">Blacklist kosong: tidak ada placement yang dikecualikan.</p>}
-      <details className="text-xs text-slate-600"><summary className="cursor-pointer">Detail</summary><div className="mt-2 space-y-2 break-words">
-        <p>Periode {preview.dateFrom}–{preview.dateTill} · Kurs {preview.fxRate}</p>
-        <p>Daftar berlawanan: {blacklistDescription(preview.opposite)}; tidak dikosongkan atau diubah melalui Placement.</p>
-        <Ids label="ID target" ids={preview.target}/><Ids label="Penambahan" ids={preview.added}/><Ids label="Penghapusan" ids={preview.removed}/>
-        {preview.resetBids.length > 0 && <p>Override bid yang dihapus: {preview.resetBids.map((b) => `${b.placementId}/${b.countryCode}/${b.price}`).join("; ")}</p>}
-      </div></details>
-      {preview.blockers.map((reason) => <p key={reason} role="alert" className="text-red-700">{reason}</p>)}
-      <div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={busy} onClick={() => void cancel()}>Batal</Button><Button type="button" disabled={busy || !preview.token} onClick={() => void execute()}>{busy ? "Memproses…" : "Konfirmasi"}</Button></div>
-    </OperationDialog>}
     <OperationNotice message={message}/>
-    {kind === "WHITELIST" && rejection && !preview && <div className="space-y-2 text-xs">
+    {kind === "WHITELIST" && rejection && <div className="space-y-2 text-xs">
       {rejection.groups.map((g) => <p key={g.reason} className="break-words">{g.reason}: {g.ids.join(", ")}</p>)}
       <p>{rejection.complete ? "ID di atas berasal dari respons penolakan terkait." : "Sebagian ID penolakan dapat belum tercantum; bukan daftar penolakan lengkap."} Target yang tersisa tetap dapat ditolak provider.</p>
       <Button type="button" disabled={busy || operation.busy} onClick={() => void prepare(rejection)}>Terapkan tanpa placement yang ditolak</Button>
@@ -95,4 +77,3 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
     {message && !/^(VERIFIED|NO_CHANGE):/.test(message) && <AdsterraOperationRecovery accountId={accountId} configId={configId}/>}
   </section>;
 }
-function Ids({ label, ids }: { label: string; ids: string[] }) { return <p>{label} ({ids.length}): {ids.join(", ") || "Kosong"}</p>; }
