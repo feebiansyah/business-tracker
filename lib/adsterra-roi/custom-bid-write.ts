@@ -2,6 +2,8 @@ import Decimal from "decimal.js";
 import { parseAdsterraConfigId, parseShopeeAccountId } from "./config-input.ts";
 import type { AdsterraCustomBid } from "./types.ts";
 import { resetBlacklistedCustomBids } from "./blacklist.ts";
+import type { BlacklistUnavailable } from "../adsterra-operations/types";
+import { isWhitelistBlacklistRefusal } from "../adsterra-operations/list-evidence";
 
 export class AdsterraCustomBidWriteError extends Error {
   constructor(message: string) {
@@ -27,7 +29,7 @@ export function readAdsterraCustomBidExperiment(env: Record<string, string | und
 }
 
 type WriteClient = {
-  getBlacklist(campaignId: string): Promise<number[]>;
+  getBlacklist(campaignId: string): Promise<number[] | BlacklistUnavailable>;
   getCustomBids(campaignId: string): Promise<AdsterraCustomBid[]>;
   setCustomBids(campaignId: string, bids: readonly AdsterraCustomBid[]): Promise<AdsterraCustomBid[]>;
   updateCustomBids(campaignId: string, bids: readonly AdsterraCustomBid[]): Promise<void>;
@@ -100,8 +102,16 @@ export async function writeAdsterraPlacementCustomBid(input: CustomBidWriteInput
   }
 
   const client = await deps.loadClient(accountId);
-  const assertSaveAllowed = (blocked: readonly number[]) => {
-    if (blocked.includes(Number(id))) {
+  const validateBlacklist = (blocked: number[] | BlacklistUnavailable) => {
+    if (!Array.isArray(blocked) && (!isWhitelistBlacklistRefusal(blocked) || blocked.campaignId !== config.campaignId.replace(/^0+(?=\d)/, ""))) {
+      throw new AdsterraCustomBidWriteError("Bukti pembacaan Blacklist/Whitelist tidak sesuai scope Custom Bid.");
+    }
+  };
+  const assertSaveAllowed = (blocked: number[] | BlacklistUnavailable) => {
+    validateBlacklist(blocked);
+    // Scoped provider client obtains this specific refusal only after a valid
+    // nonempty Whitelist GET. It is not converted into an empty blacklist.
+    if (Array.isArray(blocked) && blocked.includes(Number(id))) {
       throw new AdsterraCustomBidWriteError("Custom Bid tidak dapat disimpan: Placement sedang dalam blacklist.");
     }
   };
@@ -160,14 +170,18 @@ export async function writeAdsterraPlacementCustomBid(input: CustomBidWriteInput
   if (input.operation === "SAVE") {
     // Provider writes cannot be atomic with a blacklist changed by another operator.
     // Detect a concurrent blacklist change and remove blocked overrides, never restore.
-    let blocked: number[];
-    try { blocked = await client.getBlacklist(config.campaignId); }
+    let blocked: number[] | BlacklistUnavailable;
+    try { blocked = await client.getBlacklist(config.campaignId); validateBlacklist(blocked); }
     catch { throw new AdsterraCustomBidWriteError("Custom Bid mungkin sudah berubah, tetapi verifikasi blacklist gagal. Periksa Adsterra sebelum mencoba lagi."); }
-    if (actual.some((bid) => blocked.includes(Number(bid.placementId)))) {
+    if (Array.isArray(blocked) && actual.some((bid) => blocked.includes(Number(bid.placementId)))) {
       if (experiment && blocked.some((placement) => placement !== Number(id))) {
         throw new AdsterraCustomBidWriteError("Blacklist berubah. Verifikasi gagal; uji ini tidak menjalankan reset otomatis pada Placement lain. Periksa Adsterra sebelum melanjutkan.");
       }
-      const reset = await resetBlacklistedCustomBids(config.campaignId, blocked, client);
+      const reset = await resetBlacklistedCustomBids(config.campaignId, blocked, { ...client, getBlacklist: async (campaignId) => {
+        const fresh = await client.getBlacklist(campaignId);
+        if (!Array.isArray(fresh)) throw new AdsterraCustomBidWriteError("Blacklist tidak lagi dapat dibaca. Reset bid tidak diperluas atau diasumsikan kosong.");
+        return fresh;
+      } });
       throw new AdsterraCustomBidWriteError(reset.status === "COMPLETE"
         ? "Blacklist berubah selama penyimpanan. Custom Bid placement blacklist sudah direset; muat ulang analisis."
         : `${reset.message} Placement belum direset/terverifikasi: ${reset.pendingPlacementIds.join(", ")}.`);

@@ -7,6 +7,7 @@ import type { MethodPreview } from "@/lib/adsterra-operations/method-plan";
 import { useAdsterraOperation } from "./operation-context";
 import { OperationDialog, OperationNotice } from "./operation-dialog";
 import { AdsterraOperationRecovery } from "./operation-recovery";
+import { blacklistDescription } from "@/lib/adsterra-operations/list-evidence";
 
 export function CampaignMethodControls({ accountId, configId, info, busy }: {
   accountId: number; configId: number; info?: MethodInfo; busy: boolean;
@@ -60,13 +61,13 @@ export function CampaignMethodControls({ accountId, configId, info, busy }: {
         : preview.adopt ? "Daftar existing diadopsi tanpa OFF, perubahan Auto, write provider, atau penghapusan Custom Bid."
         : "Whitelist belum diisi. Metode disimpan; penerapan Whitelist dilakukan melalui analisis Placement sebelum ON."}</p>
       <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3">
-        <p className="font-medium">Blacklist API: {preview.blacklist.length} · Whitelist API: {preview.whitelist.length} placement.</p>
-        <p className="font-medium">Dikosongkan: {preview.clearBlacklist.length} Blacklist + {preview.clearWhitelist.length} Whitelist. Tidak ada placement baru ditambahkan.</p>
-        {preview.kind === "BLACKLIST" && !preview.same && (preview.reset || !preview.target.length) && <p>Blacklist kosong: tidak ada placement yang dikecualikan.</p>}
+        <p className="font-medium">Blacklist API: {blacklistDescription(preview.blacklist)} · Whitelist API: {preview.whitelist.length} placement.</p>
+        <p className="font-medium">Dikosongkan: {Array.isArray(preview.clearBlacklist) ? `${preview.clearBlacklist.length} Blacklist` : "Blacklist dibaca ulang dan direset setelah Whitelist kosong"} + {preview.clearWhitelist.length} Whitelist. Tidak ada placement baru ditambahkan.</p>
+        {preview.kind === "BLACKLIST" && !preview.same && (preview.reset || (Array.isArray(preview.target) && !preview.target.length)) && <p>Setelah reset terverifikasi, Blacklist kosong: tidak ada placement yang dikecualikan.</p>}
         <p>Custom Bid dipertahankan: {preview.preservedBids.length} override. Tidak ada penghapusan atau pemulihan bid.</p>
       </div>
-      <details><summary>Daftar tujuan existing: {preview.target.length}</summary><p className="break-all">{preview.target.join(", ") || "Kosong"}</p></details>
-      <details><summary>ID yang dikosongkan</summary><p className="break-all">{[...preview.clearBlacklist, ...preview.clearWhitelist].join(", ") || "Tidak ada"}</p></details>
+      <details><summary>Daftar tujuan existing: {blacklistDescription(preview.target)}</summary><p className="break-all">{Array.isArray(preview.target) ? preview.target.join(", ") || "Kosong" : "Blacklist belum terbaca; pembacaan wajib setelah clear Whitelist."}</p></details>
+      <details><summary>ID yang dikosongkan</summary><p className="break-all">{Array.isArray(preview.clearBlacklist) ? [...preview.clearBlacklist, ...preview.clearWhitelist].join(", ") || "Tidak ada" : `Whitelist: ${preview.clearWhitelist.join(", ")}. ID Blacklist harus dibaca ulang sebelum reset selanjutnya.`}</p></details>
       <details><summary>Custom Bid dipertahankan: {preview.preservedBids.length} override</summary><p className="break-all">{preview.preservedBids.map((b) => `${b.placementId}/${b.countryCode}/${b.price}`).join("; ") || "Tidak ada override"}</p></details>
       <p className="text-xs text-slate-500">Pilihan aplikasi, bukan deteksi mode editor Adsterra. Berlaku sampai {new Date(preview.expiresAt).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta" })} WIB.</p>
       {preview.blockers.map((reason) => <p key={reason} role="alert" className="text-red-700">{reason}</p>)}

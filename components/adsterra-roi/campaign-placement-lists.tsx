@@ -87,7 +87,7 @@ export function PlacementListReadout({ label, value, busy, connected, error }: {
   const timestamp = value && (value.status === "SUCCESS" ? value.readAt : value.attemptedAt);
   const status = !connected ? "Belum terhubung" : value?.status === "SUCCESS"
     ? `${value.count.toLocaleString("id-ID")}${value.count === 0 ? " (kosong)" : ""}`
-    : value?.status === "ERROR" ? "Gagal" : value ? "Belum tersedia" : busy ? "Memuat…" : "Belum dibaca";
+    : value?.status === "UNREADABLE_WHITELIST" ? "Tidak dapat dibaca (Whitelist)" : value?.status === "ERROR" ? "Gagal" : value ? "Belum tersedia" : busy ? "Memuat…" : "Belum dibaca";
   return <div className="flex min-w-40 max-w-64 flex-wrap items-baseline gap-x-2 text-xs">
     <span className="font-medium text-slate-700">{label}:</span><span className={value?.status === "ERROR" ? "text-red-700" : "text-slate-700"}>{status}</span>
     <details className="text-slate-500"><summary className="cursor-pointer" aria-label={`Detail ${label}`}>Detail</summary>

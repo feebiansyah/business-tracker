@@ -6,6 +6,12 @@ import type { OperationBudget } from "./budget";
 import { ProviderBodyLimitError, ProviderResponseReadError } from "./budget";
 import { diagnosticStage, diagnosticText, providerReasons, rejectedPlacements, type OperationDiagnostic } from "./diagnostics";
 import { MarkerPersistenceUncertain, type CampaignOperationStore, type Fence, type WriteMarker } from "./repository";
+import { parseWhitelistBlacklistRefusal } from "./list-evidence";
+import type { BlacklistUnavailable } from "./types";
+
+class WhitelistBlacklistRefusal extends OperationError {
+  constructor(readonly evidence: BlacklistUnavailable) { super("Blacklist API tidak dapat dibaca (HTTP 422): campaign memiliki Whitelist; bukan daftar kosong."); }
+}
 
 const base = "https://api3.adsterratools.com/advertiser";
 export function parseCampaignInfo(data: unknown, expectedId: string): Snapshot["campaign"] {
@@ -116,7 +122,15 @@ export class PlacementProvider {
   };
   private async call<T = unknown>(path: string, method = "GET", payload?: object, parse?: (body: unknown) => T): Promise<T> {
     const response = await this.transport(`${base}${path}`, { method, headers: { "X-API-Key": this.token, Accept: "application/json", ...(payload ? { "Content-Type": "application/json" } : {}) }, body: payload ? JSON.stringify(payload) : undefined });
-    if (!response.ok) throw new OperationError(`API Adsterra HTTP ${response.status}.`);
+    if (!response.ok) {
+      if (method === "GET" && path === `/campaign/${this.campaignId}/linking/blacklist.json` && response.status === 422) {
+        let body: unknown; try { body = await response.json(); } catch { /* Invalid is never an unavailable-list proof. */ }
+        const evidence = parseWhitelistBlacklistRefusal(body, this.campaignId);
+        if (evidence) throw new WhitelistBlacklistRefusal(evidence);
+      }
+      const stage = diagnosticStage(path, method), entry = this.diagnostics.find((item) => item.stage === stage && item.httpStatus === response.status);
+      throw new OperationError(`${method === "GET" ? `${stage}: ` : ""}API Adsterra HTTP ${response.status}${entry ? `: ${entry.reasons.join("; ")}` : ""}.`);
+    }
     try {
       if (response.status === 204) throw new OperationError("API tidak mengembalikan bukti daftar; bukan daftar kosong.");
       const body: unknown = await response.json();
@@ -130,12 +144,25 @@ export class PlacementProvider {
   async campaign(): Promise<Snapshot["campaign"]> {
     return this.call(`/campaign/${this.campaignId}.json`, "GET", undefined, (body) => parseCampaignInfo(body, this.campaignId));
   }
+  async lists(campaign: Snapshot["campaign"]): Promise<Pick<Snapshot, "blacklist" | "whitelist">> {
+    if (campaign.id !== this.campaignId) throw new OperationError("Identitas campaign pembacaan daftar berbeda.");
+    let blacklist: Snapshot["blacklist"];
+    try { blacklist = await this.list("BLACKLIST"); }
+    catch (error) {
+      if (!(error instanceof WhitelistBlacklistRefusal)) throw error;
+      blacklist = error.evidence;
+    }
+    const whitelist = await this.list("WHITELIST");
+    if (!Array.isArray(blacklist) && !whitelist.length) throw new OperationError("Blacklist ditolak karena Whitelist, tetapi Whitelist tidak terbukti berisi. Pembacaan belum dapat diverifikasi.");
+    return { blacklist, whitelist };
+  }
   bidClient() {
     const scoped = (id: string) => { if (campaignKey(id) !== this.campaignId) throw new OperationError("Scope write Custom Bid berbeda dari guard."); return this.campaignId; };
     return {
       getBlacklist: async (id: string) => {
         scoped(id);
-        const ids = await this.list("BLACKLIST");
+        const { blacklist: ids } = await this.lists(await this.campaign());
+        if (!Array.isArray(ids)) return ids;
         if (ids.some((id) => !/^\d+$/.test(id))) throw new OperationError("Blacklist mempunyai identitas nonnumerik; write Custom Bid diblokir untuk pemeriksaan manual.");
         return ids.map(Number);
       },

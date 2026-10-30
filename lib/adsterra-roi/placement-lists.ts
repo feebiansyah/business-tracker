@@ -7,6 +7,8 @@ import { assessReadiness, listDigest, storedMethod } from "../adsterra-operation
 import type { MethodInfo, MethodState } from "../adsterra-operations/types";
 import type { StoredMethodRow } from "../adsterra-operations/method-state";
 import type { PlacementListBatch, PlacementListKind, PlacementListRead } from "./placement-list-types";
+import { parseWhitelistBlacklistRefusal } from "../adsterra-operations/list-evidence";
+import type { BlacklistUnavailable } from "../adsterra-operations/types";
 
 type Config = { id: number; shopeeAccountId: number; campaignId: string };
 type Dependencies = {
@@ -43,7 +45,7 @@ function parseListCount(body: unknown, kind: PlacementListKind): { count: number
   return { count: unique.size, digest: listDigest([...unique]) };
 }
 
-async function readList(campaignId: string, kind: PlacementListKind, token: string, budget: AbortSignal): Promise<PlacementListRead> {
+async function readList(campaignId: string, kind: PlacementListKind, token: string, budget: AbortSignal, refused?: (evidence: BlacklistUnavailable) => void): Promise<PlacementListRead> {
   if (budget.aborted) return unavailable("Batas waktu pembacaan tercapai. Silakan refresh.");
   const signal = AbortSignal.any([budget, AbortSignal.timeout(10_000)]);
   try {
@@ -54,7 +56,13 @@ async function readList(campaignId: string, kind: PlacementListKind, token: stri
     if ([204, 404, 405, 501].includes(response.status)) {
       return unavailable(`Daftar tidak tersedia dari API (HTTP ${response.status}); bukan berarti kosong.`);
     }
-    if (!response.ok) return { status: "ERROR", message: `Pembacaan API gagal (HTTP ${response.status}).`, attemptedAt: new Date().toISOString() };
+    if (!response.ok) {
+      if (kind === "blacklist" && response.status === 422) {
+        const evidence = parseWhitelistBlacklistRefusal(await response.json(), campaignId);
+        if (evidence && !signal.aborted) { refused?.(evidence); return unavailable("Blacklist API ditolak karena campaign memiliki Whitelist (HTTP 422); bukan daftar kosong."); }
+      }
+      return { status: "ERROR", message: `Pembacaan API gagal (HTTP ${response.status}).`, attemptedAt: new Date().toISOString() };
+    }
     const body: unknown = await response.json();
     if (body === null || (typeof body === "object" && !Array.isArray(body)
       && (body as Record<string, unknown>).placement_ids === null)) {
@@ -127,7 +135,8 @@ export async function loadAdsterraPlacementLists(
       async function worker() {
         while (nextId < ids.length && !providerBudget.aborted) {
           const id = ids[nextId++], record = records.get(id)!;
-          record.blacklist = await readList(id, "blacklist", token, providerBudget);
+          let refusal: BlacklistUnavailable | undefined;
+          record.blacklist = await readList(id, "blacklist", token, providerBudget, (value) => { refusal = value; });
           record.whitelist = await readList(id, "whitelist", token, providerBudget);
           const signal = AbortSignal.any([providerBudget, AbortSignal.timeout(10_000)]);
           if (!signal.aborted) try {
@@ -139,6 +148,10 @@ export async function loadAdsterraPlacementLists(
             signal.throwIfAborted();
             record.pricing = info.pricing;
           } catch { /* Unknown capability never permits readiness. */ }
+          if (refusal && !providerBudget.aborted && record.pricing && record.whitelist.status === "SUCCESS" && record.whitelist.count > 0) {
+            record.blacklist = { status: "UNREADABLE_WHITELIST", evidence: refusal, digest: listDigest(refusal), attemptedAt: new Date().toISOString(),
+              message: "Blacklist API tidak dapat dibaca karena campaign memiliki Whitelist (HTTP 422); bukan daftar kosong atau deteksi mode editor." };
+          }
         }
       }
       await Promise.all(Array.from({ length: Math.min(2, ids.length) }, worker));
@@ -150,7 +163,8 @@ export async function loadAdsterraPlacementLists(
   const lists = aliases.filter(({ id }) => selected.has(id)).map(({ config, id }) => {
     const record = records.get(id)!, method = methods.get(id), error = methodErrors.get(id);
     const application: MethodInfo = method && !error ? { status: "SUCCESS", method,
-      ...assessReadiness(method, { blacklist: record.blacklist.status === "SUCCESS" ? record.blacklist : null,
+      ...assessReadiness(method, { blacklist: record.blacklist.status === "SUCCESS" ? record.blacklist
+        : record.blacklist.status === "UNREADABLE_WHITELIST" ? { count: null, digest: record.blacklist.digest, evidence: record.blacklist.evidence } : null,
         whitelist: record.whitelist.status === "SUCCESS" ? record.whitelist : null }, record.pricing), readAt: new Date().toISOString() }
       : { status: "UNAVAILABLE", method: null, readiness: "UNVERIFIABLE", message: error ?? "Metadata metode belum dapat dibaca.", readAt: new Date().toISOString() };
     return { configId: config.id, campaignId: config.campaignId, blacklist: record.blacklist, whitelist: record.whitelist, application };

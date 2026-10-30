@@ -10,6 +10,7 @@ import { recoveryPreview, acknowledgeRecovery } from "@/lib/adsterra-operations/
 import { verifyConfirmation } from "@/lib/adsterra-operations/confirmation";
 import { digest } from "@/lib/adsterra-operations/canonical";
 import { readDiagnostics } from "@/lib/adsterra-operations/diagnostics";
+import { blacklistCount } from "@/lib/adsterra-operations/list-evidence";
 
 /** Observation only: never acknowledges recovery, releases uncertainty or retries. */
 export async function inspectAdsterraOperation(accountId: unknown, configId: unknown) {
@@ -18,7 +19,7 @@ export async function inspectAdsterraOperation(accountId: unknown, configId: unk
     const ctx = await operationContext(accountId, configId, budget), row = await ctx.store.read(ctx.scope.campaignId);
     const pending = !!row && (row.uncertain || row.protectiveOffUncertain || ["RUNNING", "UNVERIFIED"].includes(row.status) || ["RUNNING", "UNVERIFIED"].includes(row.protectiveOffStatus));
     let actual = null;
-    try { const s = await ctx.snapshot(); actual = { active: s.campaign.active, blacklist: s.blacklist.length, whitelist: s.whitelist.length, bids: s.bids.length }; } catch { /* Unknown is never zero. */ }
+    try { const s = await ctx.snapshot(); actual = { active: s.campaign.active, blacklist: blacklistCount(s.blacklist), whitelist: s.whitelist.length, bids: s.bids.length }; } catch { /* Unknown is never zero. */ }
     return { success: true as const, result: { campaignId: ctx.scope.campaignId, pending, actual, readAt: new Date().toISOString(), origin: readDiagnostics(row?.summary ?? null),
       message: pending ? "Perubahan masih berjalan atau hasil write belum pasti. Aktivasi ditahan; tidak ada retry otomatis."
         : row?.status === "PARTIAL" ? "Permintaan sebelumnya sudah selesai tetapi belum diterapkan penuh. Anda dapat membuat konfirmasi baru dari keadaan aktual."

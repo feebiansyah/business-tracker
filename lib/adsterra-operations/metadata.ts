@@ -6,6 +6,7 @@ import { OperationError } from "./types";
 import { campaignKey } from "./canonical";
 import { listDigest } from "./method-state";
 import { diagnosticSummary, retainFailureSummary } from "./diagnostics";
+import { whitelistCompatible } from "./list-evidence";
 
 /** Short DB-only transaction: lock the same fence used by recovery/config edits. */
 export async function finalizeAdsterraApplication(db: Pick<PrismaClient, "$transaction">,
@@ -14,7 +15,8 @@ export async function finalizeAdsterraApplication(db: Pick<PrismaClient, "$trans
   if (fence.protective || campaignKey(scope.campaignId) !== fence.campaignId) throw new OperationError("Scope metadata berbeda dari operasi blacklist.");
   if (!method.placementMethod || !result.actual || !["VERIFIED", "NO_CHANGE"].includes(result.status)
     || (method.placementMethod === "WHITELIST" && !result.actual.whitelist.length)
-    || (method.placementMethod === "BLACKLIST" ? result.actual.whitelist.length : result.actual.blacklist.length)) throw new OperationError("Bukti finalisasi kesiapan tidak lengkap.");
+    || (method.placementMethod === "BLACKLIST" ? !Array.isArray(result.actual.blacklist) || result.actual.whitelist.length > 0
+      : !whitelistCompatible(result.actual.blacklist, result.actual.whitelist, scope.campaignId))) throw new OperationError("Bukti finalisasi kesiapan tidak lengkap.");
   const actual = result.actual;
   const recordTimestamp = method.placementMethod === "BLACKLIST" && result.status === "VERIFIED";
   valid();

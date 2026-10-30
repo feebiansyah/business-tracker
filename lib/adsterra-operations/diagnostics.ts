@@ -6,7 +6,7 @@ const kinds = ["HTTP_ERROR", "INVALID_RESPONSE", "REQUEST_INCOMPLETE", "BODY_LIM
 const reasons = ["Token not found", "Invalid token", "Invalid owner type", "Invalid output format", "Campaign not found", "In use landings not found",
   "Validation failed", "Data validation error", "Unsuccessfully linked", "Not exists", "Not suitable ad unit", "Not suitable category", "Already linked", "Blacklisted",
   "Not suitable tags", "Not active publisher", "Not active placement", "Invalid integer field", "Placement IDs not found", "Campaign landings not found",
-  "Method not allowed", "Provider reason unavailable", "Invalid API response", "Request did not complete", "Response body limit exceeded", "GET does not match confirmed state", "Operation interrupted"] as const;
+  "Blacklist unreadable while campaign has whitelist", "Method not allowed", "Provider reason unavailable", "Invalid API response", "Request did not complete", "Response body limit exceeded", "GET does not match confirmed state", "Operation interrupted"] as const;
 export type OperationDiagnostic = {
   stage: (typeof stages)[number]; kind: (typeof kinds)[number]; httpStatus: number | null; reasons: (typeof reasons)[number][];
   rejected?: { reason: (typeof reasons)[number]; placementIds: string[] }[];
@@ -24,6 +24,7 @@ function safeReason(value: unknown): OperationDiagnostic["reasons"][number] | nu
   if ((reasons as readonly string[]).includes(value)) return value as OperationDiagnostic["reasons"][number];
   if (/^Placement with ids [\d, ]+ not found$/.test(value)) return "Placement IDs not found";
   if (/^Landings for campaign with id \d+ not found$/.test(value)) return "Campaign landings not found";
+  if (/^Campaigns, inoperable due to having a whitelist: \d+(?:, ?\d+)*$/.test(value)) return "Blacklist unreadable while campaign has whitelist";
   if (value === "This value should be of type int.") return "Invalid integer field";
   return null;
 }
@@ -37,7 +38,7 @@ export function providerReasons(body: unknown): OperationDiagnostic["reasons"] {
     if (Array.isArray(value)) { for (const item of value.slice(0, 20)) visit(item, depth + 1); }
     else if (value && typeof value === "object") {
       for (const [key, item] of Object.entries(value).slice(0, 30)) {
-        if (["message", "reason", "error", "errors", "campaign_id", "placement_ids", "landing_ids"].includes(key) || /^\d+$/.test(key)) visit(item, depth + 1);
+        if (["message", "reason", "error", "errors", "campaign_id", "campaign_ids", "placement_ids", "landing_ids"].includes(key) || /^\d+$/.test(key)) visit(item, depth + 1);
       }
     }
   }
@@ -98,8 +99,17 @@ export function readDiagnostics(summary: string | null): SavedDiagnostics {
 /** Keep one bounded last failure, not an unbounded history or arbitrary DB prose. */
 export function retainFailureSummary(previous: string | null, next: string) {
   const incoming = readDiagnostics(next), old = readDiagnostics(previous);
-  if (incoming.entries.length) return next.slice(0, 2000);
-  const failure = old.previous ?? (old.entries.length || previous?.includes('"status":"PARTIAL"') ? { phase: old.phase, writes: old.writes, entries: old.entries } : null);
+  const failures = (saved: SavedDiagnostics, summary: string | null) => {
+    let verified = false;
+    try { verified = ["VERIFIED", "NO_CHANGE"].includes(JSON.parse(summary ?? "").status); } catch { /* Not a verified completion. */ }
+    // Preserve this GET evidence in the current summary, but do not let a
+    // successfully paired read-contract refusal erase the last real PUT error.
+    return verified ? saved.entries.filter((entry) => !(entry.stage === "READ_BLACKLIST" && entry.httpStatus === 422
+      && entry.reasons.includes("Blacklist unreadable while campaign has whitelist"))) : saved.entries;
+  };
+  if (failures(incoming, next).length) return next.slice(0, 2000);
+  const oldFailures = failures(old, previous);
+  const failure = old.previous ?? (oldFailures.length || previous?.includes('"status":"PARTIAL"') ? { phase: old.phase, writes: old.writes, entries: oldFailures } : null);
   if (!failure) return next.slice(0, 2000);
   let base: Record<string, unknown>;
   try { base = JSON.parse(next); if (!base || typeof base !== "object") return previous!.slice(0, 2000); }

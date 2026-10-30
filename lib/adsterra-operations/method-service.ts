@@ -66,15 +66,30 @@ export async function executeMethod(ctx: Context, owner: string, token: unknown)
           }
           ctx.provider.requireInactive = true;
           await observe();
-          for (const kind of ["BLACKLIST", "WHITELIST"] as const) {
+          const whitelistFirst = !Array.isArray(expected.blacklist) || (signed.kind === "BLACKLIST" && expected.whitelist.length > 0);
+          const clearOrder = whitelistFirst ? ["WHITELIST", "BLACKLIST"] as const : ["BLACKLIST", "WHITELIST"] as const;
+          for (const kind of clearOrder) {
             const key = kind === "BLACKLIST" ? "blacklist" : "whitelist";
-            if (!expected[key].length) continue;
+            const list = expected[key];
+            if (!Array.isArray(list)) throw new OperationError("Blacklist belum terbaca setelah clear Whitelist. Reset dihentikan tanpa menganggap kosong.");
+            if (!list.length) continue;
             result.phase = kind === "BLACKLIST" ? "CLEAR_BLACKLIST" : "CLEAR_WHITELIST";
             ctx.budget.check(30_000);
             try { await ctx.provider.clear(kind); }
             catch { result.writeWarnings.push(`Clear ${kind} diperiksa melalui GET; tidak ada retry atau rollback.`); }
+            const unreadableBefore = !Array.isArray(expected.blacklist);
             expected = { ...expected, [key]: [] };
-            await observe();
+            if (kind === "WHITELIST" && unreadableBefore) {
+              // Only this confirmed reset may replace the unavailable evidence
+              // with a real Blacklist read AFTER Whitelist is proven empty.
+              const actual = await ctx.snapshot();
+              result.actual = { blacklist: actual.blacklist, whitelist: actual.whitelist, bids: actual.bids };
+              if (ctx.provider.ambiguous || !Array.isArray(actual.blacklist) || actual.whitelist.length
+                || preconditionHash({ ...actual, blacklist: expected.blacklist }, [], signed.kind) !== preconditionHash(expected, [], signed.kind)) {
+                throw new OperationError("Clear Whitelist/Blacklist atau scope/bid/prasyarat belum terverifikasi. Reset dihentikan.");
+              }
+              expected = { ...expected, blacklist: actual.blacklist };
+            } else await observe();
           }
         }
         result.phase = "METHOD_VERIFY";
@@ -90,10 +105,10 @@ export async function executeMethod(ctx: Context, owner: string, token: unknown)
         } catch { result.status = "UNVERIFIED"; result.metadata = "FAILED"; result.message = "Finalisasi metode/guard gagal atau belum pasti. Jangan ulangi provider write; periksa keadaan operasi."; }
       }
     }
-  } catch {
+  } catch (error) {
     result.status = ctx.provider.ambiguous ? "UNVERIFIED" : ctx.provider.sent ? "PARTIAL" : "RECONFIRM_REQUIRED";
     result.message = ctx.provider.ambiguous ? "Hasil perubahan belum pasti. Periksa Status; jangan ulangi write."
-      : "Perubahan belum selesai. Keadaan terbaru harus diperiksa pada konfirmasi baru; tidak ada rollback atau pengulangan write otomatis.";
+      : `${error instanceof OperationError ? `${error.message} ` : ""}Perubahan belum selesai. Keadaan terbaru harus diperiksa pada konfirmasi baru; tidak ada rollback atau pengulangan write otomatis.`;
   }
   result.writeWarnings.push(...ctx.provider.warnings);
   result.diagnostics = [...ctx.provider.diagnostics]; result.writes = ctx.provider.sent;

@@ -8,6 +8,7 @@ import type { PlacementProvider } from "./provider";
 import { capabilityError } from "./method-state";
 import { diagnosticText, type OperationDiagnostic } from "./diagnostics";
 import { parseWhitelistExclusions } from "./whitelist-exclusions";
+import { whitelistCompatible } from "./list-evidence";
 
 export function bidDigest(bids: Snapshot["bids"]) {
   return digest([...bids].sort((a, b) => `${a.placementId}:${a.countryCode}`.localeCompare(`${b.placementId}:${b.countryCode}`)));
@@ -27,13 +28,14 @@ export function planApplication(input: {
   if (excluded.length && (kind !== "WHITELIST" || excluded.some((id) => !candidates.includes(id)))) throw new OperationError("Pengecualian harus bagian kandidat Whitelist pada analisis yang sama.");
   const target = candidates.filter((id) => !excluded.includes(id));
   if (kind === "WHITELIST" && !target.length) throw new OperationError("Kandidat Whitelist kosong. Tidak ada daftar yang akan dikosongkan atau diubah.");
-  const existing = kind === "BLACKLIST" ? before.blacklist : before.whitelist;
+  if (kind === "BLACKLIST" && !Array.isArray(before.blacklist)) throw new OperationError("Blacklist belum dapat dibaca karena campaign memiliki Whitelist. Ubah metode melalui Campaign dahulu.");
+  const existing = kind === "BLACKLIST" ? before.blacklist as string[] : before.whitelist;
   const opposite = kind === "BLACKLIST" ? before.whitelist : before.blacklist;
   const blockers: string[] = [];
   const unsupported = capabilityError(kind, before.campaign.pricing);
   if (unsupported) blockers.push(unsupported);
   if (before.method.placementMethod !== kind) blockers.push("Metode aplikasi berbeda/belum ditetapkan. Gunakan Campaign; Placement tidak boleh mengganti metode.");
-  if (opposite.length) blockers.push("Daftar berlawanan terisi. Hanya Campaign yang boleh clear melalui konfirmasi metode.");
+  if (kind === "BLACKLIST" ? before.whitelist.length > 0 : !whitelistCompatible(before.blacklist, before.whitelist, scope.campaignId)) blockers.push("Daftar berlawanan terisi. Hanya Campaign yang boleh clear melalui konfirmasi metode.");
   return { scope, kind, dateFrom: input.dateFrom, dateTill: input.dateTill, fxRate: input.fxRate, target, excluded, before, opposite,
     added: target.filter((id) => !existing.includes(id)), removed: existing.filter((id) => !target.includes(id)),
     resetBids: kind === "BLACKLIST" ? before.bids.filter((bid) => target.includes(bid.placementId)) : [],
@@ -56,8 +58,9 @@ export async function applyPlacementPlan(plan: ApplicationPlan, provider: Placem
     return { status, phase, message, actual, writeWarnings: [...provider.warnings, ...warnings, ...diagnostics.map(diagnosticText)],
       metadata: "NOT_REQUIRED", diagnostics, writes: provider.sent };
   };
-  const desiredLists = (s: Snapshot) => exactSet(s.blacklist, plan.kind === "BLACKLIST" ? plan.target : [])
-    && exactSet(s.whitelist, plan.kind === "WHITELIST" ? plan.target : []);
+  const desiredLists = (s: Snapshot) => plan.kind === "BLACKLIST"
+    ? Array.isArray(s.blacklist) && exactSet(s.blacklist, plan.target) && !s.whitelist.length
+    : exactSet(s.whitelist, plan.target) && whitelistCompatible(s.blacklist, s.whitelist, plan.scope.campaignId);
   const view = (s: Snapshot) => { actual = { blacklist: s.blacklist, whitelist: s.whitelist, bids: s.bids }; };
   const attempt = async (write: () => Promise<void>) => {
     try { await write(); }
@@ -67,9 +70,9 @@ export async function applyPlacementPlan(plan: ApplicationPlan, provider: Placem
     if (plan.blockers.length) return result("RECONFIRM_REQUIRED", plan.blockers.join(" "));
     const current = await snapshot(); view(current);
     if (preconditionHash(current, plan.target, plan.kind) !== plan.preconditionHash) return result("RECONFIRM_REQUIRED", "Precondition berubah. Konfirmasi ulang sebelum mutasi.");
-    if (plan.opposite.length) return result("RECONFIRM_REQUIRED", "Placement tidak boleh clear atau mengganti metode. Kembali ke Campaign.");
+    if (plan.kind === "BLACKLIST" ? plan.before.whitelist.length > 0 : !whitelistCompatible(plan.before.blacklist, plan.before.whitelist, plan.scope.campaignId)) return result("RECONFIRM_REQUIRED", "Placement tidak boleh clear atau mengganti metode. Kembali ke Campaign.");
     const previousTarget = plan.kind === "BLACKLIST" ? plan.before.blacklist : plan.before.whitelist;
-    if (!exactSet(previousTarget, plan.target)) {
+    if (!Array.isArray(previousTarget) || !exactSet(previousTarget, plan.target)) {
       phase = "PUT_TARGET";
       budget.requireRequests(16);
       await attempt(() => provider.put(plan.kind, plan.target));
@@ -95,7 +98,9 @@ export async function applyPlacementPlan(plan: ApplicationPlan, provider: Placem
     if (after.scopeHash !== plan.before.scopeHash || digest(after.aliases) !== digest(plan.before.aliases)) return result("PARTIAL", "Daftar provider sudah dibaca, tetapi scope/Auto berubah pada verifikasi akhir. Periksa operasi; tidak mengklaim sukses penuh.");
     const expectedBids = plan.kind === "BLACKLIST" ? plan.before.bids.filter((bid) => !plan.target.includes(bid.placementId)) : plan.before.bids;
     if (bidDigest(after.bids) !== bidDigest(expectedBids)) return result("PARTIAL", "Sebagian Custom Bid belum kosong atau snapshot bid berubah. Tidak mengklaim sukses penuh.");
-    const changed = plan.opposite.length > 0 || !exactSet(previousTarget, plan.target) || plan.resetBids.length > 0;
+    const changed = !Array.isArray(previousTarget) || !exactSet(previousTarget, plan.target) || plan.resetBids.length > 0;
+    if (plan.kind === "WHITELIST" && !Array.isArray(after.blacklist)) return result(changed ? "VERIFIED" : "NO_CHANGE",
+      `Whitelist cocok persis dengan target dan Custom Bid tetap sesuai. Blacklist API tidak dapat dibaca karena campaign memiliki Whitelist; bukan blacklist kosong atau deteksi mode editor.${changed ? "" : " Tidak ada mutasi provider."}`);
     return result(changed ? "VERIFIED" : "NO_CHANGE", changed
       ? `Kedua daftar dan dampak Custom Bid sudah diverifikasi. Ini bukan deteksi mode editor.${plan.kind === "BLACKLIST" && !plan.target.length ? " Blacklist API kosong: tidak ada placement yang dikecualikan." : ""}`
       : "Kedua daftar dan Custom Bid sudah sesuai; tidak ada mutasi provider.");

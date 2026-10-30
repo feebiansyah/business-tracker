@@ -3,7 +3,7 @@ import type { PrismaClient, AdsterraCampaignOperation } from "../generated/prism
 import { campaignKey } from "./canonical";
 import { OperationError } from "./types";
 import type { OperationBudget } from "./budget";
-import type { ListKind, MethodState } from "./types";
+import type { BlacklistValue, ListKind, MethodState } from "./types";
 import { storedMethod, listDigest } from "./method-state";
 import { retainFailureSummary } from "./diagnostics";
 
@@ -34,7 +34,7 @@ export class CampaignOperationStore {
     if (changed.count !== 1) throw new OperationError("Versi/metode/fencing berubah sebelum invalidasi. Tidak ada dispatch.");
     return { ...expected, methodVersion: expected.methodVersion + 1, methodReady: false };
   }
-  async finalizeMethod(f: Fence, expected: MethodState, kind: ListKind, ready: boolean, lists: { blacklist: string[]; whitelist: string[] }, expiresAt = Infinity) {
+  async finalizeMethod(f: Fence, expected: MethodState, kind: ListKind, ready: boolean, lists: { blacklist: BlacklistValue; whitelist: string[] }, expiresAt = Infinity) {
     const previous = await this.assert(f);
     if (this.budget.now() >= expiresAt) throw new OperationError("Konfirmasi berakhir sebelum penyimpanan metode.");
     const changed = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({ where: {

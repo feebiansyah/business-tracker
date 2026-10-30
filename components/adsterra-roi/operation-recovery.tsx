@@ -28,7 +28,7 @@ export function AdsterraOperationRecovery({ accountId, configId }: {
     <Button type="button" variant="ghost" className="h-8 px-2 text-xs" disabled={busy || !configId} onClick={() => void inspect()}>{busy ? "Memeriksa…" : "Periksa Status"}</Button>
     {message && <p role="alert" className="text-amber-800">{message}</p>}
     {result && <div role="status" className="space-y-1 rounded border p-2"><p className={result.pending ? "text-amber-800" : "text-slate-700"}>{result.message}</p>
-      <p>{result.actual ? `Status ${result.actual.active === 1 ? "Inactive" : result.actual.active === 3 ? "Active" : "Limit / Not in use"} · Blacklist ${result.actual.blacklist} · Whitelist ${result.actual.whitelist} · Custom Bid ${result.actual.bids} override` : "Pembacaan provider belum lengkap; jumlah aktual belum tersedia."}</p>
+      <p>{result.actual ? `Status ${result.actual.active === 1 ? "Inactive" : result.actual.active === 3 ? "Active" : "Limit / Not in use"} · Blacklist ${result.actual.blacklist === null ? "tidak dapat dibaca karena Whitelist" : result.actual.blacklist} · Whitelist ${result.actual.whitelist} · Custom Bid ${result.actual.bids} override` : "Pembacaan provider belum lengkap; jumlah aktual belum tersedia."}</p>
       <details><summary className="cursor-pointer">Detail diagnostik</summary><OperationDiagnostics origin={result.origin}/></details>
     </div>}
   </div>;

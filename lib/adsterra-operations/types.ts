@@ -2,6 +2,8 @@ import type { AdsterraCustomBid } from "../adsterra-roi/types";
 import type { OperationDiagnostic } from "./diagnostics";
 
 export type ListKind = "BLACKLIST" | "WHITELIST";
+export type BlacklistUnavailable = { status: "UNREADABLE_WHITELIST"; campaignId: string; httpStatus: 422 };
+export type BlacklistValue = string[] | BlacklistUnavailable;
 export type MethodState = {
   placementMethod: ListKind | null; methodVersion: number; methodReady: boolean;
   approvedBlacklistHash: string | null; approvedWhitelistHash: string | null;
@@ -16,13 +18,13 @@ export type Scope = { shopeeAccountId: number; configId: number; campaignId: str
 export type Alias = { id: number; shopeeAccountId: number; campaignId: string; autoScheduleEnabled: boolean };
 export type Snapshot = {
   campaign: { id: string; active: 1 | 2 | 3 | 4; pricing: string };
-  blacklist: string[]; whitelist: string[]; bids: AdsterraCustomBid[];
+  blacklist: BlacklistValue; whitelist: string[]; bids: AdsterraCustomBid[];
   aliases: Alias[]; scopeHash: string; method: MethodState;
 };
 export type ApplicationPlan = {
   scope: Scope; kind: ListKind; dateFrom: string; dateTill: string; fxRate: string;
   target: string[]; before: Snapshot; added: string[]; removed: string[];
-  opposite: string[]; resetBids: AdsterraCustomBid[]; inputHash: string; preconditionHash: string;
+  opposite: BlacklistValue; resetBids: AdsterraCustomBid[]; inputHash: string; preconditionHash: string;
   blockers: string[];
   excluded?: string[];
 };
@@ -36,12 +38,12 @@ export type Confirmation = {
   exclusionsHash?: string;
 };
 export type Preview = Omit<ApplicationPlan, "before" | "inputHash" | "preconditionHash"> & {
-  token: string; expiresAt: string; currentBlacklist: string[]; currentWhitelist: string[];
+  token: string; expiresAt: string; currentBlacklist: BlacklistValue; currentWhitelist: string[];
   providerStatus: string; autoEnabledAliases: number[];
 };
 export type ApplicationResult = {
   status: Outcome; phase: string; message: string; writeWarnings: string[];
-  actual: { blacklist: string[]; whitelist: string[]; bids: AdsterraCustomBid[] } | null;
+  actual: { blacklist: BlacklistValue; whitelist: string[]; bids: AdsterraCustomBid[] } | null;
   metadata: "RECORDED" | "FAILED" | "NOT_REQUIRED";
   lastBlacklistReplacedAt?: string | null;
   diagnostics?: OperationDiagnostic[];

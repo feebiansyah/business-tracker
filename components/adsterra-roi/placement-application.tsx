@@ -6,6 +6,7 @@ import type { ApplicationResult, ListKind, Preview } from "@/lib/adsterra-operat
 import { useAdsterraOperation } from "./operation-context";
 import { MethodBadge, OperationDialog, OperationNotice } from "./operation-dialog";
 import { AdsterraOperationRecovery } from "./operation-recovery";
+import { blacklistDescription } from "@/lib/adsterra-operations/list-evidence";
 
 const key = "placement-application";
 export function PlacementApplication({ accountId, configId, kind, candidateCount, getData, onResult }: {
@@ -72,7 +73,7 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
       <p>{preview.dateFrom}–{preview.dateTill} · Kurs {preview.fxRate}</p>
       {!!preview.excluded?.length && <div className="rounded border border-amber-200 bg-amber-50 p-2"><p className="font-semibold">Dikecualikan setelah penolakan provider: {preview.excluded.length} placement</p><p className="break-words text-xs">{preview.excluded.join(", ")}</p><p className="mt-1 text-xs">Target akhir {preview.target.length} placement. Placement lainnya belum terbukti diterima sebelum verifikasi GET.</p></div>}
       <div className="grid grid-cols-3 gap-2 rounded bg-slate-50 p-3 text-xs"><p>Target <b className="block text-base">{preview.target.length}</b></p><p>Ditambahkan <b className="block text-base">{preview.added.length}</b></p><p>Dikeluarkan <b className="block text-base">{preview.removed.length}</b></p></div>
-      <p>Daftar berlawanan: {preview.opposite.length} placement; tidak dikosongkan atau diubah melalui Placement.</p>
+      <p>Daftar berlawanan: {blacklistDescription(preview.opposite)}; tidak dikosongkan atau diubah melalui Placement.</p>
       <p className="rounded border border-amber-200 bg-amber-50 p-2 font-medium">{preview.resetBids.length
         ? `${preview.resetBids.length} override Custom Bid seluruh GEO milik placement blacklist terkait akan dihapus setelah blacklist terverifikasi. Bid tidak dipulihkan saat placement ON kembali.`
         : "Custom Bid dipertahankan. Whitelist tidak menghapus override bid."}</p>

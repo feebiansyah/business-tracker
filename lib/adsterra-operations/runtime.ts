@@ -15,6 +15,7 @@ import { planApplication } from "./application";
 import { OperationError, type ListKind, type MethodState, type Snapshot } from "./types";
 import { requireActivationReady } from "./method-state";
 import { isLegacyUnconfiguredMethod } from "./method-activation";
+import { whitelistCompatible } from "./list-evidence";
 import type { PrismaClient } from "../generated/prisma/client";
 import type { Fence } from "./repository";
 import { AutoNotDispatched, disableMethodAuto } from "./method-auto";
@@ -73,7 +74,7 @@ export async function operationContext(account: unknown, config: unknown, budget
     // Observe the ORIGINAL physical campaign even if DB scope/flags changed while
     // a request was in flight. Observation is not authorization for another write.
     const campaign = await provider.campaign();
-    const blacklist = await provider.list("BLACKLIST"), whitelist = await provider.list("WHITELIST");
+    const { blacklist, whitelist } = await provider.lists(campaign);
     const bids = await provider.legacy.getCustomBids(loaded.scope.campaignId);
     const method = await store.method(loaded.scope.campaignId);
     try {
@@ -89,7 +90,7 @@ export async function operationContext(account: unknown, config: unknown, budget
     // reserve/assert guard still blocks pending/uncertain operations.
     if (isLegacyUnconfiguredMethod(method)) return method;
     budget.requireRequests(3);
-    const campaign = await provider.campaign(), blacklist = await provider.list("BLACKLIST"), whitelist = await provider.list("WHITELIST");
+    const campaign = await provider.campaign(), { blacklist, whitelist } = await provider.lists(campaign);
     return requireActivationReady({ method, campaign, blacklist, whitelist });
   }
   function bindMethod(expected: MethodState, placement = false) {
@@ -97,7 +98,12 @@ export async function operationContext(account: unknown, config: unknown, budget
     provider.beforeMutation = async () => {
       await original?.();
       if (digest(await store.method(loaded.scope.campaignId)) !== digest(expected)) throw new OperationError("Metode/versi/kesiapan berubah sebelum dispatch.");
-      if (placement && (await provider.list(expected.placementMethod === "BLACKLIST" ? "WHITELIST" : "BLACKLIST")).length) throw new OperationError("Daftar berlawanan terisi; Placement tidak boleh clear. Kembali ke Campaign.");
+      if (placement) {
+        let incompatible: boolean;
+        if (expected.placementMethod === "BLACKLIST") incompatible = (await provider.list("WHITELIST")).length > 0;
+        else { const lists = await provider.lists(await provider.campaign()); incompatible = !whitelistCompatible(lists.blacklist, lists.whitelist, loaded.scope.campaignId); }
+        if (incompatible) throw new OperationError("Daftar berlawanan terisi; Placement tidak boleh clear. Kembali ke Campaign.");
+      }
     };
   }
   async function plan(data: FormData, kind: ListKind) {
