@@ -5,9 +5,9 @@ import { cancelAdsterraMethod, executeAdsterraMethod, prepareAdsterraMethod } fr
 import type { MethodInfo, ListKind } from "@/lib/adsterra-operations/types";
 import type { MethodPreview } from "@/lib/adsterra-operations/method-plan";
 import { useAdsterraOperation } from "./operation-context";
-import { MethodBadge, OperationDialog, OperationNotice } from "./operation-dialog";
+import { OperationDialog, OperationNotice } from "./operation-dialog";
+import { AdsterraOperationRecovery } from "./operation-recovery";
 
-const labels = { READY: "Siap", NOT_APPLIED: "Perlu diterapkan", LIST_CHANGED: "Daftar berubah", CONFLICT: "Konflik", UNVERIFIABLE: "Perlu diperiksa" };
 export function CampaignMethodControls({ accountId, configId, info, busy }: {
   accountId: number; configId: number; info?: MethodInfo; busy: boolean;
 }) {
@@ -42,14 +42,11 @@ export function CampaignMethodControls({ accountId, configId, info, busy }: {
   }
   function close() { if (pending.current) return; if (preview) void finish(false); else { setOpen(false); setKind(""); } }
   return <div className="min-w-36 max-w-64 space-y-1 text-xs">
-    {info?.status === "SUCCESS" ? <MethodBadge method={info.method?.placementMethod ?? null}/> : <span className="font-medium text-amber-800">{busy && !info ? "Memuat metode…" : "Belum tersedia"}</span>}
-    <p className={info?.readiness === "READY" ? "text-emerald-700" : "text-slate-600"}>{info?.method?.placementMethod === "WHITELIST" && info.readiness === "NOT_APPLIED" ? "Whitelist belum diisi" : info ? labels[info.readiness] : "Perlu diperiksa"}</p>
     <div className="flex flex-wrap items-center gap-2">
       <select aria-label={`Metode aplikasi campaign config ${configId}`} value={open ? kind : info?.method?.placementMethod ?? ""} disabled={operation.busy || busy || info?.status !== "SUCCESS"}
         className="h-8 max-w-full rounded border bg-white px-1 text-xs" onChange={(e) => { if (e.target.value) void prepare(e.target.value as ListKind); }}>
-        <option value="">Pilih metode</option><option value="BLACKLIST">Blacklist</option><option value="WHITELIST">Whitelist</option>
+        <option value="">{busy && !info ? "Memuat metode…" : info?.status === "SUCCESS" ? "Pilih metode" : "Metode belum tersedia"}</option><option value="BLACKLIST">Blacklist</option><option value="WHITELIST">Whitelist</option>
       </select>
-      <details><summary className="cursor-pointer text-slate-500">Detail kesiapan</summary><p className="mt-1 break-words">{busy && !info ? "Menunggu pembacaan metadata dan daftar API dalam batch." : info?.message ?? "Metadata metode belum dimuat."}</p>{info?.readAt && <p className="mt-1">Dibaca: {new Date(info.readAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB</p>}</details>
     </div>
     {open && <OperationDialog title="Konfirmasi metode aplikasi" busy={working} onClose={close}>
       {!preview ? <>
@@ -77,5 +74,6 @@ export function CampaignMethodControls({ accountId, configId, info, busy }: {
       </>}
     </OperationDialog>}
     {!open && <OperationNotice message={message}/>}
+    {!open && message && !/^(VERIFIED|NO_CHANGE):/.test(message) && <AdsterraOperationRecovery accountId={accountId} configId={configId}/>}
   </div>;
 }

@@ -46,7 +46,7 @@ export async function cancelAdsterraPlacementApplication(accountId: unknown, con
   const budget = new OperationBudget(), owner = await requireOperationUser(budget);
   try {
     const ctx = await operationContext(accountId, configId, budget);
-    const signed = verifyConfirmation(token, owner, "ADSTERRA_LIST_APPLY_V2", budget.now());
+    const signed = verifyConfirmation(token, owner, "ADSTERRA_LIST_APPLY_V3", budget.now());
     if (signed.campaignId !== ctx.scope.campaignId || signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId) throw new Error("SCOPE");
     await ctx.store.cancel({ campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation }, owner, digest(token));
     return { success: true as const };

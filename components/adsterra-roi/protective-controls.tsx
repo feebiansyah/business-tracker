@@ -23,16 +23,18 @@ export function AdsterraProtectiveControls({ accountId, campaigns }: { accountId
         show(result.success ? "Provider INACTIVE terverifikasi. Operasi daftar utama tidak dihapus/dibuka oleh OFF ini." : result.message);
       } else {
         const result = await setAdsterraAutoScheduleEnabledAction(accountId, campaign.id, false);
-        show(result.success ? `Auto konfigurasi ini nonaktif. ${"warning" in result ? result.warning : ""} Periksa alias lain secara terpisah.` : result.message);
+        show(result.success ? `Auto konfigurasi ini nonaktif. ${"warning" in result ? result.warning : ""}` : result.message);
       }
     } catch { show("Hasil belum diterima; periksa operasi. Tidak mengulang request otomatis."); }
     finally { locks.current[slot] = false; (off ? setOffBusy : setAutoBusy)(false); operation.refresh(); }
   }
-  return <details className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
-    <summary className="cursor-pointer font-medium">Pengaman campaign — tetap tersedia saat operasi belum pasti</summary>
+  // Keep the same independent safety actions mounted outside the workspace
+  // lock; show them only while needed, never as a normal setup procedure.
+  if (!operation.busy && !offBusy && !autoBusy && !messages.off && !messages.auto) return null;
+  return <section aria-label="Tindakan pengaman saat operasi" className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+    <p className="text-xs font-medium">OFF dan penonaktifan Auto tetap tersedia selama proses.</p>
     <div className="mt-2 flex flex-wrap items-end gap-2"><label className="min-w-0">Campaign<select aria-label="Target pengaman campaign" className="mt-1 block h-9 max-w-full rounded border px-2" value={target} disabled={offBusy || autoBusy} onChange={(event) => setTarget(event.target.value)}>{campaigns.map((c) => <option key={c.id} value={c.id}>{c.label || c.campaignId} ({c.campaignId})</option>)}</select></label><Button type="button" variant="destructive" disabled={offBusy || !target} onClick={() => void protect(true)}>{offBusy ? "OFF pending..." : "OFF Protektif"}</Button><Button type="button" variant="ghost" disabled={autoBusy || !target} onClick={() => void protect(false)}>Nonaktifkan Auto</Button></div>
-    <p className="mt-2 text-xs text-slate-500">Tidak mengubah daftar/bid. Satu OFF pending per campaign. Request ON yang terlanjur dikirim mungkin tetap diterapkan; hasil belum pasti tetap mengunci aktivasi.</p>
     {messages.off && <p role="status" className="mt-2 break-words">OFF: {messages.off}</p>}
     {messages.auto && <p role="status" className="mt-2 break-words">Auto: {messages.auto}</p>}
-  </details>;
+  </section>;
 }

@@ -7,6 +7,7 @@ import type { OperationBudget } from "./budget";
 import type { PlacementProvider } from "./provider";
 import { capabilityError } from "./method-state";
 import { diagnosticText, type OperationDiagnostic } from "./diagnostics";
+import { parseWhitelistExclusions } from "./whitelist-exclusions";
 
 export function bidDigest(bids: Snapshot["bids"]) {
   return digest([...bids].sort((a, b) => `${a.placementId}:${a.countryCode}`.localeCompare(`${b.placementId}:${b.countryCode}`)));
@@ -16,12 +17,15 @@ export function preconditionHash(snapshot: Snapshot, target: string[], kind: Lis
 }
 export function planApplication(input: {
   scope: Scope; kind: ListKind; rows: readonly AdsterraRoiRow[]; before: Snapshot;
-  dateFrom: string; dateTill: string; fxRate: string; inputHash: string;
+  dateFrom: string; dateTill: string; fxRate: string; inputHash: string; excluded?: unknown;
 }): ApplicationPlan {
   const { scope, kind, before } = input;
-  const target = sortedIds(kind === "BLACKLIST"
+  const candidates = sortedIds(kind === "BLACKLIST"
     ? buildAdsterraBlacklistTarget([], input.rows).targetPlacementIds.map(String)
     : adsterraWhitelistCandidates(input.rows).map((id) => String(Number(id))));
+  const excluded = parseWhitelistExclusions(input.excluded);
+  if (excluded.length && (kind !== "WHITELIST" || excluded.some((id) => !candidates.includes(id)))) throw new OperationError("Pengecualian harus bagian kandidat Whitelist pada analisis yang sama.");
+  const target = candidates.filter((id) => !excluded.includes(id));
   if (kind === "WHITELIST" && !target.length) throw new OperationError("Kandidat Whitelist kosong. Tidak ada daftar yang akan dikosongkan atau diubah.");
   const existing = kind === "BLACKLIST" ? before.blacklist : before.whitelist;
   const opposite = kind === "BLACKLIST" ? before.whitelist : before.blacklist;
@@ -30,7 +34,7 @@ export function planApplication(input: {
   if (unsupported) blockers.push(unsupported);
   if (before.method.placementMethod !== kind) blockers.push("Metode aplikasi berbeda/belum ditetapkan. Gunakan Campaign; Placement tidak boleh mengganti metode.");
   if (opposite.length) blockers.push("Daftar berlawanan terisi. Hanya Campaign yang boleh clear melalui konfirmasi metode.");
-  return { scope, kind, dateFrom: input.dateFrom, dateTill: input.dateTill, fxRate: input.fxRate, target, before, opposite,
+  return { scope, kind, dateFrom: input.dateFrom, dateTill: input.dateTill, fxRate: input.fxRate, target, excluded, before, opposite,
     added: target.filter((id) => !existing.includes(id)), removed: existing.filter((id) => !target.includes(id)),
     resetBids: kind === "BLACKLIST" ? before.bids.filter((bid) => target.includes(bid.placementId)) : [],
     inputHash: input.inputHash, preconditionHash: preconditionHash(before, target, kind), blockers };

@@ -110,7 +110,7 @@ export async function operationContext(account: unknown, config: unknown, budget
       getStatistics: (input) => { budget.check(); if (campaignKey(input.campaignId) !== loaded.scope.campaignId) throw new OperationError("Scope statistik berubah."); return provider.legacy.getPlacementStatistics({ ...input, campaignId: loaded.scope.campaignId }); },
     });
     budget.check();
-    return planApplication({ scope: loaded.scope, kind, rows: analysis.analysis.rows, before: await snapshot(),
+    return planApplication({ scope: loaded.scope, kind, rows: analysis.analysis.rows, before: await snapshot(), excluded: data.get("whitelistExclusions"),
       dateFrom: analysis.dateFrom, dateTill: analysis.dateTill, fxRate: analysis.fxRate,
       inputHash: digest([digest(Buffer.from(upload.bytes).toString("base64")), analysis.dateFrom, analysis.dateTill, analysis.fxRate, loaded.scope]),
     });

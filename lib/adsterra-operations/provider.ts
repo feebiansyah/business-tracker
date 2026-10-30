@@ -1,6 +1,7 @@
 import { AdsterraClient } from "../adsterra-roi/client";
 import { campaignKey, sortedIds } from "./canonical";
-import { OperationError, type ListKind, type Snapshot } from "./types";
+import { OperationError, type ListKind, type Snapshot, type WhitelistRejection } from "./types";
+import { parseWhitelistRejection } from "./whitelist-rejections";
 import type { OperationBudget } from "./budget";
 import { ProviderBodyLimitError, ProviderResponseReadError } from "./budget";
 import { diagnosticStage, diagnosticText, providerReasons, rejectedPlacements, type OperationDiagnostic } from "./diagnostics";
@@ -36,6 +37,7 @@ export class PlacementProvider {
   notDispatchedStatus: "PARTIAL" | "RECONFIRM_REQUIRED" | null = null;
   readonly warnings: string[] = [];
   readonly diagnostics: OperationDiagnostic[] = [];
+  whitelistRejection?: WhitelistRejection;
   recordDiagnostic(entry: OperationDiagnostic) {
     if (this.diagnostics.length < 4 && !this.diagnostics.some((e) => JSON.stringify(e) === JSON.stringify(entry))) this.diagnostics.push(entry);
   }
@@ -100,7 +102,9 @@ export class PlacementProvider {
       if (init.method === "PUT" && url.pathname.includes("/linking/")) {
         try { const payload = JSON.parse(String(init.body)); if (Array.isArray(payload.placement_ids)) confirmed = payload.placement_ids.map(String); } catch { /* Only known PUT payloads authorize diagnostics IDs. */ }
       }
-      this.recordDiagnostic({ stage, kind: "HTTP_ERROR", httpStatus: response.status, reasons: providerReasons(body), rejected: rejectedPlacements(body, confirmed) });
+      if (stage === "PUT_WHITELIST" && response.status === 422) this.whitelistRejection = parseWhitelistRejection(body, confirmed);
+      this.recordDiagnostic({ stage, kind: "HTTP_ERROR", httpStatus: response.status, reasons: providerReasons(body), rejected: this.whitelistRejection
+        ? this.whitelistRejection.groups.slice(0, 4).map((g) => ({ reason: g.reason, placementIds: g.ids.slice(0, 5) })) : rejectedPlacements(body, confirmed) });
     }
     if (write) {
       // A response arrived. A 4xx still needs GET verification of partial effects.

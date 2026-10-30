@@ -5,17 +5,19 @@ import { applyPlacementPlan, preconditionHash } from "./application";
 import { OperationError, type ApplicationResult, type Confirmation, type ListKind, type MethodState, type Preview } from "./types";
 import type { Fence } from "./repository";
 import { diagnosticSummary } from "./diagnostics";
+import { validateWhitelistExclusions, whitelistRejectionReceipt } from "./whitelist-exclusions";
 
 type Context = Awaited<ReturnType<typeof operationContext>>;
 export async function prepareApplication(ctx: Context, owner: string, data: FormData, kind: ListKind): Promise<Preview> {
   const method = await ctx.store.method(ctx.scope.campaignId);
   if (!method.placementMethod || method.placementMethod !== kind) throw new OperationError("Tetapkan metode di Campaign. Jenis dari browser tidak boleh mengganti metode tersimpan.");
   const plan = await ctx.plan(data, kind);
+  validateWhitelistExclusions(plan, data, owner, ctx.budget.now());
   const expiresAt = ctx.budget.now() + 300_000;
   let token = "";
   if (!plan.blockers.length) {
     const fence = await ctx.store.reserve(ctx.scope.campaignId, owner, `APPLY_${kind}`, { preconditionHash: plan.preconditionHash, expiresAt: new Date(expiresAt) });
-    const confirmation: Confirmation = { ...fence, owner, ...ctx.scope, kind, purpose: "ADSTERRA_LIST_APPLY_V2", methodVersion: plan.before.method.methodVersion,
+    const confirmation: Confirmation = { ...fence, owner, ...ctx.scope, kind, purpose: "ADSTERRA_LIST_APPLY_V3", methodVersion: plan.before.method.methodVersion, exclusionsHash: digest(plan.excluded ?? []),
       inputHash: plan.inputHash, preconditionHash: plan.preconditionHash, rules: "ROI20_OR_10_CTR8_SPEND1000_V1", expiresAt };
     token = signConfirmation(confirmation);
     await ctx.store.attachConfirmation(fence, digest(token));
@@ -27,22 +29,25 @@ export async function prepareApplication(ctx: Context, owner: string, data: Form
 }
 export async function executeApplication(ctx: Context, owner: string, data: FormData, token: unknown,
   finalize: (at: Date, fence: Fence, method: MethodState, result: ApplicationResult) => Promise<{ lastBlacklistReplacedAt: string | null }>): Promise<ApplicationResult> {
-  const signed = verifyConfirmation(token, owner, "ADSTERRA_LIST_APPLY_V2", ctx.budget.now());
+  const signed = verifyConfirmation(token, owner, "ADSTERRA_LIST_APPLY_V3", ctx.budget.now());
   if (signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId || signed.campaignId !== ctx.scope.campaignId) throw new OperationError("Scope konfirmasi berbeda.");
   const fence = { campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation };
   await ctx.store.claim(fence, owner, digest(token), signed.expiresAt);
   ctx.provider.fence = fence; ctx.provider.expiresAt = signed.expiresAt;
   let result: ApplicationResult;
   let invalidated: MethodState | null = null;
+  let attemptedPlan: Awaited<ReturnType<Context["plan"]>> | null = null;
   try {
     const plan = await ctx.plan(data, signed.kind);
-    if (plan.blockers.length || plan.before.method.methodVersion !== signed.methodVersion || plan.inputHash !== signed.inputHash || plan.preconditionHash !== signed.preconditionHash) {
+    validateWhitelistExclusions(plan, data, owner, ctx.budget.now());
+    if (plan.blockers.length || signed.exclusionsHash !== digest(plan.excluded ?? []) || plan.before.method.methodVersion !== signed.methodVersion || plan.inputHash !== signed.inputHash || plan.preconditionHash !== signed.preconditionHash) {
       result = { status: "RECONFIRM_REQUIRED", phase: "PREFLIGHT", message: "Analisis/input/daftar/status/bid/Auto berubah. Konfirmasi ulang, tanpa mutasi provider.", actual: null, writeWarnings: [], metadata: "NOT_REQUIRED" };
     } else {
       if (ctx.budget.now() >= signed.expiresAt) throw new OperationError("Konfirmasi kedaluwarsa selama preflight; tidak mengubah kesiapan atau provider.");
       invalidated = await ctx.store.invalidateMethod(fence, plan.before.method);
       ctx.bindMethod(invalidated, true);
       const before = { ...plan.before, method: invalidated };
+      attemptedPlan = plan;
       result = await applyPlacementPlan({ ...plan, before, preconditionHash: preconditionHash(before, plan.target, plan.kind) }, ctx.provider, ctx.budget, ctx.snapshot);
     }
   } catch {
@@ -70,5 +75,9 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
   }
   try { result.status = await ctx.store.finish(fence, result.status, diagnosticSummary(result, ctx.provider.sent)) as ApplicationResult["status"]; }
   catch { result.metadata = "FAILED"; if (!["PARTIAL", "UNVERIFIED"].includes(result.status)) result.status = "UNVERIFIED"; result.message += " Pencatatan hasil operasi gagal; guard mungkin tetap RUNNING. Jangan retry provider."; }
+  if (result.status === "PARTIAL" && result.metadata !== "FAILED" && attemptedPlan?.kind === "WHITELIST" && invalidated
+    && !ctx.provider.ambiguous && ctx.provider.whitelistRejection?.ids.length) {
+    result.whitelistRejection = whitelistRejectionReceipt(attemptedPlan, fence, invalidated.methodVersion, owner, ctx.budget.now(), ctx.provider.whitelistRejection);
+  }
   return result;
 }
