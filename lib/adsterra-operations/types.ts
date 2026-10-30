@@ -26,7 +26,7 @@ export type ApplicationPlan = {
   blockers: string[];
 };
 export type Confirmation = {
-  purpose: "ADSTERRA_LIST_APPLY_V2" | "ADSTERRA_LIST_RECOVER_V2" | "ADSTERRA_METHOD_SET_V1";
+  purpose: "ADSTERRA_LIST_APPLY_V2" | "ADSTERRA_LIST_RECOVER_V2" | "ADSTERRA_METHOD_SET_V2";
   operationId: string; generation: number; owner: string; campaignId: string;
   shopeeAccountId: number; configId: number; kind: ListKind;
   inputHash: string; preconditionHash: string; rules: "ROI20_OR_10_CTR8_SPEND1000_V1";

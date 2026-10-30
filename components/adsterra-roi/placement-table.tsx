@@ -39,13 +39,14 @@ function bidPlacementId(placement: string) {
   return /^\d+$/.test(placement) && Number.isSafeInteger(Number(placement)) ? String(Number(placement)) : placement;
 }
 
-export function PlacementTable({ analysis, customBids, onSaveBid, onDeleteBid, writeBusy = false, listKind = "BLACKLIST" }: {
+export function PlacementTable({ analysis, customBids, onSaveBid, onDeleteBid, writeBusy = false, bidWritesBlocked = false, listKind = "BLACKLIST" }: {
   analysis: AdsterraRoiAnalysis;
   listKind?: AdsterraAnalysisListKind;
   customBids: AdsterraCustomBidsResult | null;
   onSaveBid?: CustomBidEditorProps["onSave"];
   onDeleteBid?: CustomBidEditorProps["onDelete"];
   writeBusy?: boolean;
+  bidWritesBlocked?: boolean;
 }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -99,7 +100,7 @@ export function PlacementTable({ analysis, customBids, onSaveBid, onDeleteBid, w
           <td className={`px-3 py-3 ${row.profit.startsWith("-") ? "text-red-600" : "text-emerald-700"}`}>{formatIdr(row.profit)}</td>
           <td className="px-3 py-3">{formatPercent(row.roi)}</td>
           <td className="px-3 py-3">{formatPlacementCtr(row.clicks, row.impressions)}</td>
-          <td className="px-3 py-3"><CustomBidEditor key={`${row.placement}:${customBids?.success ? (bidSnapshot.get(bidPlacementId(row.placement))?.id ?? "none") : "not-loaded"}`} result={customBids} placement={row.placement} onSave={onSaveBid} onDelete={onDeleteBid} writeBusy={writeBusy}/></td>
+          <td className="px-3 py-3"><CustomBidEditor key={`${row.placement}:${customBids?.success ? (bidSnapshot.get(bidPlacementId(row.placement))?.id ?? "none") : "not-loaded"}`} result={customBids} placement={row.placement} onSave={onSaveBid} onDelete={onDeleteBid} writeBusy={writeBusy || bidWritesBlocked}/></td>
           <td className="whitespace-nowrap px-3 py-3 tabular-nums" title="CPM aktual: Spend USD ÷ Impressions × 1.000">{formatPlacementCpm(row.spentUsd, row.impressions)}</td>
           <td className={`whitespace-nowrap px-3 py-3 ${listKind === "WHITELIST" ? whitelistStatus === "CANDIDATE" ? "text-emerald-700" : whitelistStatus === "UNKNOWN" ? "text-amber-700" : "text-slate-500" : row.isBlacklistCandidate ? "text-red-600" : enoughSpend ? "text-emerald-700" : "text-slate-500"}`}>{listKind === "WHITELIST" ? whitelistLabels[whitelistStatus] : row.isBlacklistCandidate ? "Kandidat Blacklist" : enoughSpend ? "Aman" : "Belum Cukup Spend"}</td>
         </tr>;

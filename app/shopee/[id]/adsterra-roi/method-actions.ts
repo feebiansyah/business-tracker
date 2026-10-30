@@ -36,7 +36,7 @@ export async function executeAdsterraMethod(account: unknown, config: unknown, t
 export async function cancelAdsterraMethod(account: unknown, config: unknown, token: unknown) {
   const budget = new OperationBudget(), owner = await requireOperationUser(budget);
   try {
-    const ctx = await operationContext(account, config, budget), signed = verifyConfirmation(token, owner, "ADSTERRA_METHOD_SET_V1", budget.now());
+    const ctx = await operationContext(account, config, budget), signed = verifyConfirmation(token, owner, "ADSTERRA_METHOD_SET_V2", budget.now());
     if (signed.campaignId !== ctx.scope.campaignId || signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId) throw new Error("SCOPE");
     await ctx.store.cancel({ campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation }, owner, digest(token));
     return { success: true as const };

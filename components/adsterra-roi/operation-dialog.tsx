@@ -39,7 +39,8 @@ export function OperationNotice({ message }: { message: string }) {
   const status = message.match(/^(VERIFIED|NO_CHANGE|RECONFIRM_REQUIRED|PARTIAL|UNVERIFIED):/)?.[1];
   const labels: Record<string, string> = { VERIFIED: "Terverifikasi", NO_CHANGE: "Tidak ada perubahan", RECONFIRM_REQUIRED: "Perlu konfirmasi ulang", PARTIAL: "Selesai sebagian", UNVERIFIED: "Hasil belum pasti" };
   return <div role="status" className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">
-    <p className="font-medium">{status ? labels[status] : "Periksa hasil operasi"}. Baca Detail sebelum melanjutkan.</p>
+    <p className="font-medium">{status ? labels[status] : "Periksa hasil"}</p>
+    <p className="mt-1 whitespace-pre-wrap break-words">{status ? message.slice(status.length + 1).trim() : message}</p>
     <details className="mt-1"><summary className="cursor-pointer">Detail hasil</summary><p className="mt-1 whitespace-pre-wrap break-words">{message}</p></details>
   </div>;
 }

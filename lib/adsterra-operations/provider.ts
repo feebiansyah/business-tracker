@@ -3,7 +3,7 @@ import { campaignKey, sortedIds } from "./canonical";
 import { OperationError, type ListKind, type Snapshot } from "./types";
 import type { OperationBudget } from "./budget";
 import { ProviderBodyLimitError, ProviderResponseReadError } from "./budget";
-import { diagnosticStage, diagnosticText, providerReasons, type OperationDiagnostic } from "./diagnostics";
+import { diagnosticStage, diagnosticText, providerReasons, rejectedPlacements, type OperationDiagnostic } from "./diagnostics";
 import { MarkerPersistenceUncertain, type CampaignOperationStore, type Fence, type WriteMarker } from "./repository";
 
 const base = "https://api3.adsterratools.com/advertiser";
@@ -55,6 +55,7 @@ export class PlacementProvider {
     let response: Response;
     try {
       if (write) {
+        if (this.ambiguous) throw new OperationError("Hasil request sebelumnya belum pasti; tidak meneruskan write lain.");
         if (this.notDispatchedStatus) throw new OperationError("Operasi sudah dihentikan sebelum dispatch; tidak meneruskan write lain.");
         if (!this.fence) throw new OperationError("Mutasi tanpa guard ditolak.");
         this.budget.check(20_000);
@@ -95,11 +96,16 @@ export class PlacementProvider {
     if (!response.ok) {
       let body: unknown;
       try { body = JSON.parse(await response.clone().text()); } catch { /* Never expose raw/invalid error bodies. */ }
-      this.recordDiagnostic({ stage, kind: "HTTP_ERROR", httpStatus: response.status, reasons: providerReasons(body) });
+      let confirmed: string[] = [];
+      if (init.method === "PUT" && url.pathname.includes("/linking/")) {
+        try { const payload = JSON.parse(String(init.body)); if (Array.isArray(payload.placement_ids)) confirmed = payload.placement_ids.map(String); } catch { /* Only known PUT payloads authorize diagnostics IDs. */ }
+      }
+      this.recordDiagnostic({ stage, kind: "HTTP_ERROR", httpStatus: response.status, reasons: providerReasons(body), rejected: rejectedPlacements(body, confirmed) });
     }
     if (write) {
       // A response arrived. A 4xx still needs GET verification of partial effects.
-      await this.store.acknowledged(this.fence!);
+      try { await this.store.acknowledged(this.fence!); }
+      catch (error) { this.ambiguous = true; throw error; }
       if (!response.ok) this.warnings.push(`${diagnosticText({ stage, kind: "HTTP_ERROR", httpStatus: response.status, reasons: this.diagnostics.find((e) => e.stage === stage && e.httpStatus === response.status)?.reasons ?? ["Provider reason unavailable"] })}. Hasil dinilai melalui GET, tanpa retry write.`);
     }
     return response;

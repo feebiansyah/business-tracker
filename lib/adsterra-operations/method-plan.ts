@@ -6,19 +6,18 @@ import type { ListKind, Scope, Snapshot } from "./types";
 export function planMethod(scope: Scope, before: Snapshot, kind: ListKind) {
   const target = kind === "BLACKLIST" ? before.blacklist : before.whitelist;
   const opposite = kind === "BLACKLIST" ? before.whitelist : before.blacklist;
-  const adopt = before.method.placementMethod === null && target.length > 0 && !opposite.length;
-  const requiresInactive = !adopt;
+  const same = before.method.placementMethod === kind;
+  const reset = !same && (before.method.placementMethod !== null || opposite.length > 0 || (kind === "WHITELIST" && target.length === 0));
+  const adopt = before.method.placementMethod === null && !opposite.length && (target.length > 0 || kind === "BLACKLIST");
+  const requiresInactive = reset;
   const blockers: string[] = [];
   const unsupported = capabilityError(kind, before.campaign.pricing);
   if (unsupported) blockers.push(unsupported);
-  if (before.method.placementMethod === kind) blockers.push("Metode sudah sama. Konfirmasi ulang daftar/dampak bid melalui Placement, bukan penetapan metode ulang.");
-  if (target.length && opposite.length) blockers.push("Kedua daftar API terisi (konflik). Tidak memperbaiki konflik atau menebak mode editor otomatis.");
-  if (requiresInactive) {
-    if (before.campaign.active !== 1) blockers.push("Penetapan kosong/pergantian metode memerlukan provider strictly INACTIVE; LIMITED tidak cukup.");
-    if (before.aliases.some((a) => a.autoScheduleEnabled)) blockers.push("Nonaktifkan Auto ON/OFF pada seluruh alias campaign fisik ini dahulu.");
-  }
-  return { scope, kind, before, target, opposite, adopt, requiresInactive, blockers,
-    inputHash: digest({ scope, kind, purpose: "CAMPAIGN_METHOD_V1" }),
+  if (target.length && opposite.length && !reset) blockers.push("Kedua daftar API terisi. Memilih metode yang sama tidak mereset konflik provider.");
+  if (same && opposite.length) blockers.push("Daftar berlawanan terisi. Periksa konflik provider; memilih metode yang sama tidak mereset daftar.");
+  return { scope, kind, before, target, opposite, adopt, same, reset, requiresInactive, blockers,
+    clearBlacklist: reset ? before.blacklist : [], clearWhitelist: reset ? before.whitelist : [],
+    inputHash: digest({ scope, kind, purpose: "CAMPAIGN_METHOD_V2" }),
     preconditionHash: preconditionHash(before, [], kind) };
 }
 export type MethodPlan = ReturnType<typeof planMethod>;

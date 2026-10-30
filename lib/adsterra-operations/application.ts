@@ -47,6 +47,8 @@ export async function applyPlacementPlan(plan: ApplicationPlan, provider: Placem
       stage: phase, kind: "VERIFICATION_MISMATCH", httpStatus: null, reasons: ["GET does not match confirmed state"],
     });
     const diagnostics = [...provider.diagnostics];
+    const rejected = diagnostics.find((e) => e.kind === "HTTP_ERROR" && (e.stage === "PUT_WHITELIST" || e.stage === "PUT_BLACKLIST"));
+    if (status === "PARTIAL" && rejected) message = `Adsterra menolak penerapan (HTTP ${rejected.httpStatus}): ${rejected.reasons.join("; ")}.${rejected.rejected?.length ? ` ID terkait (cuplikan): ${rejected.rejected.flatMap((r) => r.placementIds).join(", ")}.` : " ID yang ditolak tidak tersedia pada respons."} Daftar aktual belum sesuai target. Tidak ada kandidat yang dibuang atau dikirim ulang otomatis.`;
     return { status, phase, message, actual, writeWarnings: [...provider.warnings, ...warnings, ...diagnostics.map(diagnosticText)],
       metadata: "NOT_REQUIRED", diagnostics, writes: provider.sent };
   };

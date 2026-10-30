@@ -50,10 +50,16 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
   }
   result.diagnostics = [...ctx.provider.diagnostics]; result.writes = ctx.provider.sent;
   if (ctx.provider.notDispatchedStatus) {
-    return { ...result, status: ctx.provider.notDispatchedStatus, phase: "NOT_DISPATCHED", metadata: "NOT_REQUIRED",
+    const stopped: ApplicationResult = { ...result, status: ctx.provider.notDispatchedStatus, phase: "NOT_DISPATCHED", metadata: "NOT_REQUIRED",
       message: ctx.provider.notDispatchedStatus === "PARTIAL"
         ? "Langkah terakhir terbukti belum dikirim dan marker diselesaikan. Langkah sebelumnya mungkin sudah berubah; periksa hasil parsial tanpa retry otomatis."
         : "HTTP write terbukti belum dimulai dan marker diselesaikan dengan fencing. Siapkan konfirmasi baru; tidak ada retry otomatis." };
+    try { await ctx.store.finishNotDispatched(fence, ctx.provider.notDispatchedStatus, diagnosticSummary(stopped, ctx.provider.sent)); }
+    catch { stopped.metadata = "FAILED"; stopped.status = "UNVERIFIED"; stopped.message += " Pencatatan hasil belum terverifikasi; Periksa Status."; }
+    return stopped;
+  }
+  if (["VERIFIED", "NO_CHANGE"].includes(result.status) && ctx.budget.now() >= signed.expiresAt) {
+    result.status = "PARTIAL"; result.message = "Daftar sudah dibaca, tetapi konfirmasi berakhir sebelum penyimpanan kesiapan. Konfirmasi ulang dari keadaan terbaru; tidak ada retry write.";
   }
   if (["VERIFIED", "NO_CHANGE"].includes(result.status) && invalidated) {
     try {

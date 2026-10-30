@@ -10,6 +10,7 @@ import { CampaignOperationStore } from "./repository";
 import { parseAdsterraConfigId, parseAdsterraConfigInput, parseShopeeAccountId } from "../adsterra-roi/config-input";
 import { saveAdsterraConfig, deleteAdsterraConfig } from "../adsterra-roi/config-repository";
 import type { PlacementProvider } from "./provider";
+import { retainFailureSummary } from "./diagnostics";
 
 /** Every existing writer shares the same physical-campaign guard. No HTTP in tx. */
 export async function runCoordinatedWrite<T>(input: {
@@ -26,6 +27,7 @@ export async function runCoordinatedWrite<T>(input: {
     await scopeCheck?.(); await input.authorize?.();
     if (activating) await ctx.activationReady();
   };
+  let recorded = false;
   try {
     await ctx.provider.campaign(); // validates real identity before any write
     await input.authorize?.();
@@ -36,12 +38,17 @@ export async function runCoordinatedWrite<T>(input: {
     const overlappingOn = input.protective && row?.status === "RUNNING" && ["ACTIVATE", "SCHEDULE_ON"].includes(row.action);
     const status = await ctx.store.finish(fence, ctx.provider.ambiguous || overlappingOn ? "UNVERIFIED" : verified(result) ? "VERIFIED" : "PARTIAL",
       JSON.stringify({ action: input.action, writes: ctx.provider.sent, overlappingOn: !!overlappingOn }));
-    if (status !== "VERIFIED") throw new OperationError("Perubahan belum terverifikasi penuh; guard tetap terkunci. Periksa operasi/pemulihan sebelum mencoba write lain.");
+    recorded = true;
+    if (status !== "VERIFIED") throw new OperationError(status === "UNVERIFIED" ? "Hasil perubahan belum pasti. Periksa Status sebelum mencoba lagi." : "Status belum sesuai permintaan. Periksa status terbaru sebelum tindakan berikutnya.");
     return result;
   } catch (error) {
     // Never retry work/POST. Failure to record leaves the durable RUNNING guard.
-    if (!ctx.provider.notDispatchedStatus) {
-      try { await ctx.store.finish(fence, ctx.provider.sent || ctx.provider.ambiguous ? "UNVERIFIED" : "RECONFIRM_REQUIRED", "Operasi dihentikan; periksa keadaan provider/metadata. Tidak ada retry otomatis."); } catch { /* preserve original safety failure */ }
+    if (!recorded && !ctx.provider.notDispatchedStatus) {
+      try {
+        const row = input.protective ? await ctx.store.read(ctx.scope.campaignId) : null;
+        const overlappingOn = input.protective && (!row || (row.status === "RUNNING" && ["ACTIVATE", "SCHEDULE_ON"].includes(row.action)));
+        await ctx.store.finish(fence, ctx.provider.ambiguous || overlappingOn ? "UNVERIFIED" : ctx.provider.sent ? "PARTIAL" : "RECONFIRM_REQUIRED", "Operasi selesai tanpa bukti sukses penuh. Gunakan status terbaru; tidak ada retry otomatis.");
+      } catch { /* preserve original safety failure */ }
     }
     throw error;
   }
@@ -76,6 +83,15 @@ export async function coordinatedAutoDisable(accountId: number, configId: number
       update: { generation: { increment: 1 } } });
     const changed = await tx.adsterraCampaignConfig.updateMany({ where: { id: configId, shopeeAccountId: accountId, campaignId: config.campaignId }, data: { autoScheduleEnabled: false } });
     if (changed.count !== 1) throw new OperationError("Scope konfigurasi berubah.");
+    // Generation cancellation plus an already-clear uncertainty marker proves
+    // no HTTP write is pending. Old continuations cannot dispatch/finalize now.
+    // Do not do this when the HTTP/DB marker is uncertain, even if GET matches.
+    if (!row.uncertain && ["RUNNING", "PREPARED"].includes(row.status)) {
+      await tx.adsterraCampaignOperation.updateMany({ where: {
+        campaignId: row.campaignId, operationId: row.operationId, generation: row.generation, status: row.status, uncertain: false,
+      }, data: { status: row.status === "RUNNING" ? "PARTIAL" : "RECONFIRM_REQUIRED", phase: "FINISHED",
+        summary: retainFailureSummary(row.summary, JSON.stringify({ v: 1, status: row.status === "RUNNING" ? "PARTIAL" : "RECONFIRM_REQUIRED", phase: "NOT_DISPATCHED", metadata: "NOT_REQUIRED", diagnostics: [] })) } });
+    }
     return { autoScheduleEnabled: false, warning: row?.status === "RUNNING" ? "Auto nonaktif. Operasi lama dibatasi fencing; request provider yang sudah terkirim mungkin tetap diterapkan. Periksa status dan gunakan protective OFF bila perlu." : "" };
   }, { isolationLevel: "Serializable", maxWait: Math.min(5000, budget.remaining()), timeout: Math.min(5000, budget.remaining()) }));
 }
@@ -94,7 +110,7 @@ export async function coordinatedAutoEnable(accountId: number, configId: number,
       const owned = await tx.adsterraCampaignOperation.updateMany({ where: { campaignId: fence.campaignId,
         operationId: fence.operationId, generation: fence.generation, status: "RUNNING", uncertain: true,
         ...method,
-        protectiveOffStatus: { in: ["IDLE", "VERIFIED", "NO_CHANGE", "RECONFIRM_REQUIRED"] }, protectiveOffUncertain: false },
+        protectiveOffStatus: { in: ["IDLE", "VERIFIED", "NO_CHANGE", "RECONFIRM_REQUIRED", "PARTIAL"] }, protectiveOffUncertain: false },
       data: { phase: "AUTO_FLAG_PENDING" } });
       if (owned.count !== 1) throw new OperationError("Auto enable dibatalkan generation lain; flag tidak diaktifkan.");
       return tx.adsterraCampaignConfig.updateMany({ where: { id: configId, shopeeAccountId: accountId,

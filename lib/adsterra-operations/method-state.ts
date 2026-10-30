@@ -23,12 +23,14 @@ export function assessReadiness(method: MethodState, lists: {
   const { blacklist, whitelist } = lists;
   if (!blacklist || !whitelist || !pricing) return { readiness: "UNVERIFIABLE", message: "Kedua daftar/capability belum dapat diverifikasi; bukan daftar kosong." };
   if (blacklist.count && whitelist.count) return { readiness: "CONFLICT", message: "Kedua daftar API terisi. Tidak menebak mode editor atau memperbaiki konflik otomatis." };
-  if (!method.placementMethod) return { readiness: "NOT_APPLIED", message: "Metode aplikasi belum ditetapkan melalui Campaign." };
+  if (!method.placementMethod) return { readiness: "NOT_APPLIED", message: "Metode aplikasi belum dipilih. ON/OFF dan Auto campaign lama tetap tersedia." };
   const unsupported = capabilityError(method.placementMethod, pricing);
   if (unsupported) return { readiness: "UNVERIFIABLE", message: unsupported };
   const opposite = method.placementMethod === "BLACKLIST" ? whitelist : blacklist;
   if (opposite.count) return { readiness: "CONFLICT", message: "Daftar berlawanan terisi. Perubahan metode/clear hanya melalui Campaign." };
-  if (!method.methodReady) return { readiness: "NOT_APPLIED", message: "Belum diterapkan. Lanjutkan analisis dan konfirmasi di Placement; aktivasi baru diblokir." };
+  if (!method.methodReady) return { readiness: "NOT_APPLIED", message: method.placementMethod === "WHITELIST" && !whitelist.count
+    ? "Whitelist belum diisi. Terapkan hasil analisis Placement sebelum ON."
+    : "Perubahan daftar belum selesai. Terapkan kembali dari analisis terbaru sebelum ON." };
   if (method.approvedBlacklistHash !== blacklist.digest || method.approvedWhitelistHash !== whitelist.digest
     || (method.placementMethod === "WHITELIST" && !whitelist.count)) return { readiness: "LIST_CHANGED", message: "Daftar berubah dari persetujuan terakhir. Konfirmasi penerapan baru diperlukan; GET tidak menyetujui perubahan." };
   return { readiness: "READY", message: method.placementMethod === "BLACKLIST" && !blacklist.count
@@ -36,6 +38,7 @@ export function assessReadiness(method: MethodState, lists: {
     : "Siap berdasarkan metode aplikasi dan kedua daftar API yang disetujui; bukan mode editor." };
 }
 export function requireActivationReady(snapshot: Pick<Snapshot, "method" | "campaign" | "blacklist" | "whitelist">) {
+  if (snapshot.method.placementMethod === null) return snapshot.method;
   const result = assessReadiness(snapshot.method, {
     blacklist: { count: snapshot.blacklist.length, digest: listDigest(snapshot.blacklist) },
     whitelist: { count: snapshot.whitelist.length, digest: listDigest(snapshot.whitelist) },

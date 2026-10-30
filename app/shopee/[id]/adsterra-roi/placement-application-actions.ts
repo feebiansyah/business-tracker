@@ -9,6 +9,22 @@ import { prepareApplication, executeApplication } from "@/lib/adsterra-operation
 import { recoveryPreview, acknowledgeRecovery } from "@/lib/adsterra-operations/recovery";
 import { verifyConfirmation } from "@/lib/adsterra-operations/confirmation";
 import { digest } from "@/lib/adsterra-operations/canonical";
+import { readDiagnostics } from "@/lib/adsterra-operations/diagnostics";
+
+/** Observation only: never acknowledges recovery, releases uncertainty or retries. */
+export async function inspectAdsterraOperation(accountId: unknown, configId: unknown) {
+  const budget = new OperationBudget(); await requireOperationUser(budget);
+  try {
+    const ctx = await operationContext(accountId, configId, budget), row = await ctx.store.read(ctx.scope.campaignId);
+    const pending = !!row && (row.uncertain || row.protectiveOffUncertain || ["RUNNING", "UNVERIFIED"].includes(row.status) || ["RUNNING", "UNVERIFIED"].includes(row.protectiveOffStatus));
+    let actual = null;
+    try { const s = await ctx.snapshot(); actual = { active: s.campaign.active, blacklist: s.blacklist.length, whitelist: s.whitelist.length, bids: s.bids.length }; } catch { /* Unknown is never zero. */ }
+    return { success: true as const, result: { campaignId: ctx.scope.campaignId, pending, actual, readAt: new Date().toISOString(), origin: readDiagnostics(row?.summary ?? null),
+      message: pending ? "Perubahan masih berjalan atau hasil write belum pasti. Aktivasi ditahan; tidak ada retry otomatis."
+        : row?.status === "PARTIAL" ? "Permintaan sebelumnya sudah selesai tetapi belum diterapkan penuh. Anda dapat membuat konfirmasi baru dari keadaan aktual."
+        : "Tidak ada request write yang tercatat belum pasti.", } };
+  } catch (error) { return { success: false as const, message: publicOperationError(error) }; }
+}
 
 export async function prepareAdsterraPlacementApplication(accountId: unknown, data: FormData, kind: unknown) {
   const budget = new OperationBudget(), owner = await requireOperationUser(budget);
@@ -21,7 +37,7 @@ export async function executeAdsterraPlacementApplication(accountId: unknown, da
   const budget = new OperationBudget(), owner = await requireOperationUser(budget);
   try {
     const ctx = await operationContext(accountId, data.get("configId"), budget);
-    const result = await executeApplication(ctx, owner, data, token, (at, fence, method, result) => finalizeAdsterraApplication(prisma, fence, ctx.scope, method, result, at, budget));
+    const result = await executeApplication(ctx, owner, data, token, (at, fence, method, result) => finalizeAdsterraApplication(prisma, fence, ctx.scope, method, result, at, budget, ctx.provider.expiresAt));
     revalidatePath(`/shopee/${ctx.scope.shopeeAccountId}/adsterra-roi`);
     return { success: true as const, result };
   } catch (error) { return { success: false as const, message: publicOperationError(error) }; }

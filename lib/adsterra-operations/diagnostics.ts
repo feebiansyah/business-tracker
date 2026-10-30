@@ -1,7 +1,7 @@
 /** Only fixed stages/reasons are allowed across the provider -> DB -> browser boundary. */
 const stages = ["READ_CAMPAIGN", "READ_BLACKLIST", "READ_WHITELIST", "READ_CUSTOM_BIDS", "READ_STATISTICS", "READ_OTHER",
   "PUT_BLACKLIST", "PUT_WHITELIST", "CLEAR_BLACKLIST", "CLEAR_WHITELIST", "CUSTOM_BID_POST", "CUSTOM_BID_PATCH", "CUSTOM_BID_DELETE", "CAMPAIGN_STATUS_WRITE",
-  "PREFLIGHT", "PUT_TARGET", "VERIFY_LISTS", "RESET_CUSTOM_BIDS", "FINAL_VERIFICATION", "NOT_DISPATCHED", "METHOD_PREFLIGHT", "METHOD_CLEAR_OPPOSITE", "METHOD_VERIFY", "METHOD_FINALIZE"] as const;
+  "PREFLIGHT", "PUT_TARGET", "VERIFY_LISTS", "RESET_CUSTOM_BIDS", "FINAL_VERIFICATION", "NOT_DISPATCHED", "METHOD_PREFLIGHT", "METHOD_CLEAR_OPPOSITE", "METHOD_DISABLE_AUTO", "METHOD_OFF", "METHOD_VERIFY", "METHOD_FINALIZE"] as const;
 const kinds = ["HTTP_ERROR", "INVALID_RESPONSE", "REQUEST_INCOMPLETE", "BODY_LIMIT", "VERIFICATION_MISMATCH", "OPERATION_INTERRUPTED"] as const;
 const reasons = ["Token not found", "Invalid token", "Invalid owner type", "Invalid output format", "Campaign not found", "In use landings not found",
   "Validation failed", "Data validation error", "Unsuccessfully linked", "Not exists", "Not suitable ad unit", "Not suitable category", "Already linked", "Blacklisted",
@@ -9,8 +9,9 @@ const reasons = ["Token not found", "Invalid token", "Invalid owner type", "Inva
   "Method not allowed", "Provider reason unavailable", "Invalid API response", "Request did not complete", "Response body limit exceeded", "GET does not match confirmed state", "Operation interrupted"] as const;
 export type OperationDiagnostic = {
   stage: (typeof stages)[number]; kind: (typeof kinds)[number]; httpStatus: number | null; reasons: (typeof reasons)[number][];
+  rejected?: { reason: (typeof reasons)[number]; placementIds: string[] }[];
 };
-export type SavedDiagnostics = { phase: string | null; writes: number | null; entries: OperationDiagnostic[] };
+export type SavedDiagnostics = { phase: string | null; writes: number | null; entries: OperationDiagnostic[]; previous?: Omit<SavedDiagnostics, "previous"> };
 export function diagnosticStage(path: string, method: string): OperationDiagnostic["stage"] {
   if (method === "GET") return path.includes("custom_bid") ? "READ_CUSTOM_BIDS" : path.includes("blacklist") ? "READ_BLACKLIST"
     : path.includes("whitelist") ? "READ_WHITELIST" : path.includes("stats") ? "READ_STATISTICS" : /\/campaign\/\d+\.json$/.test(path) ? "READ_CAMPAIGN" : "READ_OTHER";
@@ -44,7 +45,28 @@ export function providerReasons(body: unknown): OperationDiagnostic["reasons"] {
   return found.length ? found : ["Provider reason unavailable"];
 }
 export function diagnosticText(entry: OperationDiagnostic) {
-  return `${entry.stage} · ${entry.kind}${entry.httpStatus === null ? "" : ` · HTTP ${entry.httpStatus}`} · ${entry.reasons.join("; ")}`;
+  return `${entry.stage} · ${entry.kind}${entry.httpStatus === null ? "" : ` · HTTP ${entry.httpStatus}`} · ${entry.reasons.join("; ")}${entry.rejected?.length ? ` · ID terkait (cuplikan): ${entry.rejected.map((r) => `${r.reason}: ${r.placementIds.join(", ")}`).join("; ")}` : ""}`;
+}
+export function rejectedPlacements(body: unknown, confirmedIds: readonly string[]): NonNullable<OperationDiagnostic["rejected"]> {
+  const allowed = new Set(confirmedIds), groups = new Map<string, { reason: (typeof reasons)[number]; placementIds: string[] }>();
+  let nodes = 0, retained = 0;
+  function visit(value: unknown, depth: number) {
+    if (!value || typeof value !== "object" || ++nodes > 150 || depth > 6 || retained >= 20) return;
+    if (Array.isArray(value)) { value.slice(0, 30).forEach((v) => visit(v, depth + 1)); return; }
+    const object = value as Record<string, unknown>;
+    if (typeof object.reason === "string" && Array.isArray(object.placement_ids)) {
+      const reason = safeReason(object.reason) ?? "Provider reason unavailable";
+      if (!groups.has(reason) && groups.size < 4) groups.set(reason, { reason, placementIds: [] });
+      const group = groups.get(reason);
+      if (group) for (const id of object.placement_ids.slice(0, 100)) {
+        const normalized = (typeof id === "number" || typeof id === "string") && /^\d+$/.test(String(id)) && Number.isSafeInteger(Number(id)) ? String(Number(id)) : "";
+        if (allowed.has(normalized) && !group.placementIds.includes(normalized) && retained < 20) { group.placementIds.push(normalized); retained++; }
+      }
+    }
+    for (const [key, item] of Object.entries(object).slice(0, 30)) if (["errors", "landing_ids"].includes(key) || /^\d+$/.test(key)) visit(item, depth + 1);
+  }
+  visit(body, 0);
+  return [...groups.values()].filter((g) => g.placementIds.length);
 }
 function validEntry(value: unknown): value is OperationDiagnostic {
   if (!value || typeof value !== "object") return false;
@@ -54,7 +76,9 @@ function validEntry(value: unknown): value is OperationDiagnostic {
     && Array.isArray(e.reasons) && e.reasons.length > 0 && e.reasons.length <= 4 && e.reasons.every((r) => (reasons as readonly unknown[]).includes(r));
 }
 function projectEntry(e: OperationDiagnostic): OperationDiagnostic {
-  return { stage: e.stage, kind: e.kind, httpStatus: e.httpStatus, reasons: [...e.reasons] };
+  const rejected = Array.isArray(e.rejected) ? e.rejected.slice(0, 4).filter((g) => g && (reasons as readonly unknown[]).includes(g.reason) && Array.isArray(g.placementIds))
+    .map((g) => ({ reason: g.reason, placementIds: g.placementIds.filter((id) => typeof id === "string" && /^[1-9]\d{0,15}$/.test(id)).slice(0, 5) })).filter((g) => g.placementIds.length) : [];
+  return { stage: e.stage, kind: e.kind, httpStatus: e.httpStatus, reasons: [...e.reasons], ...(rejected.length ? { rejected } : {}) };
 }
 export function readDiagnostics(summary: string | null): SavedDiagnostics {
   const empty: SavedDiagnostics = { phase: null, writes: null, entries: [] };
@@ -62,10 +86,28 @@ export function readDiagnostics(summary: string | null): SavedDiagnostics {
   try {
     const data = JSON.parse(summary);
     if (!data || typeof data !== "object") return empty;
+    const previous = data.previousFailure && typeof data.previousFailure === "object" ? data.previousFailure : null;
     return { phase: (stages as readonly unknown[]).includes(data.phase) ? data.phase : null,
       writes: Number.isInteger(data.writes) && data.writes >= 0 && data.writes <= 40 ? data.writes : null,
-      entries: data.v === 1 && Array.isArray(data.diagnostics) ? data.diagnostics.filter(validEntry).slice(0, 4).map(projectEntry) : [] };
+      entries: data.v === 1 && Array.isArray(data.diagnostics) ? data.diagnostics.filter(validEntry).slice(0, 4).map(projectEntry) : [],
+      ...(previous ? { previous: { phase: (stages as readonly unknown[]).includes(previous.phase) ? previous.phase : null,
+        writes: Number.isInteger(previous.writes) && previous.writes >= 0 && previous.writes <= 40 ? previous.writes : null,
+        entries: Array.isArray(previous.entries) ? previous.entries.filter(validEntry).slice(0, 2).map(projectEntry) : [] } } : {}) };
   } catch { return empty; }
+}
+/** Keep one bounded last failure, not an unbounded history or arbitrary DB prose. */
+export function retainFailureSummary(previous: string | null, next: string) {
+  const incoming = readDiagnostics(next), old = readDiagnostics(previous);
+  if (incoming.entries.length) return next.slice(0, 2000);
+  const failure = old.previous ?? (old.entries.length || previous?.includes('"status":"PARTIAL"') ? { phase: old.phase, writes: old.writes, entries: old.entries } : null);
+  if (!failure) return next.slice(0, 2000);
+  let base: Record<string, unknown>;
+  try { base = JSON.parse(next); if (!base || typeof base !== "object") return previous!.slice(0, 2000); }
+  catch { return previous!.slice(0, 2000); }
+  const prior = { ...failure, entries: failure.entries.slice(0, 2) };
+  const encode = () => JSON.stringify({ ...base, previousFailure: prior });
+  while (encode().length > 1900 && prior.entries.length) prior.entries.pop();
+  return encode().length <= 2000 ? encode() : next.slice(0, 2000);
 }
 export function diagnosticSummary(result: { status: string; phase: string; metadata: string; diagnostics?: OperationDiagnostic[] }, writes: number) {
   const diagnostics = (result.diagnostics ?? []).filter(validEntry).slice(0, 4).map(projectEntry);
