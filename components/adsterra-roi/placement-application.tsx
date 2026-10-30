@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cancelAdsterraPlacementApplication, executeAdsterraPlacementApplication, prepareAdsterraPlacementApplication } from "@/app/shopee/[id]/adsterra-roi/placement-application-actions";
 import type { ApplicationResult, ListKind } from "@/lib/adsterra-operations/types";
@@ -8,9 +9,10 @@ import { MethodBadge, OperationNotice } from "./operation-dialog";
 import { AdsterraOperationRecovery } from "./operation-recovery";
 
 const key = "placement-application";
-export function PlacementApplication({ accountId, configId, kind, candidateCount, getData, onResult }: {
+export function PlacementApplication({ accountId, configId, kind, candidateCount, getData, onResult, notificationTarget }: {
   accountId: number; configId: number; kind: ListKind; candidateCount: number;
   getData(): FormData | null; onResult(result: ApplicationResult): void;
+  notificationTarget: HTMLDivElement | null;
 }) {
   const operation = useAdsterraOperation(), pending = useRef(false);
   const protectionKey = `${key}-${configId}`;
@@ -68,12 +70,14 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
     <div className="flex flex-wrap items-center gap-2"><MethodBadge method={kind}/><span className="text-xs text-slate-600">{candidateCount} kandidat analisis</span></div>
     <Button type="button" disabled={operation.busy || busy || (kind === "WHITELIST" && !candidateCount)} onClick={() => void prepare()}>{busy ? "Memproses…" : `Terapkan ${kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}`}</Button>
     {kind === "WHITELIST" && !candidateCount && <p>Whitelist belum memiliki kandidat. Tidak ada perubahan provider.</p>}
+    {notificationTarget && createPortal(<div className="space-y-2">
     <OperationNotice message={message}/>
-    {kind === "WHITELIST" && rejection && <div className="space-y-2 text-xs">
+    {kind === "WHITELIST" && rejection && <div className="space-y-2 text-sm">
       {rejection.groups.map((g) => <p key={g.reason} className="break-words">{g.reason}: {g.ids.join(", ")}</p>)}
       <p>{rejection.complete ? "ID di atas berasal dari respons penolakan terkait." : "Sebagian ID penolakan dapat belum tercantum; bukan daftar penolakan lengkap."} Target yang tersisa tetap dapat ditolak provider.</p>
       <Button type="button" disabled={busy || operation.busy} onClick={() => void prepare(rejection)}>Terapkan tanpa placement yang ditolak</Button>
     </div>}
     {message && !/^(VERIFIED|NO_CHANGE):/.test(message) && <AdsterraOperationRecovery accountId={accountId} configId={configId}/>}
+    </div>, notificationTarget)}
   </section>;
 }

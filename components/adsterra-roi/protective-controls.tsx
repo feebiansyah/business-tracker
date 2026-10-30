@@ -28,13 +28,10 @@ export function AdsterraProtectiveControls({ accountId, campaigns }: { accountId
     } catch { show("Hasil belum diterima; periksa operasi. Tidak mengulang request otomatis."); }
     finally { locks.current[slot] = false; (off ? setOffBusy : setAutoBusy)(false); operation.refresh(); }
   }
-  // Keep the same independent safety actions mounted outside the workspace
-  // lock; show them only while needed, never as a normal setup procedure.
-  if (!operation.changing && !operation.protectionNeeded && !offBusy && !autoBusy && !messages.off && !messages.auto) return null;
-  return <section aria-label="Tindakan pengaman saat operasi" className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
-    <p className="text-xs font-medium">OFF dan penonaktifan Auto tetap tersedia selama proses.</p>
-    <div className="mt-2 flex flex-wrap items-end gap-2"><label className="min-w-0">Campaign<select aria-label="Target pengaman campaign" className="mt-1 block h-9 max-w-full rounded border px-2" value={target} disabled={offBusy || autoBusy} onChange={(event) => setTarget(event.target.value)}>{campaigns.map((c) => <option key={c.id} value={c.id}>{c.label || c.campaignId} ({c.campaignId})</option>)}</select></label><Button type="button" variant="destructive" disabled={offBusy || !target} onClick={() => void protect(true)}>{offBusy ? "OFF pending..." : "OFF Protektif"}</Button><Button type="button" variant="ghost" disabled={autoBusy || !target} onClick={() => void protect(false)}>Nonaktifkan Auto</Button></div>
+  // Stable toolbar outside the workspace lock, including from Placement.
+  return <div aria-label="Tindakan pengaman saat operasi" className="min-w-0 max-w-full space-y-1 text-xs">
+    <div className="flex flex-wrap items-center gap-1"><select aria-label="Target pengaman campaign" className="h-8 w-44 max-w-full rounded border bg-white px-2 text-xs" value={target} disabled={offBusy || autoBusy} onChange={(event) => setTarget(event.target.value)}>{campaigns.map((c) => <option key={c.id} value={c.id}>{c.label || c.campaignId} ({c.campaignId})</option>)}</select><Button type="button" variant="destructive" className="h-8 px-2 text-xs" disabled={offBusy || !target} onClick={() => void protect(true)}>{offBusy ? "OFF…" : "OFF"}</Button><Button type="button" variant="ghost" className="h-8 px-2 text-xs" disabled={autoBusy || !target} onClick={() => void protect(false)}>Nonaktifkan Auto</Button></div>
     {messages.off && <p role="status" className="mt-2 break-words">OFF: {messages.off}</p>}
     {messages.auto && <p role="status" className="mt-2 break-words">Auto: {messages.auto}</p>}
-  </section>;
+  </div>;
 }
