@@ -100,6 +100,7 @@ export class ClickaduClient {
           headers: { Authorization: this.token, ...(payload ? { "Content-Type": "application/json" } : {}) },
           body: payload ? JSON.stringify(payload) : undefined,
           cache: "no-store",
+          signal: AbortSignal.timeout(10_000),
         });
       } catch {
         if (method === "PUT") throw new ClickaduAmbiguousWriteError();
