@@ -14,6 +14,7 @@ import { PlacementProvider } from "./provider";
 import { planApplication } from "./application";
 import { OperationError, type ListKind, type MethodState, type Snapshot } from "./types";
 import { requireActivationReady } from "./method-state";
+import { isLegacyUnconfiguredMethod } from "./method-activation";
 import type { PrismaClient } from "../generated/prisma/client";
 import type { Fence } from "./repository";
 import { AutoNotDispatched, disableMethodAuto } from "./method-auto";
@@ -83,9 +84,10 @@ export async function operationContext(account: unknown, config: unknown, budget
   }
   async function activationReady() {
     const method = await store.method(loaded.scope.campaignId);
-    // No local method means legacy operation, not an unfinished method reset.
-    // reserve/assert still enforce the shared pending/uncertain operation guard.
-    if (method.placementMethod === null) return method;
+    // First setup also retains null while its durable version has advanced.
+    // Only untouched legacy defaults may bypass method readiness. The shared
+    // reserve/assert guard still blocks pending/uncertain operations.
+    if (isLegacyUnconfiguredMethod(method)) return method;
     budget.requireRequests(3);
     const campaign = await provider.campaign(), blacklist = await provider.list("BLACKLIST"), whitelist = await provider.list("WHITELIST");
     return requireActivationReady({ method, campaign, blacklist, whitelist });

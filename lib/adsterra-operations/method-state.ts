@@ -1,5 +1,6 @@
 import { digest, sortedIds } from "./canonical";
 import { OperationError, type ListKind, type MethodState, type Readiness, type Snapshot } from "./types";
+import { isLegacyUnconfiguredMethod } from "./method-activation";
 
 export type StoredMethodRow = Omit<MethodState, "placementMethod"> & { placementMethod: string | null };
 export function storedMethod(row: StoredMethodRow | null): MethodState {
@@ -21,6 +22,8 @@ export function assessReadiness(method: MethodState, lists: {
   blacklist: { count: number; digest: string } | null; whitelist: { count: number; digest: string } | null;
 }, pricing: string | null): { readiness: Readiness; message: string } {
   const { blacklist, whitelist } = lists;
+  if (method.placementMethod === null && !isLegacyUnconfiguredMethod(method)) return { readiness: "NOT_APPLIED",
+    message: "Pengaturan metode belum selesai. Konfirmasi metode kembali di Campaign sebelum ON atau mengaktifkan Auto. OFF dan penonaktifan Auto tetap tersedia." };
   if (!blacklist || !whitelist || !pricing) return { readiness: "UNVERIFIABLE", message: "Kedua daftar/capability belum dapat diverifikasi; bukan daftar kosong." };
   if (blacklist.count && whitelist.count) return { readiness: "CONFLICT", message: "Kedua daftar API terisi. Tidak menebak mode editor atau memperbaiki konflik otomatis." };
   if (!method.placementMethod) return { readiness: "NOT_APPLIED", message: "Metode aplikasi belum dipilih. ON/OFF dan Auto campaign lama tetap tersedia." };
@@ -38,7 +41,7 @@ export function assessReadiness(method: MethodState, lists: {
     : "Siap berdasarkan metode aplikasi dan kedua daftar API yang disetujui; bukan mode editor." };
 }
 export function requireActivationReady(snapshot: Pick<Snapshot, "method" | "campaign" | "blacklist" | "whitelist">) {
-  if (snapshot.method.placementMethod === null) return snapshot.method;
+  if (isLegacyUnconfiguredMethod(snapshot.method)) return snapshot.method;
   const result = assessReadiness(snapshot.method, {
     blacklist: { count: snapshot.blacklist.length, digest: listDigest(snapshot.blacklist) },
     whitelist: { count: snapshot.whitelist.length, digest: listDigest(snapshot.whitelist) },
