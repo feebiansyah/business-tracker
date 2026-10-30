@@ -49,29 +49,33 @@ export function CampaignMethodControls({ accountId, configId, info, busy }: {
         <option value="">{busy && !info ? "Memuat metode…" : info?.status === "SUCCESS" ? "Pilih metode" : "Metode belum tersedia"}</option><option value="BLACKLIST">Blacklist</option><option value="WHITELIST">Whitelist</option>
       </select>
     </div>
-    {open && <OperationDialog title="Konfirmasi metode aplikasi" busy={working} onClose={close}>
+    {open && <OperationDialog title="Ubah metode?" busy={working} onClose={close}>
       {!preview ? <>
         <p>{working ? "Memeriksa campaign, daftar placement dan Custom Bid…" : "Rencana belum tersedia. Tutup lalu pilih metode untuk mencoba pembacaan baru."}</p>
         <OperationNotice message={message}/>
       </> : <>
       <p className="font-semibold">{preview.scope.label} · Campaign {preview.scope.campaignId}</p>
-      <p>{preview.previousMethod ?? "Belum dipilih"} → {preview.kind}. Status campaign: {preview.providerStatus}.</p>
+      <p>Metode tujuan: <strong>{preview.kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}</strong></p>
       <p>{preview.same ? "Metode sama: daftar, Auto, status campaign dan Custom Bid tidak diubah."
-        : preview.reset ? "Campaign akan dinonaktifkan dan Auto seluruh konfigurasi terkait dimatikan. Kedua daftar placement dikosongkan. Custom Bid dipertahankan. Campaign dan Auto tidak diaktifkan kembali otomatis."
-        : preview.adopt ? "Daftar existing diadopsi tanpa OFF, perubahan Auto, write provider, atau penghapusan Custom Bid."
+        : preview.reset ? "Campaign dan Auto terkait dinonaktifkan, daftar placement direset. Custom Bid dipertahankan. Campaign dan Auto tidak diaktifkan kembali otomatis."
+        : preview.adopt ? "Daftar yang ada dipertahankan. Status campaign, Auto, dan Custom Bid tidak diubah."
         : "Whitelist belum diisi. Metode disimpan; penerapan Whitelist dilakukan melalui analisis Placement sebelum ON."}</p>
-      <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3">
-        <p className="font-medium">Blacklist API: {blacklistDescription(preview.blacklist)} · Whitelist API: {preview.whitelist.length} placement.</p>
-        <p className="font-medium">Dikosongkan: {Array.isArray(preview.clearBlacklist) ? `${preview.clearBlacklist.length} Blacklist` : "Blacklist dibaca ulang dan direset setelah Whitelist kosong"} + {preview.clearWhitelist.length} Whitelist. Tidak ada placement baru ditambahkan.</p>
+      <div className="space-y-1 text-sm text-slate-700">
+        {!preview.reset && <p>Daftar dipertahankan: {blacklistDescription(preview.target)}.</p>}
+        {preview.reset && <p>Dikosongkan: {Array.isArray(preview.clearBlacklist) ? `${preview.clearBlacklist.length} Blacklist` : "Blacklist dibaca ulang dan direset setelah Whitelist kosong"} + {preview.clearWhitelist.length} Whitelist.</p>}
         {preview.kind === "BLACKLIST" && !preview.same && (preview.reset || (Array.isArray(preview.target) && !preview.target.length)) && <p>Setelah reset terverifikasi, Blacklist kosong: tidak ada placement yang dikecualikan.</p>}
-        <p>Custom Bid dipertahankan: {preview.preservedBids.length} override. Tidak ada penghapusan atau pemulihan bid.</p>
+        <p>Custom Bid dipertahankan ({preview.preservedBids.length} override).</p>
       </div>
-      <details><summary>Daftar tujuan existing: {blacklistDescription(preview.target)}</summary><p className="break-all">{Array.isArray(preview.target) ? preview.target.join(", ") || "Kosong" : "Blacklist belum terbaca; pembacaan wajib setelah clear Whitelist."}</p></details>
-      <details><summary>ID yang dikosongkan</summary><p className="break-all">{Array.isArray(preview.clearBlacklist) ? [...preview.clearBlacklist, ...preview.clearWhitelist].join(", ") || "Tidak ada" : `Whitelist: ${preview.clearWhitelist.join(", ")}. ID Blacklist harus dibaca ulang sebelum reset selanjutnya.`}</p></details>
-      <details><summary>Custom Bid dipertahankan: {preview.preservedBids.length} override</summary><p className="break-all">{preview.preservedBids.map((b) => `${b.placementId}/${b.countryCode}/${b.price}`).join("; ") || "Tidak ada override"}</p></details>
-      <p className="text-xs text-slate-500">Pilihan aplikasi, bukan deteksi mode editor Adsterra. Berlaku sampai {new Date(preview.expiresAt).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta" })} WIB.</p>
+      <details className="text-xs text-slate-600"><summary className="cursor-pointer">Detail</summary><div className="mt-2 space-y-2 break-words">
+        <p>Status campaign: {preview.providerStatus}. Metode sebelumnya: {preview.previousMethod ?? "Belum dipilih"}.</p>
+        <p>Blacklist API: {blacklistDescription(preview.blacklist)} · Whitelist API: {preview.whitelist.length} placement.</p>
+        <p>Daftar tujuan: {Array.isArray(preview.target) ? preview.target.join(", ") || "Kosong" : "Blacklist belum terbaca; pembacaan wajib setelah clear Whitelist."}</p>
+        <p>ID dikosongkan: {Array.isArray(preview.clearBlacklist) ? [...preview.clearBlacklist, ...preview.clearWhitelist].join(", ") || "Tidak ada" : `Whitelist: ${preview.clearWhitelist.join(", ")}. Blacklist dibaca ulang sebelum reset.`}</p>
+        <p>Bid dipertahankan: {preview.preservedBids.map((b) => `${b.placementId}/${b.countryCode}/${b.price}`).join("; ") || "Tidak ada override"}</p>
+        <p>Metode aplikasi, bukan mode editor Adsterra. Konfirmasi berlaku sampai {new Date(preview.expiresAt).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta" })} WIB.</p>
+      </div></details>
       {preview.blockers.map((reason) => <p key={reason} role="alert" className="text-red-700">{reason}</p>)}
-      <div className="flex flex-wrap gap-1"><Button type="button" variant="ghost" disabled={working} onClick={() => void finish(false)}>Batal / Tutup</Button><Button type="button" disabled={working || !preview.token} onClick={() => void finish(true)}>{working ? "Memproses..." : "Konfirmasi Metode"}</Button></div>
+      <div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={working} onClick={() => void finish(false)}>Batal</Button><Button type="button" disabled={working || !preview.token} onClick={() => void finish(true)}>{working ? "Memproses..." : "Konfirmasi"}</Button></div>
       </>}
     </OperationDialog>}
     {!open && <OperationNotice message={message}/>}

@@ -23,7 +23,7 @@ export function OperationDialog({ title, busy, onClose, children }: {
         <Button type="button" variant="ghost" className="h-7 shrink-0 px-2" disabled={busy} aria-label={`Tutup ${title}`} onClick={onClose}>Tutup</Button>
       </div>
       <div className="min-h-0 space-y-3 overflow-y-auto p-4">{children}</div>
-      <p className="border-t px-4 py-2 text-xs text-slate-500">Pengaman Campaign tetap tersedia di halaman. {busy ? "Operasi berjalan; tunggu hasilnya." : "Esc untuk menutup."}</p>
+      <p className="border-t px-4 py-2 text-xs text-slate-500">{busy ? "Memproses; OFF dan Nonaktifkan Auto tetap tersedia di halaman." : "Esc untuk menutup."}</p>
     </div>
   </div>, document.body);
 }
@@ -37,10 +37,15 @@ export function MethodBadge({ method }: { method: "BLACKLIST" | "WHITELIST" | nu
 export function OperationNotice({ message }: { message: string }) {
   if (!message) return null;
   const status = message.match(/^(VERIFIED|NO_CHANGE|RECONFIRM_REQUIRED|PARTIAL|UNVERIFIED):/)?.[1];
-  const labels: Record<string, string> = { VERIFIED: "Terverifikasi", NO_CHANGE: "Tidak ada perubahan", RECONFIRM_REQUIRED: "Perlu konfirmasi ulang", PARTIAL: "Selesai sebagian", UNVERIFIED: "Hasil belum pasti" };
-  return <div role="status" className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs">
-    <p className="font-medium">{status ? labels[status] : "Periksa hasil"}</p>
-    <p className="mt-1 whitespace-pre-wrap break-words">{status ? message.slice(status.length + 1).trim() : message}</p>
-    <details className="mt-1"><summary className="cursor-pointer">Detail hasil</summary><p className="mt-1 whitespace-pre-wrap break-words">{message}</p></details>
+  const labels: Record<string, string> = { VERIFIED: "Berhasil", NO_CHANGE: "Sudah sesuai", RECONFIRM_REQUIRED: "Perlu konfirmasi baru", PARTIAL: "Selesai sebagian", UNVERIFIED: "Hasil belum pasti" };
+  const success = status === "VERIFIED" || status === "NO_CHANGE";
+  const warning = status === "PARTIAL" || status === "UNVERIFIED" || status === "RECONFIRM_REQUIRED";
+  const hint = status === "RECONFIRM_REQUIRED" ? "Siapkan kembali dengan data terbaru."
+    : status === "UNVERIFIED" ? "Periksa Status sebelum mencoba lagi."
+    : status === "PARTIAL" ? "Periksa bagian yang belum selesai pada Detail."
+    : !status ? "Lihat alasan dan langkah berikutnya pada Detail." : "";
+  return <div role={success ? "status" : "alert"} className={`min-w-0 rounded-lg p-3 text-sm ${success ? "bg-emerald-50 text-emerald-700" : warning ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"}`}>
+    <p className="font-medium">{status ? labels[status] : "Belum berhasil"}{hint && <span className="font-normal">. {hint}</span>}</p>
+    <details className="mt-1 text-xs"><summary className="cursor-pointer">Detail</summary><p className="mt-1 whitespace-pre-wrap break-words">{status ? message.slice(status.length + 1).trim() : message}</p></details>
   </div>;
 }

@@ -64,24 +64,27 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
     } catch { setMessage("Hasil perubahan belum diterima. Gunakan Periksa Status; jangan ulangi write."); }
     finally { setPreview(null); pending.current = false; setBusy(false); operation.end(key, true); }
   }
-  return <section aria-label="Penerapan daftar placement" className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-    <div className="flex flex-wrap items-center gap-2"><h4 className="font-semibold">Penerapan</h4><MethodBadge method={kind}/><span className="text-xs text-slate-600">{candidateCount} kandidat analisis, bukan jumlah yang diterima provider.</span></div>
+  return <section aria-label="Penerapan daftar placement" className="space-y-3 text-sm">
+    <div className="flex flex-wrap items-center gap-2"><MethodBadge method={kind}/><span className="text-xs text-slate-600">{candidateCount} kandidat analisis</span></div>
     <Button type="button" disabled={operation.busy || busy || (kind === "WHITELIST" && !candidateCount)} onClick={() => void prepare()}>{busy ? "Memproses…" : `Terapkan ${kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}`}</Button>
     {kind === "WHITELIST" && !candidateCount && <p>Whitelist belum memiliki kandidat. Tidak ada perubahan provider.</p>}
     {preview && <OperationDialog title="Konfirmasi penerapan" busy={busy} onClose={() => void cancel()}>
-      <p className="font-semibold">{preview.scope.label} · Campaign {preview.scope.campaignId} · {preview.kind}</p>
-      <p>{preview.dateFrom}–{preview.dateTill} · Kurs {preview.fxRate}</p>
-      {!!preview.excluded?.length && <div className="rounded border border-amber-200 bg-amber-50 p-2"><p className="font-semibold">Dikecualikan setelah penolakan provider: {preview.excluded.length} placement</p><p className="break-words text-xs">{preview.excluded.join(", ")}</p><p className="mt-1 text-xs">Target akhir {preview.target.length} placement. Placement lainnya belum terbukti diterima sebelum verifikasi GET.</p></div>}
+      <p className="font-semibold">{preview.scope.label} · Campaign {preview.scope.campaignId}</p>
+      <p>Terapkan <strong>{preview.kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}</strong> dengan <strong>{preview.target.length} placement</strong>.</p>
+      {!!preview.excluded?.length && <p className="break-words text-amber-800">Dikecualikan setelah penolakan provider: {preview.excluded.join(", ")} ({preview.excluded.length} placement). Target lain tetap dapat ditolak provider.</p>}
       <div className="grid grid-cols-3 gap-2 rounded bg-slate-50 p-3 text-xs"><p>Target <b className="block text-base">{preview.target.length}</b></p><p>Ditambahkan <b className="block text-base">{preview.added.length}</b></p><p>Dikeluarkan <b className="block text-base">{preview.removed.length}</b></p></div>
-      <p>Daftar berlawanan: {blacklistDescription(preview.opposite)}; tidak dikosongkan atau diubah melalui Placement.</p>
-      <p className="rounded border border-amber-200 bg-amber-50 p-2 font-medium">{preview.resetBids.length
+      <p className="font-medium text-slate-700">{preview.resetBids.length
         ? `${preview.resetBids.length} override Custom Bid seluruh GEO milik placement blacklist terkait akan dihapus setelah blacklist terverifikasi. Bid tidak dipulihkan saat placement ON kembali.`
-        : "Custom Bid dipertahankan. Whitelist tidak menghapus override bid."}</p>
+        : "Custom Bid dipertahankan."}</p>
       {preview.kind === "BLACKLIST" && !preview.target.length && <p className="font-medium">Blacklist kosong: tidak ada placement yang dikecualikan.</p>}
-      <Ids label="ID target" ids={preview.target}/><Ids label="Penambahan" ids={preview.added}/><Ids label="Penghapusan" ids={preview.removed}/>
-      {preview.resetBids.length > 0 && <details><summary className="cursor-pointer">Detail override bid yang dihapus</summary><p className="break-words text-xs">{preview.resetBids.map((b) => `${b.placementId}/${b.countryCode}/${b.price}`).join("; ")}</p></details>}
+      <details className="text-xs text-slate-600"><summary className="cursor-pointer">Detail</summary><div className="mt-2 space-y-2 break-words">
+        <p>Periode {preview.dateFrom}–{preview.dateTill} · Kurs {preview.fxRate}</p>
+        <p>Daftar berlawanan: {blacklistDescription(preview.opposite)}; tidak dikosongkan atau diubah melalui Placement.</p>
+        <Ids label="ID target" ids={preview.target}/><Ids label="Penambahan" ids={preview.added}/><Ids label="Penghapusan" ids={preview.removed}/>
+        {preview.resetBids.length > 0 && <p>Override bid yang dihapus: {preview.resetBids.map((b) => `${b.placementId}/${b.countryCode}/${b.price}`).join("; ")}</p>}
+      </div></details>
       {preview.blockers.map((reason) => <p key={reason} role="alert" className="text-red-700">{reason}</p>)}
-      <div className="flex gap-2"><Button type="button" variant="ghost" disabled={busy} onClick={() => void cancel()}>Batal</Button><Button type="button" disabled={busy || !preview.token} onClick={() => void execute()}>{busy ? "Memproses…" : "Konfirmasi Terapkan"}</Button></div>
+      <div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={busy} onClick={() => void cancel()}>Batal</Button><Button type="button" disabled={busy || !preview.token} onClick={() => void execute()}>{busy ? "Memproses…" : "Konfirmasi"}</Button></div>
     </OperationDialog>}
     <OperationNotice message={message}/>
     {kind === "WHITELIST" && rejection && !preview && <div className="space-y-2 text-xs">
@@ -92,4 +95,4 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
     {message && !/^(VERIFIED|NO_CHANGE):/.test(message) && <AdsterraOperationRecovery accountId={accountId} configId={configId}/>}
   </section>;
 }
-function Ids({ label, ids }: { label: string; ids: string[] }) { return <details><summary className="cursor-pointer text-xs">{label}: {ids.length} placement</summary><p className="break-words text-xs">{ids.join(", ") || "Kosong"}</p></details>; }
+function Ids({ label, ids }: { label: string; ids: string[] }) { return <p>{label} ({ids.length}): {ids.join(", ") || "Kosong"}</p>; }
