@@ -48,7 +48,7 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
         ? `${p.resetBids.length} override Custom Bid seluruh GEO placement blacklist terkait dihapus setelah verifikasi; tidak dipulihkan saat ON kembali.`
         : "Custom Bid dipertahankan.";
       const historicalRisk = p.historicalCustomBidRisk
-        ? "Catatan: hasil request Custom Bid sebelumnya belum diketahui. Penerapan daftar baru tidak memastikan hasil request lama.\n"
+        ? "Request bid sebelumnya belum pasti; bid masih mungkin berubah belakangan.\n"
         : "";
       if (!window.confirm(`Campaign ${p.scope.label} (${p.scope.campaignId})\nTerapkan ${p.kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}: ${p.target.length} placement final (+${p.added.length}, −${p.removed.length}).\n${p.excluded?.length ? `Dikecualikan: ${p.excluded.join(", ")}. Target lainnya tetap dapat ditolak.\n` : ""}${impact}\n${historicalRisk}${p.kind === "BLACKLIST" && !p.target.length ? "Blacklist kosong: tidak ada placement dikecualikan.\n" : ""}Konfirmasi penerapan?`)) {
         stage = "cancel";

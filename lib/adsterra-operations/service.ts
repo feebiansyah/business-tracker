@@ -34,7 +34,7 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
   finalize: (at: Date, fence: Fence, method: MethodState, result: ApplicationResult) => Promise<{ lastBlacklistReplacedAt: string | null }>): Promise<ApplicationResult> {
   const signed = verifyConfirmation(token, owner, "ADSTERRA_LIST_APPLY_V3", ctx.budget.now());
   const historicalRiskMessage = signed.historicalCustomBidRisk
-    ? " Hasil request Custom Bid sebelumnya tetap tidak diketahui. Penerapan daftar baru tidak memastikan hasil request lama."
+    ? " Request bid sebelumnya belum pasti; bid masih mungkin berubah belakangan."
     : "";
   if (signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId || signed.campaignId !== ctx.scope.campaignId) throw new OperationError("Scope konfirmasi berbeda.");
   const fence = { campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation };
@@ -88,6 +88,6 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
     && !ctx.provider.ambiguous && ctx.provider.whitelistRejection?.ids.length) {
     result.whitelistRejection = whitelistRejectionReceipt(attemptedPlan, fence, invalidated.methodVersion, owner, ctx.budget.now(), ctx.provider.whitelistRejection);
   }
-  if (historicalRiskMessage && !result.message.includes("Hasil request Custom Bid sebelumnya")) result.message += historicalRiskMessage;
+  if (historicalRiskMessage && !result.message.includes("Request bid sebelumnya belum pasti")) result.message += historicalRiskMessage;
   return result;
 }

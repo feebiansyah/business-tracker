@@ -14,13 +14,13 @@ export function OperationNotice({ message, children, detail, headline }: { messa
   const labels: Record<string, string> = { VERIFIED: "Berhasil", NO_CHANGE: "Sudah sesuai", RECONFIRM_REQUIRED: "Perlu konfirmasi baru", PARTIAL: "Selesai sebagian", UNVERIFIED: "Hasil belum pasti" };
   const success = status === "VERIFIED" || status === "NO_CHANGE";
   const warning = status === "PARTIAL" || status === "UNVERIFIED" || status === "RECONFIRM_REQUIRED";
-  const hint = status === "RECONFIRM_REQUIRED" ? "Siapkan kembali dengan data terbaru."
-    : status === "UNVERIFIED" ? "Periksa Status sebelum mencoba lagi."
-    : status === "PARTIAL" ? "Periksa bagian yang belum selesai pada Detail."
-    : !status ? "Lihat alasan dan langkah berikutnya pada Detail." : "";
+  const reason = (status ? message.slice(status.length + 1) : message).trim();
+  const primary = headline?.trim() || reason;
+  const additionalReason = headline?.trim() && headline.trim() !== reason ? reason : "";
+  const hasDetail = !!additionalReason || !!detail;
   return <div role={success ? "status" : "alert"} className={`min-w-0 rounded-lg p-3 text-sm ${success ? "bg-emerald-50 text-emerald-700" : warning ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"}`}>
-    <p className="font-medium">{headline ?? (status ? labels[status] : "Belum berhasil")}{!headline && hint && <span className="font-normal">. {hint}</span>}</p>
+    <p><span className="font-medium">{status ? `${labels[status]}: ` : ""}</span>{primary}</p>
     {children}
-    <details className="mt-1 text-xs"><summary className="cursor-pointer">Detail</summary><p className="mt-1 whitespace-pre-wrap break-words">{status ? message.slice(status.length + 1).trim() : message}</p>{detail}</details>
+    {hasDetail && <details className="mt-1 text-xs"><summary className="cursor-pointer">Detail</summary>{additionalReason && <p className="mt-1 whitespace-pre-wrap break-words">{additionalReason}</p>}{detail}</details>}
   </div>;
 }

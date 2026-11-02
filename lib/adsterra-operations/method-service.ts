@@ -30,7 +30,7 @@ export async function prepareMethod(ctx: Context, owner: string, kind: ListKind)
 export async function executeMethod(ctx: Context, owner: string, token: unknown): Promise<ApplicationResult> {
   const signed = verifyConfirmation(token, owner, "ADSTERRA_METHOD_SET_V2", ctx.budget.now());
   const historicalRiskMessage = signed.historicalCustomBidRisk
-    ? " Hasil request Custom Bid sebelumnya tetap tidak diketahui. Perubahan metode tidak memastikan hasil request lama."
+    ? " Request bid sebelumnya belum pasti; bid masih mungkin berubah belakangan."
     : "";
   if (signed.campaignId !== ctx.scope.campaignId || signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId) throw new OperationError("Scope konfirmasi metode berbeda.");
   const fence = { campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation };
@@ -127,6 +127,6 @@ export async function executeMethod(ctx: Context, owner: string, token: unknown)
   }
   try { result.status = await ctx.store.finish(fence, result.status, diagnosticSummary(result, ctx.provider.sent)) as ApplicationResult["status"]; }
   catch { result.metadata = "FAILED"; result.status = "UNVERIFIED"; result.message += " Pencatatan hasil juga belum pasti; operasi mungkin tetap terkunci."; }
-  if (historicalRiskMessage && !result.message.includes("Hasil request Custom Bid sebelumnya")) result.message += historicalRiskMessage;
+  if (historicalRiskMessage && !result.message.includes("Request bid sebelumnya belum pasti")) result.message += historicalRiskMessage;
   return result;
 }
