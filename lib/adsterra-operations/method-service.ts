@@ -30,7 +30,7 @@ export async function prepareMethod(ctx: Context, owner: string, kind: ListKind)
 export async function executeMethod(ctx: Context, owner: string, token: unknown): Promise<ApplicationResult> {
   const signed = verifyConfirmation(token, owner, "ADSTERRA_METHOD_SET_V2", ctx.budget.now());
   const historicalRiskMessage = signed.historicalCustomBidRisk
-    ? " Hasil request Custom Bid sebelumnya tetap tidak diketahui; generation baru hanya membatalkan kelanjutan aplikasi lama, bukan request provider yang mungkin tiba terlambat."
+    ? " Hasil request Custom Bid sebelumnya tetap tidak diketahui. Perubahan metode tidak memastikan hasil request lama."
     : "";
   if (signed.campaignId !== ctx.scope.campaignId || signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId) throw new OperationError("Scope konfirmasi metode berbeda.");
   const fence = { campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation };

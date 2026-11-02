@@ -34,7 +34,7 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
   finalize: (at: Date, fence: Fence, method: MethodState, result: ApplicationResult) => Promise<{ lastBlacklistReplacedAt: string | null }>): Promise<ApplicationResult> {
   const signed = verifyConfirmation(token, owner, "ADSTERRA_LIST_APPLY_V3", ctx.budget.now());
   const historicalRiskMessage = signed.historicalCustomBidRisk
-    ? " Hasil request Custom Bid sebelumnya tetap tidak diketahui; generation baru hanya membatalkan kelanjutan aplikasi lama, bukan request provider yang mungkin tiba terlambat."
+    ? " Hasil request Custom Bid sebelumnya tetap tidak diketahui. Penerapan daftar baru tidak memastikan hasil request lama."
     : "";
   if (signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId || signed.campaignId !== ctx.scope.campaignId) throw new OperationError("Scope konfirmasi berbeda.");
   const fence = { campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation };

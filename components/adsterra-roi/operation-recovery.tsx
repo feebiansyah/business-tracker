@@ -41,12 +41,12 @@ function OperationFeedback({ accountId, configId, message, children }: {
   const canInspect = !!message && !/^(VERIFIED|NO_CHANGE):/.test(message);
   return <OperationNotice message={message} headline={latest?.error ?? result?.message} detail={result && <div className="mt-2 space-y-2">
     {result.slots.map((slot) => <div key={slot.slot} className="space-y-1">
-      <p className="font-medium">{slot.slot === "MAIN" ? "Operasi utama" : "Slot OFF pengaman"}: {slot.action} · {slot.status}{slot.blocked ? " · menahan campaign" : ""}</p>
-      <p>Generation {slot.generation} · request/DB belum pasti: {slot.uncertain ? "ya" : "tidak"} · tahap record: {slot.phase ?? "tidak tersedia"}</p>
+      <p className="font-medium">{slot.slot === "MAIN" ? "Perubahan utama" : "OFF pengaman"}: {slot.action} · {slot.status}{slot.blocked ? " · masih menahan perubahan" : ""}</p>
+      <p>Hasil request belum pasti: {slot.uncertain ? "ya" : "tidak"}</p>
       <p>Mulai: {slot.at ? new Date(slot.at).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) + " WIB" : "tidak tersedia"}</p>
       <OperationDiagnostics origin={slot.origin}/>
     </div>)}
-    {result.pending && <p>Bila bukti penyelesaian request lama tidak tersimpan, pengelola perlu memeriksa catatan request. GET terbaru dan lamanya operasi tidak membuka pengaman.</p>}
+    {result.pending && <p>Request yang belum pasti tidak diulang otomatis. Gunakan keadaan terbaru untuk menyiapkan tindakan berikutnya yang tersedia.</p>}
   </div>}>
     {result && <p className="mt-1 text-xs break-words">{result.actual ? `Status ${result.actual.active === 1 ? "Inactive" : result.actual.active === 3 ? "Active" : "Limit / Not in use"} · Blacklist ${result.actual.blacklist === null ? "tidak dapat dibaca karena Whitelist" : result.actual.blacklist} · Whitelist ${result.actual.whitelist} · Custom Bid ${result.actual.bids} override` : "Pembacaan provider belum lengkap; jumlah aktual belum tersedia."}</p>}
     {canInspect && <Button type="button" variant="ghost" className="h-8 px-2 text-xs" disabled={busy || !configId} onClick={() => void inspect()}>{busy ? "Memeriksa…" : "Periksa Status"}</Button>}

@@ -48,7 +48,7 @@ export function operationReadout(row: Row | null, now: number) {
   const blockers = slots.filter((s) => s.blocked);
   const pending = blockers.length > 0;
   const message = historicalRisk && !row.uncertain
-    ? "Hasil Custom Bid sebelumnya tetap belum diketahui. Penerapan daftar atau metode baru dapat disiapkan dari keadaan aktual; write lain tetap ditahan."
+    ? "Hasil Custom Bid sebelumnya tetap belum diketahui. Blacklist/Whitelist baru dapat disiapkan dari keadaan aktual; perubahan lain tetap ditahan."
     : blockers.length ? blockers.map((s) => s.uncertain
     ? `${s.action} belum dapat dipastikan selesai; jangan mengulang tindakan tersebut.`
     : s.status === "PREPARED" ? `${s.action} masih menunggu konfirmasi atau pembatalan.`

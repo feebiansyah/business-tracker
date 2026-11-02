@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { cancelAdsterraPlacementApplication, executeAdsterraPlacementApplication, prepareAdsterraPlacementApplication } from "@/app/shopee/[id]/adsterra-roi/placement-application-actions";
 import type { ApplicationResult, ListKind } from "@/lib/adsterra-operations/types";
 import { useAdsterraOperation } from "./operation-context";
-import { MethodBadge } from "./operation-dialog";
 
 const key = "placement-application";
 export function PlacementApplication({ accountId, configId, kind, candidateCount, getData, onResult, onMessage, notificationTarget }: {
@@ -49,7 +48,7 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
         ? `${p.resetBids.length} override Custom Bid seluruh GEO placement blacklist terkait dihapus setelah verifikasi; tidak dipulihkan saat ON kembali.`
         : "Custom Bid dipertahankan.";
       const historicalRisk = p.historicalCustomBidRisk
-        ? "Catatan: hasil request Custom Bid sebelumnya belum diketahui. Penerapan baru memagari proses aplikasi lama, tetapi request provider lama masih dapat tiba terlambat.\n"
+        ? "Catatan: hasil request Custom Bid sebelumnya belum diketahui. Penerapan daftar baru tidak memastikan hasil request lama.\n"
         : "";
       if (!window.confirm(`Campaign ${p.scope.label} (${p.scope.campaignId})\nTerapkan ${p.kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}: ${p.target.length} placement final (+${p.added.length}, −${p.removed.length}).\n${p.excluded?.length ? `Dikecualikan: ${p.excluded.join(", ")}. Target lainnya tetap dapat ditolak.\n` : ""}${impact}\n${historicalRisk}${p.kind === "BLACKLIST" && !p.target.length ? "Blacklist kosong: tidak ada placement dikecualikan.\n" : ""}Konfirmasi penerapan?`)) {
         stage = "cancel";
@@ -71,7 +70,6 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
     } finally { pending.current = false; setBusy(false); operation.end(key, refresh); }
   }
   return <section aria-label="Penerapan daftar placement" className="space-y-3 text-sm">
-    <div className="flex flex-wrap items-center gap-2"><MethodBadge method={kind}/><span className="text-xs text-slate-600">{candidateCount} kandidat analisis</span></div>
     <Button type="button" disabled={operation.busy || busy || (kind === "WHITELIST" && !candidateCount)} onClick={() => void prepare()}>{busy ? "Memproses…" : `Terapkan ${kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}`}</Button>
     {kind === "WHITELIST" && !candidateCount && <p>Whitelist belum memiliki kandidat. Tidak ada perubahan provider.</p>}
     {notificationTarget && createPortal(<div className="space-y-2">
