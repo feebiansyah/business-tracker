@@ -5,12 +5,12 @@ import { OperationError } from "./types";
 import type { OperationBudget } from "./budget";
 import type { BlacklistValue, ListKind, MethodState } from "./types";
 import { storedMethod, listDigest } from "./method-state";
-import { retainFailureSummary } from "./diagnostics";
-import { completedFailure, offBlocked, offTerminalStatuses, operationReadout, settledOffEvidence, terminalStatuses } from "./operation-state";
+import { historicalCustomBidRiskSummary, readHistoricalCustomBidRisk, retainFailureSummary, retainHistoricalCustomBidRisk, type HistoricalCustomBidRisk } from "./diagnostics";
+import { completedAmbiguousCustomBid, completedFailure, offBlocked, offTerminalStatuses, operationReadout, settledOffEvidence, terminalStatuses } from "./operation-state";
 export { offBlocked } from "./operation-state";
 
 export type OperationRow = AdsterraCampaignOperation;
-export type Fence = { campaignId: string; operationId: string; generation: number; protective?: boolean };
+export type Fence = { campaignId: string; operationId: string; generation: number; protective?: boolean; historicalCustomBidRisk?: HistoricalCustomBidRisk };
 export type WriteMarker = { readonly fence: Fence; readonly phase: string };
 export class MarkerPersistenceUncertain extends OperationError {}
 const terminal = terminalStatuses;
@@ -18,7 +18,10 @@ const offTerminal = offTerminalStatuses;
 // FINISHED is written only after the pipeline returns. A settled rejection is
 // not an in-flight request. Never extend this to RUNNING or UNVERIFIED.
 const available = (r: OperationRow, now: number) => !r.uncertain && !offBlocked(r)
+  && !readHistoricalCustomBidRisk(r.summary)
   && (terminal.includes(r.status) || completedFailure(r) || (r.status === "PREPARED" && !!r.expiresAt && r.expiresAt.getTime() <= now));
+const listReservation = (action: string, prepared: { preconditionHash: string; expiresAt: Date } | undefined, allow: boolean) =>
+  allow && !!prepared && ["APPLY_BLACKLIST", "APPLY_WHITELIST", "SET_METHOD"].includes(action);
 
 export class CampaignOperationStore {
   private readonly markers = new WeakSet<WriteMarker>();
@@ -42,7 +45,8 @@ export class CampaignOperationStore {
       protectiveOffStatus: { in: offTerminal }, protectiveOffUncertain: false,
     }, data: { placementMethod: kind, methodReady: ready, approvedBlacklistHash: listDigest(lists.blacklist),
       approvedWhitelistHash: listDigest(lists.whitelist), status: "VERIFIED", phase: "METHOD_CONFIRMED",
-      summary: retainFailureSummary(previous.summary, JSON.stringify({ v: 1, status: "VERIFIED", phase: "METHOD_FINALIZE", metadata: "RECORDED", diagnostics: [] })) } }));
+      summary: retainHistoricalCustomBidRisk(previous.summary, retainFailureSummary(previous.summary,
+        JSON.stringify({ v: 1, status: "VERIFIED", phase: "METHOD_FINALIZE", metadata: "RECORDED", diagnostics: [] }))) } }));
     if (changed.count !== 1) throw new OperationError("Finalisasi metode gagal; kesiapan tidak diterbitkan oleh proses lama.");
   }
   private async ensure(id: string) {
@@ -59,20 +63,34 @@ export class CampaignOperationStore {
     if (!row) throw new OperationError("Guard operasi Adsterra tidak tersedia.");
     return row;
   }
-  async reserve(id: string, owner: string, action: string, prepared?: { preconditionHash: string; expiresAt: Date }) {
+  async reserve(id: string, owner: string, action: string, prepared?: { preconditionHash: string; expiresAt: Date }, options?: { allowCompletedAmbiguousCustomBid?: boolean }) {
     const row = await this.settleCompletedOff(await this.ensure(id));
-    if (!available(row, this.budget.now())) throw new OperationError(`${operationReadout(row, this.budget.now()).message} Gunakan Periksa Status untuk melihat catatannya; OFF dan Nonaktifkan Auto tetap tersedia jika slotnya tidak tertunda.`);
+    const allowsListReplacement = listReservation(action, prepared, options?.allowCompletedAmbiguousCustomBid === true);
+    const existingRisk = readHistoricalCustomBidRisk(row.summary);
+    const risk: HistoricalCustomBidRisk | null = existingRisk ?? (allowsListReplacement && completedAmbiguousCustomBid(row) && !offBlocked(row) ? {
+      v: 1, action: row.action as HistoricalCustomBidRisk["action"], operationId: row.operationId,
+      generation: row.generation, outcome: "UNKNOWN_NOT_RESOLVED",
+    } : null);
+    const replacesInitialRisk = !!risk && !existingRisk;
+    const canReserve = available(row, this.budget.now()) || allowsListReplacement && !!risk && !offBlocked(row)
+      && (replacesInitialRisk || !row.uncertain && (terminal.includes(row.status) || completedFailure(row)
+        || row.status === "PREPARED" && !!row.expiresAt && row.expiresAt.getTime() <= this.budget.now()));
+    if (!canReserve) throw new OperationError(`${operationReadout(row, this.budget.now()).message} Periksa Status untuk melihat catatannya; OFF dan Nonaktifkan Auto tetap tersedia jika slotnya tidak tertunda.`);
     const operationId = randomUUID();
     const result = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({
       where: { campaignId: row.campaignId, operationId: row.operationId, generation: row.generation, status: row.status,
-        uncertain: false, protectiveOffGeneration: row.protectiveOffGeneration, protectiveOffStatus: row.protectiveOffStatus, protectiveOffUncertain: false },
+        action: row.action, phase: row.phase, uncertain: replacesInitialRisk ? true : false,
+        summary: row.summary,
+        protectiveOffId: row.protectiveOffId, protectiveOffGeneration: row.protectiveOffGeneration,
+        protectiveOffStatus: row.protectiveOffStatus, protectiveOffUncertain: false },
       data: { operationId, generation: { increment: 1 }, owner, action, phase: prepared ? "CONFIRMATION" : "PREFLIGHT",
         status: prepared ? "PREPARED" : "RUNNING", uncertain: false,
         confirmationHash: null, preconditionHash: prepared?.preconditionHash ?? null,
-        expiresAt: prepared?.expiresAt ?? null, startedAt: new Date(this.budget.now()) },
+        expiresAt: prepared?.expiresAt ?? null, startedAt: new Date(this.budget.now()),
+        ...(risk ? { summary: historicalCustomBidRiskSummary(risk, row.summary) } : {}) },
     }));
     if (result.count !== 1) throw new OperationError("Campaign diklaim proses lain. Muat ulang sebelum melanjutkan.");
-    return { campaignId: row.campaignId, operationId, generation: row.generation + 1 } satisfies Fence;
+    return { campaignId: row.campaignId, operationId, generation: row.generation + 1, ...(risk ? { historicalCustomBidRisk: risk } : {}) } satisfies Fence;
   }
   async attachConfirmation(f: Fence, hash: string) { await this.update(f, { confirmationHash: hash }, "PREPARED"); }
   async cancel(f: Fence, owner: string, hash: string) {
@@ -169,7 +187,11 @@ export class CampaignOperationStore {
     const uncertain = f.protective ? row?.protectiveOffUncertain : row?.uncertain;
     const actualStatus = uncertain ? "UNVERIFIED" : status;
     if (f.protective) await this.updateOff(f, { protectiveOffStatus: actualStatus, protectiveOffSummary: summary.slice(0, 1000) });
-    else await this.update(f, { status: actualStatus, phase: "FINISHED", summary: retainFailureSummary(row?.summary ?? null, summary) });
+    else {
+      const retained = retainFailureSummary(row?.summary ?? null, summary);
+      const clearHistoricalRisk = ["APPLY_BLACKLIST", "APPLY_WHITELIST"].includes(row?.action ?? "") && ["VERIFIED", "NO_CHANGE"].includes(actualStatus);
+      await this.update(f, { status: actualStatus, phase: "FINISHED", summary: clearHistoricalRisk ? retained : retainHistoricalCustomBidRisk(row?.summary ?? null, retained) });
+    }
     return actualStatus;
   }
   async finishNotDispatched(f: Fence, status: "PARTIAL" | "RECONFIRM_REQUIRED", summary: string) {
@@ -179,7 +201,8 @@ export class CampaignOperationStore {
     const changed = await this.budget.settle(this.db.adsterraCampaignOperation.updateMany({ where: {
       campaignId: f.campaignId, operationId: f.operationId, generation: f.generation,
       status, phase: "NOT_DISPATCHED", uncertain: false,
-    }, data: { phase: "FINISHED", summary: retainFailureSummary(previous?.summary ?? null, summary) } }));
+    }, data: { phase: "FINISHED", summary: retainHistoricalCustomBidRisk(previous?.summary ?? null,
+      retainFailureSummary(previous?.summary ?? null, summary)) } }));
     if (changed.count !== 1) throw new OperationError("Pencatatan non-dispatch berubah; tidak menimpa operasi lain.");
   }
   async claimOff(id: string, owner: string): Promise<Fence> {
@@ -210,18 +233,6 @@ export class CampaignOperationStore {
     const fresh = await this.read(row.campaignId);
     if (!fresh) throw new OperationError("Catatan operasi belum dapat dibaca.");
     return fresh;
-  }
-  async recover(row: OperationRow, owner: string, summary: string) {
-    if (row.uncertain || row.protectiveOffUncertain) throw new OperationError("Request lama belum terbukti selesai. GET yang cocok tidak dapat membuka guard.");
-    const result = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({
-      where: { campaignId: row.campaignId, operationId: row.operationId, generation: row.generation, status: row.status,
-        uncertain: false, protectiveOffGeneration: row.protectiveOffGeneration, protectiveOffStatus: row.protectiveOffStatus, protectiveOffUncertain: false },
-      data: { operationId: randomUUID(), generation: { increment: 1 }, owner, action: "RECOVER", status: "VERIFIED", phase: "ACKNOWLEDGED_CURRENT",
-        methodVersion: { increment: 1 }, methodReady: false,
-        confirmationHash: null, expiresAt: null, summary: summary.slice(0, 2000), protectiveOffId: null,
-        protectiveOffGeneration: { increment: 1 }, protectiveOffStatus: "VERIFIED", protectiveOffSummary: "Diakui operator; tidak ada write/retry provider." },
-    }));
-    if (result.count !== 1) throw new OperationError("Keadaan operasi berubah; konfirmasi pemulihan ulang.");
   }
   private async update(f: Fence, data: Parameters<PrismaClient["adsterraCampaignOperation"]["updateMany"]>[0]["data"], status = "RUNNING") {
     const changed = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({ where: {

@@ -10,9 +10,11 @@ type Context = Awaited<ReturnType<typeof operationContext>>;
 export async function prepareMethod(ctx: Context, owner: string, kind: ListKind): Promise<MethodPreview> {
   const plan = planMethod(ctx.scope, await ctx.snapshot(), kind);
   const expiresAt = ctx.budget.now() + 300_000;
-  let token = "";
+  let token = "", historicalCustomBidRisk: Confirmation["historicalCustomBidRisk"];
   if (!plan.blockers.length) {
-    const fence = await ctx.store.reserve(ctx.scope.campaignId, owner, "SET_METHOD", { preconditionHash: plan.preconditionHash, expiresAt: new Date(expiresAt) });
+    const fence = await ctx.store.reserve(ctx.scope.campaignId, owner, "SET_METHOD", { preconditionHash: plan.preconditionHash, expiresAt: new Date(expiresAt) },
+      { allowCompletedAmbiguousCustomBid: true });
+    historicalCustomBidRisk = fence.historicalCustomBidRisk;
     const signed: Confirmation = { ...fence, ...ctx.scope, owner, kind, purpose: "ADSTERRA_METHOD_SET_V2", methodVersion: plan.before.method.methodVersion,
       inputHash: plan.inputHash, preconditionHash: plan.preconditionHash, rules: "ROI20_OR_10_CTR8_SPEND1000_V1", expiresAt };
     token = signConfirmation(signed);
@@ -21,11 +23,15 @@ export async function prepareMethod(ctx: Context, owner: string, kind: ListKind)
   const { before, inputHash: _input, preconditionHash: _precondition, ...visible } = plan;
   void _input; void _precondition;
   return { ...visible, token, expiresAt: new Date(expiresAt).toISOString(), previousMethod: before.method.placementMethod,
+    ...(historicalCustomBidRisk ? { historicalCustomBidRisk } : {}),
     methodVersion: before.method.methodVersion, blacklist: before.blacklist, whitelist: before.whitelist, preservedBids: before.bids,
     providerStatus: ["", "INACTIVE", "LIMITED", "ACTIVE", "NOT_IN_USE"][before.campaign.active], autoEnabledAliases: before.aliases.filter((a) => a.autoScheduleEnabled).map((a) => a.id) };
 }
 export async function executeMethod(ctx: Context, owner: string, token: unknown): Promise<ApplicationResult> {
   const signed = verifyConfirmation(token, owner, "ADSTERRA_METHOD_SET_V2", ctx.budget.now());
+  const historicalRiskMessage = signed.historicalCustomBidRisk
+    ? " Hasil request Custom Bid sebelumnya tetap tidak diketahui; generation baru hanya membatalkan kelanjutan aplikasi lama, bukan request provider yang mungkin tiba terlambat."
+    : "";
   if (signed.campaignId !== ctx.scope.campaignId || signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId) throw new OperationError("Scope konfirmasi metode berbeda.");
   const fence = { campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation };
   await ctx.store.claim(fence, owner, digest(token), signed.expiresAt);
@@ -98,10 +104,10 @@ export async function executeMethod(ctx: Context, owner: string, token: unknown)
         try {
           if (ctx.budget.now() >= signed.expiresAt) throw new OperationError("Konfirmasi metode kedaluwarsa sebelum finalisasi; metode baru tidak diterbitkan.");
           await ctx.store.finalizeMethod(fence, invalidated, signed.kind, plan.adopt || (plan.reset && signed.kind === "BLACKLIST"), after, signed.expiresAt);
-          return { ...result, status: "VERIFIED", metadata: "RECORDED", writeWarnings: [...result.writeWarnings, ...ctx.provider.warnings], message: plan.adopt
+          return { ...result, status: "VERIFIED", metadata: "RECORDED", writeWarnings: [...result.writeWarnings, ...ctx.provider.warnings], message: (plan.adopt
             ? "Metode tersimpan; daftar existing dipertahankan. Tidak ada write provider atau perubahan Custom Bid."
             : signed.kind === "WHITELIST" ? "Metode Whitelist tersimpan. Whitelist belum diisi; terapkan analisis Placement sebelum ON. Custom Bid dipertahankan."
-            : "Metode Blacklist tersimpan. Campaign dan seluruh Auto nonaktif; kedua daftar kosong terverifikasi. Tidak ada placement yang dikecualikan. Custom Bid dipertahankan." };
+            : "Metode Blacklist tersimpan. Campaign dan seluruh Auto nonaktif; kedua daftar kosong terverifikasi. Tidak ada placement yang dikecualikan. Custom Bid dipertahankan.") + historicalRiskMessage };
         } catch { result.status = "UNVERIFIED"; result.metadata = "FAILED"; result.message = "Finalisasi metode/guard gagal atau belum pasti. Jangan ulangi provider write; periksa keadaan operasi."; }
       }
     }
@@ -121,5 +127,6 @@ export async function executeMethod(ctx: Context, owner: string, token: unknown)
   }
   try { result.status = await ctx.store.finish(fence, result.status, diagnosticSummary(result, ctx.provider.sent)) as ApplicationResult["status"]; }
   catch { result.metadata = "FAILED"; result.status = "UNVERIFIED"; result.message += " Pencatatan hasil juga belum pasti; operasi mungkin tetap terkunci."; }
+  if (historicalRiskMessage && !result.message.includes("Hasil request Custom Bid sebelumnya")) result.message += historicalRiskMessage;
   return result;
 }

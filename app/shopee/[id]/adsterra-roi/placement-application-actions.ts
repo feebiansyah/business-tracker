@@ -6,7 +6,6 @@ import { finalizeAdsterraApplication } from "@/lib/adsterra-operations/metadata"
 import { OperationBudget } from "@/lib/adsterra-operations/budget";
 import { operationContext, parseListKind, publicOperationError, requireOperationUser } from "@/lib/adsterra-operations/runtime";
 import { prepareApplication, executeApplication } from "@/lib/adsterra-operations/service";
-import { recoveryPreview, acknowledgeRecovery } from "@/lib/adsterra-operations/recovery";
 import { verifyConfirmation } from "@/lib/adsterra-operations/confirmation";
 import { digest } from "@/lib/adsterra-operations/canonical";
 import { operationReadout } from "@/lib/adsterra-operations/operation-state";
@@ -49,14 +48,4 @@ export async function cancelAdsterraPlacementApplication(accountId: unknown, con
     await ctx.store.cancel({ campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation }, owner, digest(token));
     return { success: true as const };
   } catch (error) { return { success: false as const, message: publicOperationError(error) }; }
-}
-export async function prepareAdsterraOperationRecovery(accountId: unknown, configId: unknown) {
-  const budget = new OperationBudget(), owner = await requireOperationUser(budget);
-  try { return { success: true as const, preview: await recoveryPreview(await operationContext(accountId, configId, budget), owner) }; }
-  catch (error) { return { success: false as const, message: publicOperationError(error) }; }
-}
-export async function confirmAdsterraOperationRecovery(accountId: unknown, configId: unknown, token: unknown) {
-  const budget = new OperationBudget(), owner = await requireOperationUser(budget);
-  try { return { success: true as const, result: await acknowledgeRecovery(await operationContext(accountId, configId, budget), owner, token) }; }
-  catch (error) { return { success: false as const, message: publicOperationError(error) }; }
 }

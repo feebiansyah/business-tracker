@@ -48,7 +48,10 @@ export function PlacementApplication({ accountId, configId, kind, candidateCount
       const impact = p.resetBids.length
         ? `${p.resetBids.length} override Custom Bid seluruh GEO placement blacklist terkait dihapus setelah verifikasi; tidak dipulihkan saat ON kembali.`
         : "Custom Bid dipertahankan.";
-      if (!window.confirm(`Campaign ${p.scope.label} (${p.scope.campaignId})\nTerapkan ${p.kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}: ${p.target.length} placement final (+${p.added.length}, −${p.removed.length}).\n${p.excluded?.length ? `Dikecualikan: ${p.excluded.join(", ")}. Target lainnya tetap dapat ditolak.\n` : ""}${impact}\n${p.kind === "BLACKLIST" && !p.target.length ? "Blacklist kosong: tidak ada placement dikecualikan.\n" : ""}Konfirmasi penerapan?`)) {
+      const historicalRisk = p.historicalCustomBidRisk
+        ? "Catatan: hasil request Custom Bid sebelumnya belum diketahui. Penerapan baru memagari proses aplikasi lama, tetapi request provider lama masih dapat tiba terlambat.\n"
+        : "";
+      if (!window.confirm(`Campaign ${p.scope.label} (${p.scope.campaignId})\nTerapkan ${p.kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}: ${p.target.length} placement final (+${p.added.length}, −${p.removed.length}).\n${p.excluded?.length ? `Dikecualikan: ${p.excluded.join(", ")}. Target lainnya tetap dapat ditolak.\n` : ""}${impact}\n${historicalRisk}${p.kind === "BLACKLIST" && !p.target.length ? "Blacklist kosong: tidak ada placement dikecualikan.\n" : ""}Konfirmasi penerapan?`)) {
         stage = "cancel";
         const cancelled = await cancelAdsterraPlacementApplication(accountId, configId, p.token);
         if (!cancelled.success) setMessage(cancelled.message);

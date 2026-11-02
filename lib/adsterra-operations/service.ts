@@ -14,9 +14,11 @@ export async function prepareApplication(ctx: Context, owner: string, data: Form
   const plan = await ctx.plan(data, kind);
   validateWhitelistExclusions(plan, data, owner, ctx.budget.now());
   const expiresAt = ctx.budget.now() + 300_000;
-  let token = "";
+  let token = "", historicalCustomBidRisk: Confirmation["historicalCustomBidRisk"];
   if (!plan.blockers.length) {
-    const fence = await ctx.store.reserve(ctx.scope.campaignId, owner, `APPLY_${kind}`, { preconditionHash: plan.preconditionHash, expiresAt: new Date(expiresAt) });
+    const fence = await ctx.store.reserve(ctx.scope.campaignId, owner, `APPLY_${kind}`, { preconditionHash: plan.preconditionHash, expiresAt: new Date(expiresAt) },
+      { allowCompletedAmbiguousCustomBid: true });
+    historicalCustomBidRisk = fence.historicalCustomBidRisk;
     const confirmation: Confirmation = { ...fence, owner, ...ctx.scope, kind, purpose: "ADSTERRA_LIST_APPLY_V3", methodVersion: plan.before.method.methodVersion, exclusionsHash: digest(plan.excluded ?? []),
       inputHash: plan.inputHash, preconditionHash: plan.preconditionHash, rules: "ROI20_OR_10_CTR8_SPEND1000_V1", expiresAt };
     token = signConfirmation(confirmation);
@@ -25,11 +27,15 @@ export async function prepareApplication(ctx: Context, owner: string, data: Form
   const { before, inputHash: _input, preconditionHash: _precondition, ...visible } = plan;
   void _input; void _precondition;
   return { ...visible, token, expiresAt: new Date(expiresAt).toISOString(), currentBlacklist: before.blacklist, currentWhitelist: before.whitelist,
+    ...(historicalCustomBidRisk ? { historicalCustomBidRisk } : {}),
     providerStatus: ["", "INACTIVE", "LIMITED", "ACTIVE", "NOT_IN_USE"][before.campaign.active], autoEnabledAliases: before.aliases.filter((a) => a.autoScheduleEnabled).map((a) => a.id) };
 }
 export async function executeApplication(ctx: Context, owner: string, data: FormData, token: unknown,
   finalize: (at: Date, fence: Fence, method: MethodState, result: ApplicationResult) => Promise<{ lastBlacklistReplacedAt: string | null }>): Promise<ApplicationResult> {
   const signed = verifyConfirmation(token, owner, "ADSTERRA_LIST_APPLY_V3", ctx.budget.now());
+  const historicalRiskMessage = signed.historicalCustomBidRisk
+    ? " Hasil request Custom Bid sebelumnya tetap tidak diketahui; generation baru hanya membatalkan kelanjutan aplikasi lama, bukan request provider yang mungkin tiba terlambat."
+    : "";
   if (signed.configId !== ctx.scope.configId || signed.shopeeAccountId !== ctx.scope.shopeeAccountId || signed.campaignId !== ctx.scope.campaignId) throw new OperationError("Scope konfirmasi berbeda.");
   const fence = { campaignId: signed.campaignId, operationId: signed.operationId, generation: signed.generation };
   await ctx.store.claim(fence, owner, digest(token), signed.expiresAt);
@@ -72,6 +78,7 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
     try {
       const metadata = await ctx.budget.wait(finalize(new Date(ctx.budget.now()), fence, invalidated, result));
       result.metadata = "RECORDED"; result.lastBlacklistReplacedAt = metadata.lastBlacklistReplacedAt;
+      result.message += historicalRiskMessage;
       return result; // readiness + timestamp + guard were committed atomically
     } catch { result.metadata = "FAILED"; result.status = "PARTIAL"; result.message += " Finalisasi metadata/kesiapan gagal atau belum pasti; hasil provider tetap ditampilkan. Jangan ulangi write untuk memperbaiki metadata."; }
   }
@@ -81,5 +88,6 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
     && !ctx.provider.ambiguous && ctx.provider.whitelistRejection?.ids.length) {
     result.whitelistRejection = whitelistRejectionReceipt(attemptedPlan, fence, invalidated.methodVersion, owner, ctx.budget.now(), ctx.provider.whitelistRejection);
   }
+  if (historicalRiskMessage && !result.message.includes("Hasil request Custom Bid sebelumnya")) result.message += historicalRiskMessage;
   return result;
 }

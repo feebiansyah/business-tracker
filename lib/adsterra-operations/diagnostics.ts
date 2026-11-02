@@ -2,11 +2,11 @@
 const stages = ["READ_CAMPAIGN", "READ_BLACKLIST", "READ_WHITELIST", "READ_CUSTOM_BIDS", "READ_STATISTICS", "READ_OTHER",
   "PUT_BLACKLIST", "PUT_WHITELIST", "CLEAR_BLACKLIST", "CLEAR_WHITELIST", "CUSTOM_BID_POST", "CUSTOM_BID_PATCH", "CUSTOM_BID_DELETE", "CAMPAIGN_STATUS_WRITE",
   "PREFLIGHT", "PUT_TARGET", "VERIFY_LISTS", "RESET_CUSTOM_BIDS", "FINAL_VERIFICATION", "NOT_DISPATCHED", "METHOD_PREFLIGHT", "METHOD_CLEAR_OPPOSITE", "METHOD_DISABLE_AUTO", "METHOD_OFF", "METHOD_VERIFY", "METHOD_FINALIZE"] as const;
-const kinds = ["HTTP_ERROR", "INVALID_RESPONSE", "REQUEST_INCOMPLETE", "BODY_LIMIT", "VERIFICATION_MISMATCH", "OPERATION_INTERRUPTED", "ACTIVATION_PENDING"] as const;
+const kinds = ["HTTP_ERROR", "INVALID_RESPONSE", "REQUEST_INCOMPLETE", "BODY_LIMIT", "VERIFICATION_MISMATCH", "OPERATION_INTERRUPTED", "ACTIVATION_PENDING", "HISTORICAL_UNCERTAINTY"] as const;
 const reasons = ["Token not found", "Invalid token", "Invalid owner type", "Invalid output format", "Campaign not found", "In use landings not found",
   "Validation failed", "Data validation error", "Unsuccessfully linked", "Not exists", "Not suitable ad unit", "Not suitable category", "Already linked", "Blacklisted",
   "Not suitable tags", "Not active publisher", "Not active placement", "Invalid integer field", "Placement IDs not found", "Campaign landings not found",
-  "Blacklist unreadable while campaign has whitelist", "Method not allowed", "Provider reason unavailable", "Invalid API response", "Request did not complete", "Response body limit exceeded", "GET does not match confirmed state", "Operation interrupted", "Concurrent activation still running"] as const;
+  "Blacklist unreadable while campaign has whitelist", "Method not allowed", "Provider reason unavailable", "Invalid API response", "Request did not complete", "Response body limit exceeded", "GET does not match confirmed state", "Operation interrupted", "Concurrent activation still running", "Earlier Custom Bid outcome remains unknown"] as const;
 export type OperationDiagnostic = {
   stage: (typeof stages)[number]; kind: (typeof kinds)[number]; httpStatus: number | null; reasons: (typeof reasons)[number][];
   rejected?: { reason: (typeof reasons)[number]; placementIds: string[] }[];
@@ -14,6 +14,8 @@ export type OperationDiagnostic = {
 export type SavedDiagnostics = { phase: string | null; writes: number | null; entries: OperationDiagnostic[]; previous?: Omit<SavedDiagnostics, "previous"> };
 export type CompletionEvidence = { v: 1; operationId: string; generation: number; settled: true;
   awaitingActivation: { operationId: string; generation: number } };
+export type HistoricalCustomBidRisk = { v: 1; action: "CUSTOM_BID_SAVE" | "CUSTOM_BID_DELETE";
+  operationId: string; generation: number; outcome: "UNKNOWN_NOT_RESOLVED" };
 export function diagnosticStage(path: string, method: string): OperationDiagnostic["stage"] {
   if (method === "GET") return path.includes("custom_bid") ? "READ_CUSTOM_BIDS" : path.includes("blacklist") ? "READ_BLACKLIST"
     : path.includes("whitelist") ? "READ_WHITELIST" : path.includes("stats") ? "READ_STATISTICS" : /\/campaign\/\d+\.json$/.test(path) ? "READ_CAMPAIGN" : "READ_OTHER";
@@ -98,6 +100,34 @@ export function readDiagnostics(summary: string | null): SavedDiagnostics {
         entries: Array.isArray(previous.entries) ? previous.entries.filter(validEntry).slice(0, 2).map(projectEntry) : [] } } : {}) };
   } catch { return empty; }
 }
+export function readHistoricalCustomBidRisk(summary: string | null): HistoricalCustomBidRisk | null {
+  if (!summary || summary.length > 2000) return null;
+  try {
+    const value = JSON.parse(summary)?.historicalCustomBidRisk as HistoricalCustomBidRisk | undefined;
+    if (!value || value.v !== 1 || !["CUSTOM_BID_SAVE", "CUSTOM_BID_DELETE"].includes(value.action)
+      || typeof value.operationId !== "string" || !/^[0-9a-f-]{36}$/i.test(value.operationId)
+      || !Number.isSafeInteger(value.generation) || value.generation < 0 || value.outcome !== "UNKNOWN_NOT_RESOLVED") return null;
+    return value;
+  } catch { return null; }
+}
+/** Keep one bounded unresolved Custom Bid risk while a fresh list confirmation
+ * is prepared or fails. This is evidence, not a completion receipt. */
+export function retainHistoricalCustomBidRisk(previous: string | null, next: string, risk = readHistoricalCustomBidRisk(previous)) {
+  if (!risk) return next.slice(0, 2000);
+  let base: Record<string, unknown>;
+  try { base = JSON.parse(next); if (!base || typeof base !== "object") throw new Error(); }
+  catch { base = { v: 1, status: "RECONFIRM_REQUIRED", phase: "PREFLIGHT", metadata: "NOT_REQUIRED", writes: null, diagnostics: [] }; }
+  base.historicalCustomBidRisk = risk;
+  const encoded = JSON.stringify(base);
+  return encoded.length <= 2000 ? encoded : JSON.stringify({ v: 1, status: "RECONFIRM_REQUIRED", phase: "PREFLIGHT", metadata: "NOT_REQUIRED", writes: null,
+    diagnostics: [{ stage: "PREFLIGHT", kind: "HISTORICAL_UNCERTAINTY", httpStatus: null, reasons: ["Earlier Custom Bid outcome remains unknown"] }], historicalCustomBidRisk: risk });
+}
+export function historicalCustomBidRiskSummary(risk: HistoricalCustomBidRisk, previous: string | null) {
+  const saved = readDiagnostics(previous);
+  return retainHistoricalCustomBidRisk(previous, JSON.stringify({ v: 1, status: "RECONFIRM_REQUIRED", phase: "PREFLIGHT", metadata: "NOT_REQUIRED", writes: null,
+    diagnostics: [{ stage: "PREFLIGHT", kind: "HISTORICAL_UNCERTAINTY", httpStatus: null, reasons: ["Earlier Custom Bid outcome remains unknown"] }],
+    ...(saved.entries.length ? { previousFailure: { phase: saved.phase, writes: saved.writes, entries: saved.entries.slice(0, 2) } } : {}) }), risk);
+}
 /** Keep one bounded last failure, not an unbounded history or arbitrary DB prose. */
 export function retainFailureSummary(previous: string | null, next: string) {
   const incoming = readDiagnostics(next), old = readDiagnostics(previous);
@@ -111,7 +141,13 @@ export function retainFailureSummary(previous: string | null, next: string) {
   };
   if (failures(incoming, next).length) return next.slice(0, 2000);
   const oldFailures = failures(old, previous);
-  const failure = old.previous ?? (oldFailures.length || previous?.includes('"status":"PARTIAL"') ? { phase: old.phase, writes: old.writes, entries: oldFailures } : null);
+  // When a fresh list application explicitly supersedes an unresolved Custom
+  // Bid request, keep that most recent unknown-outcome evidence after success.
+  // It is historical evidence only; the top-level risk marker is intentionally
+  // absent from the verified summary so normal operations may continue.
+  const failure = readHistoricalCustomBidRisk(previous) && oldFailures.length
+    ? { phase: old.phase, writes: old.writes, entries: oldFailures }
+    : old.previous ?? (oldFailures.length || previous?.includes('"status":"PARTIAL"') ? { phase: old.phase, writes: old.writes, entries: oldFailures } : null);
   if (!failure) return next.slice(0, 2000);
   let base: Record<string, unknown>;
   try { base = JSON.parse(next); if (!base || typeof base !== "object") return previous!.slice(0, 2000); }

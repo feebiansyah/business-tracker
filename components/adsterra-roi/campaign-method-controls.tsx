@@ -28,7 +28,10 @@ export function CampaignMethodControls({ accountId, configId, info, busy }: {
         : p.reset ? "Campaign dan seluruh Auto terkait dinonaktifkan. Daftar placement direset; tidak diaktifkan kembali otomatis."
         : p.adopt ? "Daftar existing diadopsi tanpa reset; status campaign dan Auto tidak diubah."
         : "Metode disimpan tanpa mengisi daftar. Whitelist kosong belum dapat ON.";
-      if (!window.confirm(`Campaign ${p.scope.label} (${p.scope.campaignId})\nMetode tujuan: ${p.kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}.\n${impact}\nTarget final: ${p.reset ? 0 : Array.isArray(p.target) ? p.target.length : "belum dapat dibaca"} placement.\n${p.reset ? `Reset: ${Array.isArray(p.clearBlacklist) ? p.clearBlacklist.length : "dibaca ulang setelah Whitelist kosong"} Blacklist, ${p.clearWhitelist.length} Whitelist.\n` : ""}Custom Bid dipertahankan (${p.preservedBids.length} override).\nKonfirmasi perubahan?`)) {
+      const historicalRisk = p.historicalCustomBidRisk
+        ? "Catatan: hasil request Custom Bid sebelumnya belum diketahui. Metode baru memagari proses aplikasi lama, tetapi request provider lama masih dapat tiba terlambat.\n"
+        : "";
+      if (!window.confirm(`Campaign ${p.scope.label} (${p.scope.campaignId})\nMetode tujuan: ${p.kind === "BLACKLIST" ? "Blacklist" : "Whitelist"}.\n${impact}\nTarget final: ${p.reset ? 0 : Array.isArray(p.target) ? p.target.length : "belum dapat dibaca"} placement.\n${p.reset ? `Reset: ${Array.isArray(p.clearBlacklist) ? p.clearBlacklist.length : "dibaca ulang setelah Whitelist kosong"} Blacklist, ${p.clearWhitelist.length} Whitelist.\n` : ""}Custom Bid dipertahankan (${p.preservedBids.length} override).\n${historicalRisk}Konfirmasi perubahan?`)) {
         stage = "cancel";
         const cancelled = await cancelAdsterraMethod(accountId, configId, p.token);
         if (!cancelled.success) setMessage(cancelled.message);

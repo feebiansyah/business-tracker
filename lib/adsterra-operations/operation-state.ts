@@ -1,12 +1,14 @@
 import type { AdsterraCampaignOperation } from "../generated/prisma/client";
-import { readDiagnostics, type CompletionEvidence } from "./diagnostics";
+import { readDiagnostics, readHistoricalCustomBidRisk, type CompletionEvidence } from "./diagnostics";
 
 type Row = AdsterraCampaignOperation;
 export const terminalStatuses = ["IDLE", "VERIFIED", "NO_CHANGE", "RECONFIRM_REQUIRED"];
 export const offTerminalStatuses = [...terminalStatuses, "PARTIAL"];
 export const completedFailure = (r: Row) => r.status === "PARTIAL" && ["FINISHED", "NOT_DISPATCHED"].includes(r.phase) && !r.uncertain;
+export const completedAmbiguousCustomBid = (r: Row) => ["CUSTOM_BID_SAVE", "CUSTOM_BID_DELETE"].includes(r.action)
+  && r.status === "UNVERIFIED" && r.phase === "FINISHED" && r.uncertain;
 export const offBlocked = (r: Row) => !offTerminalStatuses.includes(r.protectiveOffStatus) || r.protectiveOffUncertain;
-export const mainBlocked = (r: Row, now: number) => r.uncertain || !(terminalStatuses.includes(r.status) || completedFailure(r)
+export const mainBlocked = (r: Row, now: number) => !!readHistoricalCustomBidRisk(r.summary) || r.uncertain || !(terminalStatuses.includes(r.status) || completedFailure(r)
   || r.status === "PREPARED" && !!r.expiresAt && r.expiresAt.getTime() <= now);
 
 /** Only a receipt written by the ended OFF pipeline can prove settled transport.
@@ -34,6 +36,7 @@ const actionLabels: Record<string, string> = {
 export function operationReadout(row: Row | null, now: number) {
   if (!row) return { pending: false, message: "Tidak ada perubahan yang tertunda.", slots: [] };
   const settledOff = settledOffEvidence(row);
+  const historicalRisk = readHistoricalCustomBidRisk(row.summary);
   const slots = [
     { slot: "MAIN" as const, action: actionLabels[row.action] ?? "Perubahan campaign", status: row.status, phase: row.phase,
       generation: row.generation, uncertain: row.uncertain, at: row.startedAt?.toISOString() ?? null,
@@ -44,7 +47,9 @@ export function operationReadout(row: Row | null, now: number) {
   ];
   const blockers = slots.filter((s) => s.blocked);
   const pending = blockers.length > 0;
-  const message = blockers.length ? blockers.map((s) => s.uncertain
+  const message = historicalRisk && !row.uncertain
+    ? "Hasil Custom Bid sebelumnya tetap belum diketahui. Penerapan daftar atau metode baru dapat disiapkan dari keadaan aktual; write lain tetap ditahan."
+    : blockers.length ? blockers.map((s) => s.uncertain
     ? `${s.action} belum dapat dipastikan selesai; jangan mengulang tindakan tersebut.`
     : s.status === "PREPARED" ? `${s.action} masih menunggu konfirmasi atau pembatalan.`
     : `${s.action} masih tercatat ${s.status === "RUNNING" ? "berjalan" : "belum terverifikasi"}; bukti penyelesaian belum tersedia.`).join(" ")

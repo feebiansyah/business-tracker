@@ -2,6 +2,7 @@ import { digest } from "./canonical";
 import { preconditionHash } from "./application";
 import { capabilityError } from "./method-state";
 import type { ListKind, Scope, Snapshot } from "./types";
+import type { HistoricalCustomBidRisk } from "./diagnostics";
 import { blacklistCount, whitelistCompatible } from "./list-evidence";
 
 export function planMethod(scope: Scope, before: Snapshot, kind: ListKind) {
@@ -28,4 +29,5 @@ export type MethodPreview = Omit<MethodPlan, "before" | "inputHash" | "precondit
   token: string; expiresAt: string; previousMethod: ListKind | null; methodVersion: number;
   providerStatus: string; autoEnabledAliases: number[];
   blacklist: Snapshot["blacklist"]; whitelist: string[]; preservedBids: Snapshot["bids"];
+  historicalCustomBidRisk?: HistoricalCustomBidRisk;
 };
