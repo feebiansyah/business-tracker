@@ -2,16 +2,18 @@
 const stages = ["READ_CAMPAIGN", "READ_BLACKLIST", "READ_WHITELIST", "READ_CUSTOM_BIDS", "READ_STATISTICS", "READ_OTHER",
   "PUT_BLACKLIST", "PUT_WHITELIST", "CLEAR_BLACKLIST", "CLEAR_WHITELIST", "CUSTOM_BID_POST", "CUSTOM_BID_PATCH", "CUSTOM_BID_DELETE", "CAMPAIGN_STATUS_WRITE",
   "PREFLIGHT", "PUT_TARGET", "VERIFY_LISTS", "RESET_CUSTOM_BIDS", "FINAL_VERIFICATION", "NOT_DISPATCHED", "METHOD_PREFLIGHT", "METHOD_CLEAR_OPPOSITE", "METHOD_DISABLE_AUTO", "METHOD_OFF", "METHOD_VERIFY", "METHOD_FINALIZE"] as const;
-const kinds = ["HTTP_ERROR", "INVALID_RESPONSE", "REQUEST_INCOMPLETE", "BODY_LIMIT", "VERIFICATION_MISMATCH", "OPERATION_INTERRUPTED"] as const;
+const kinds = ["HTTP_ERROR", "INVALID_RESPONSE", "REQUEST_INCOMPLETE", "BODY_LIMIT", "VERIFICATION_MISMATCH", "OPERATION_INTERRUPTED", "ACTIVATION_PENDING"] as const;
 const reasons = ["Token not found", "Invalid token", "Invalid owner type", "Invalid output format", "Campaign not found", "In use landings not found",
   "Validation failed", "Data validation error", "Unsuccessfully linked", "Not exists", "Not suitable ad unit", "Not suitable category", "Already linked", "Blacklisted",
   "Not suitable tags", "Not active publisher", "Not active placement", "Invalid integer field", "Placement IDs not found", "Campaign landings not found",
-  "Blacklist unreadable while campaign has whitelist", "Method not allowed", "Provider reason unavailable", "Invalid API response", "Request did not complete", "Response body limit exceeded", "GET does not match confirmed state", "Operation interrupted"] as const;
+  "Blacklist unreadable while campaign has whitelist", "Method not allowed", "Provider reason unavailable", "Invalid API response", "Request did not complete", "Response body limit exceeded", "GET does not match confirmed state", "Operation interrupted", "Concurrent activation still running"] as const;
 export type OperationDiagnostic = {
   stage: (typeof stages)[number]; kind: (typeof kinds)[number]; httpStatus: number | null; reasons: (typeof reasons)[number][];
   rejected?: { reason: (typeof reasons)[number]; placementIds: string[] }[];
 };
 export type SavedDiagnostics = { phase: string | null; writes: number | null; entries: OperationDiagnostic[]; previous?: Omit<SavedDiagnostics, "previous"> };
+export type CompletionEvidence = { v: 1; operationId: string; generation: number; settled: true;
+  awaitingActivation: { operationId: string; generation: number } };
 export function diagnosticStage(path: string, method: string): OperationDiagnostic["stage"] {
   if (method === "GET") return path.includes("custom_bid") ? "READ_CUSTOM_BIDS" : path.includes("blacklist") ? "READ_BLACKLIST"
     : path.includes("whitelist") ? "READ_WHITELIST" : path.includes("stats") ? "READ_STATISTICS" : /\/campaign\/\d+\.json$/.test(path) ? "READ_CAMPAIGN" : "READ_OTHER";
@@ -119,12 +121,14 @@ export function retainFailureSummary(previous: string | null, next: string) {
   while (encode().length > 1900 && prior.entries.length) prior.entries.pop();
   return encode().length <= 2000 ? encode() : next.slice(0, 2000);
 }
-export function diagnosticSummary(result: { status: string; phase: string; metadata: string; diagnostics?: OperationDiagnostic[] }, writes: number) {
+export function diagnosticSummary(result: { status: string; phase: string; metadata: string; diagnostics?: OperationDiagnostic[] }, writes: number,
+  maxLength = 2000, completion?: CompletionEvidence) {
   const diagnostics = (result.diagnostics ?? []).filter(validEntry).slice(0, 4).map(projectEntry);
   // Keep the first provider failure if space is tight. Never slice serialized JSON.
   const encode = () => JSON.stringify({ v: 1, status: ["VERIFIED", "NO_CHANGE", "RECONFIRM_REQUIRED", "PARTIAL", "UNVERIFIED"].includes(result.status) ? result.status : "UNVERIFIED",
     phase: (stages as readonly string[]).includes(result.phase) ? result.phase : "PREFLIGHT",
-    metadata: ["RECORDED", "FAILED", "NOT_REQUIRED"].includes(result.metadata) ? result.metadata : "FAILED", writes: Number.isInteger(writes) && writes >= 0 && writes <= 40 ? writes : null, diagnostics });
-  while (encode().length > 1900 && diagnostics.length) diagnostics.pop();
+    metadata: ["RECORDED", "FAILED", "NOT_REQUIRED"].includes(result.metadata) ? result.metadata : "FAILED", writes: Number.isInteger(writes) && writes >= 0 && writes <= 40 ? writes : null, diagnostics,
+    ...(completion ? { completion } : {}) });
+  while (encode().length > maxLength - 100 && diagnostics.length) diagnostics.pop();
   return encode();
 }

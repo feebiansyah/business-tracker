@@ -16,6 +16,7 @@ import { useAdsterraOperation } from "./operation-context";
 import { getAdsterraApplicationMethod } from "@/app/shopee/[id]/adsterra-roi/method-actions";
 import type { MethodState } from "@/lib/adsterra-operations/types";
 import { MethodBadge } from "./operation-dialog";
+import { AdsterraOperationRecovery } from "./operation-recovery";
 
 type Result = { dateFrom: string; dateTill: string; fxRate: string; config: AdsterraAnalysisConfig; analysis: AdsterraRoiAnalysis };
 
@@ -146,9 +147,9 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
     <div className="flex flex-wrap items-center gap-2 text-sm"><span>Metode aplikasi:</span>{methodBusy ? <span className="text-xs text-slate-500">Memuat…</span> : methodError ? <details className="text-xs text-red-700"><summary className="cursor-pointer">Gagal dibaca · Detail</summary><p className="mt-1 max-w-lg">{methodError}</p></details> : selectedConfig ? <MethodBadge method={listKind}/> : <span className="text-xs text-slate-500">Pilih campaign</span>}{selectedConfig && !methodBusy && !methodError && !listKind && <p className="text-xs text-amber-800">Atur metode di tab Campaign dahulu.</p>}</div>
     {!connected && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Koneksi Adsterra belum dikonfigurasi.</p>}
     <div className="space-y-2">
-      {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {success && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{success}</p>}
-      <div ref={setNotificationTarget}/>
+      <AdsterraOperationRecovery key={selectedConfig} accountId={shopeeAccountId} configId={Number(selectedConfig)} message={error || (success ? `VERIFIED: ${success}` : "")}>
+        <div ref={setNotificationTarget}/>
+      </AdsterraOperationRecovery>
     </div>
     <form onSubmit={submitAnalysis} onChange={invalidateAnalysis} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <label className="min-w-0 text-sm font-medium">Campaign<select name="configId" value={selectedConfig} onChange={(e) => setSelectedConfig(e.target.value)} required disabled={busy || replacing || writingBid || !connected} className="mt-1 h-9 w-full min-w-0 rounded-lg border bg-white px-3"><option value="">Pilih campaign</option>{configs.map((config) => <option key={config.id} value={config.id}>{config.label || config.campaignId}</option>)}</select></label>
@@ -174,7 +175,7 @@ export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
         finally { if (request === bidReadSequence.current) { bidReadPending.current = false; setBidReadBusy(false); } }
       }}>{bidReadBusy ? "Membaca bid…" : "Refresh Custom Bid"}</Button>{bidWritesBlocked && <p>Harga tetap dapat dibaca. Analisa ulang sebelum mengubah bid setelah penerapan yang belum selesai.</p>}</div>
       <AnalysisResult key={analysisVersion} result={result} listKind={resultKind} shopeeName={shopeeAccountName} lastBlacklistReplacedAt={lastBlacklistReplacedAt} customBids={customBids} onSaveBid={saveBid} onDeleteBid={deleteBid} writingBid={writingBid || replacing} bidWritesBlocked={bidWritesBlocked}/>
-      <PlacementApplication key={`${analysisVersion}:${resultKind}`} notificationTarget={notificationTarget} accountId={shopeeAccountId} configId={result.config.id} kind={resultKind} candidateCount={resultKind === "BLACKLIST" ? result.analysis.candidatePlacements.length : adsterraWhitelistCandidates(result.analysis.rows).length} getData={() => lastAnalysisForm.current ? cloneFormData(lastAnalysisForm.current) : null} onResult={(response) => {
+      <PlacementApplication key={`${analysisVersion}:${resultKind}`} notificationTarget={notificationTarget} accountId={shopeeAccountId} configId={result.config.id} kind={resultKind} candidateCount={resultKind === "BLACKLIST" ? result.analysis.candidatePlacements.length : adsterraWhitelistCandidates(result.analysis.rows).length} getData={() => lastAnalysisForm.current ? cloneFormData(lastAnalysisForm.current) : null} onMessage={(message) => { setSuccess(""); setError(message); }} onResult={(response) => {
         if (response.lastBlacklistReplacedAt) setLastBlacklistReplacedAt(response.lastBlacklistReplacedAt);
         // A list rejection is not a failed bid GET. Preserve the last successful
         // read (or the valid snapshot returned by the operation), without granting writes.

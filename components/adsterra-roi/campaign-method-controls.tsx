@@ -3,7 +3,6 @@ import { useRef, useState } from "react";
 import { cancelAdsterraMethod, executeAdsterraMethod, prepareAdsterraMethod } from "@/app/shopee/[id]/adsterra-roi/method-actions";
 import type { MethodInfo, ListKind } from "@/lib/adsterra-operations/types";
 import { useAdsterraOperation } from "./operation-context";
-import { OperationNotice } from "./operation-dialog";
 import { AdsterraOperationRecovery } from "./operation-recovery";
 
 export function CampaignMethodControls({ accountId, configId, info, busy }: {
@@ -52,7 +51,6 @@ export function CampaignMethodControls({ accountId, configId, info, busy }: {
       <option value="">{busy && !info ? "Memuat metode…" : info?.status === "SUCCESS" ? "Pilih metode" : "Metode belum tersedia"}</option><option value="BLACKLIST">Blacklist</option><option value="WHITELIST">Whitelist</option>
     </select>
     {working && <p role="status">Memproses…</p>}
-    <OperationNotice message={message}/>
-    {!working && message && !/^(VERIFIED|NO_CHANGE):/.test(message) && <AdsterraOperationRecovery accountId={accountId} configId={configId}/>}
+    <AdsterraOperationRecovery accountId={accountId} configId={configId} message={message}/>
   </div>;
 }

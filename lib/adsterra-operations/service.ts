@@ -51,7 +51,9 @@ export async function executeApplication(ctx: Context, owner: string, data: Form
       result = await applyPlacementPlan({ ...plan, before, preconditionHash: preconditionHash(before, plan.target, plan.kind) }, ctx.provider, ctx.budget, ctx.snapshot);
     }
   } catch {
-    result = { status: ctx.provider.sent ? "UNVERIFIED" : "RECONFIRM_REQUIRED", phase: "PREFLIGHT", message: "Preflight gagal/timeout. Konfirmasi tidak dapat dipakai ulang. Periksa keadaan operasi sebelum melanjutkan.", actual: null, writeWarnings: [], metadata: "NOT_REQUIRED" };
+    result = { status: ctx.provider.ambiguous ? "UNVERIFIED" : ctx.provider.sent ? "PARTIAL" : "RECONFIRM_REQUIRED", phase: ctx.provider.lastStage,
+      message: ctx.provider.ambiguous ? "Request perubahan belum pasti selesai. Periksa Status; jangan mengulang write."
+        : "Persiapan atau verifikasi gagal. Siapkan konfirmasi baru dari keadaan terbaru; tidak ada write yang diulang otomatis.", actual: null, writeWarnings: [], metadata: "NOT_REQUIRED" };
   }
   result.diagnostics = [...ctx.provider.diagnostics]; result.writes = ctx.provider.sent;
   if (ctx.provider.notDispatchedStatus) {

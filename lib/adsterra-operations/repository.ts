@@ -6,17 +6,17 @@ import type { OperationBudget } from "./budget";
 import type { BlacklistValue, ListKind, MethodState } from "./types";
 import { storedMethod, listDigest } from "./method-state";
 import { retainFailureSummary } from "./diagnostics";
+import { completedFailure, offBlocked, offTerminalStatuses, operationReadout, settledOffEvidence, terminalStatuses } from "./operation-state";
+export { offBlocked } from "./operation-state";
 
 export type OperationRow = AdsterraCampaignOperation;
 export type Fence = { campaignId: string; operationId: string; generation: number; protective?: boolean };
 export type WriteMarker = { readonly fence: Fence; readonly phase: string };
 export class MarkerPersistenceUncertain extends OperationError {}
-const terminal = ["IDLE", "VERIFIED", "NO_CHANGE", "RECONFIRM_REQUIRED"];
-const offTerminal = [...terminal, "PARTIAL"];
+const terminal = terminalStatuses;
+const offTerminal = offTerminalStatuses;
 // FINISHED is written only after the pipeline returns. A settled rejection is
 // not an in-flight request. Never extend this to RUNNING or UNVERIFIED.
-const completedFailure = (r: OperationRow) => r.status === "PARTIAL" && ["FINISHED", "NOT_DISPATCHED"].includes(r.phase) && !r.uncertain;
-export const offBlocked = (r: OperationRow) => !offTerminal.includes(r.protectiveOffStatus) || r.protectiveOffUncertain;
 const available = (r: OperationRow, now: number) => !r.uncertain && !offBlocked(r)
   && (terminal.includes(r.status) || completedFailure(r) || (r.status === "PREPARED" && !!r.expiresAt && r.expiresAt.getTime() <= now));
 
@@ -60,8 +60,8 @@ export class CampaignOperationStore {
     return row;
   }
   async reserve(id: string, owner: string, action: string, prepared?: { preconditionHash: string; expiresAt: Date }) {
-    const row = await this.ensure(id);
-    if (!available(row, this.budget.now())) throw new OperationError("Perubahan campaign masih berjalan atau hasilnya belum pasti. Periksa Status; jangan mengulang write.");
+    const row = await this.settleCompletedOff(await this.ensure(id));
+    if (!available(row, this.budget.now())) throw new OperationError(`${operationReadout(row, this.budget.now()).message} Gunakan Periksa Status untuk melihat catatannya; OFF dan Nonaktifkan Auto tetap tersedia jika slotnya tidak tertunda.`);
     const operationId = randomUUID();
     const result = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({
       where: { campaignId: row.campaignId, operationId: row.operationId, generation: row.generation, status: row.status,
@@ -183,7 +183,7 @@ export class CampaignOperationStore {
     if (changed.count !== 1) throw new OperationError("Pencatatan non-dispatch berubah; tidak menimpa operasi lain.");
   }
   async claimOff(id: string, owner: string): Promise<Fence> {
-    const row = await this.ensure(id);
+    const row = await this.settleCompletedOff(await this.ensure(id));
     if (offBlocked(row)) throw new OperationError("Satu protective OFF masih pending/belum pasti. Periksa operasi tersebut terlebih dahulu.");
     const operationId = randomUUID();
     const result = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({
@@ -194,6 +194,22 @@ export class CampaignOperationStore {
     }));
     if (result.count !== 1) throw new OperationError("Protective OFF diklaim proses lain.");
     return { campaignId: row.campaignId, operationId, generation: row.protectiveOffGeneration + 1, protective: true };
+  }
+  private async settleCompletedOff(row: OperationRow) {
+    if (!settledOffEvidence(row)) return row;
+    // The ended OFF pipeline explicitly recorded settled transport. The same
+    // activation has now ended durably too. Fence BOTH observations atomically;
+    // never release an uncertain request or infer completion from a provider GET.
+    const changed = await this.budget.wait(this.db.adsterraCampaignOperation.updateMany({ where: {
+      campaignId: row.campaignId, operationId: row.operationId, generation: row.generation, action: row.action,
+      status: row.status, phase: row.phase, uncertain: false,
+      protectiveOffId: row.protectiveOffId, protectiveOffGeneration: row.protectiveOffGeneration,
+      protectiveOffStatus: "UNVERIFIED", protectiveOffUncertain: false, protectiveOffSummary: row.protectiveOffSummary,
+    }, data: { protectiveOffStatus: "PARTIAL", protectiveOffGeneration: { increment: 1 } } }));
+    if (changed.count !== 1) throw new OperationError("Catatan OFF berubah; tidak membuka pengaman operasi lain. Periksa Status.");
+    const fresh = await this.read(row.campaignId);
+    if (!fresh) throw new OperationError("Catatan operasi belum dapat dibaca.");
+    return fresh;
   }
   async recover(row: OperationRow, owner: string, summary: string) {
     if (row.uncertain || row.protectiveOffUncertain) throw new OperationError("Request lama belum terbukti selesai. GET yang cocok tidak dapat membuka guard.");

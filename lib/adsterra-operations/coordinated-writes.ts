@@ -10,7 +10,7 @@ import { CampaignOperationStore } from "./repository";
 import { parseAdsterraConfigId, parseAdsterraConfigInput, parseShopeeAccountId } from "../adsterra-roi/config-input";
 import { saveAdsterraConfig, deleteAdsterraConfig } from "../adsterra-roi/config-repository";
 import type { PlacementProvider } from "./provider";
-import { retainFailureSummary } from "./diagnostics";
+import { diagnosticSummary, retainFailureSummary } from "./diagnostics";
 
 /** Every existing writer shares the same physical-campaign guard. No HTTP in tx. */
 export async function runCoordinatedWrite<T>(input: {
@@ -28,6 +28,18 @@ export async function runCoordinatedWrite<T>(input: {
     if (activating) await ctx.activationReady();
   };
   let recorded = false;
+  const summary = (status: string, row: Awaited<ReturnType<typeof ctx.store.read>>, verificationFailed = false) => diagnosticSummary({ status,
+    phase: ctx.provider.lastStage, metadata: "NOT_REQUIRED", diagnostics: ctx.provider.diagnostics.length ? ctx.provider.diagnostics
+      : status === "VERIFIED" ? [] : verificationFailed
+        ? [{ stage: ctx.provider.lastStage, kind: "VERIFICATION_MISMATCH", httpStatus: null, reasons: ["GET does not match confirmed state"] }]
+        : input.protective && !ctx.provider.ambiguous && row?.status === "RUNNING" && ["ACTIVATE", "SCHEDULE_ON"].includes(row.action)
+          ? [{ stage: ctx.provider.lastStage, kind: "ACTIVATION_PENDING", httpStatus: null, reasons: ["Concurrent activation still running"] }]
+          : [{ stage: ctx.provider.lastStage, kind: "OPERATION_INTERRUPTED", httpStatus: null, reasons: ["Operation interrupted"] }],
+  }, ctx.provider.sent, input.protective ? 1000 : 2000,
+  input.protective && !ctx.provider.ambiguous && row && !row.protectiveOffUncertain && row.status === "RUNNING"
+    && ["ACTIVATE", "SCHEDULE_ON"].includes(row.action)
+    ? { v: 1, settled: true, operationId: fence.operationId, generation: fence.generation,
+      awaitingActivation: { operationId: row.operationId, generation: row.generation } } : undefined);
   try {
     await ctx.provider.campaign(); // validates real identity before any write
     await input.authorize?.();
@@ -36,8 +48,9 @@ export async function runCoordinatedWrite<T>(input: {
     if (ctx.provider.notDispatchedStatus) throw new OperationError("Validasi/deadline berubah sebelum HTTP. Marker diselesaikan secara fenced; tidak ada retry write otomatis.");
     const row = await ctx.store.read(ctx.scope.campaignId);
     const overlappingOn = input.protective && row?.status === "RUNNING" && ["ACTIVATE", "SCHEDULE_ON"].includes(row.action);
-    const status = await ctx.store.finish(fence, ctx.provider.ambiguous || overlappingOn ? "UNVERIFIED" : verified(result) ? "VERIFIED" : "PARTIAL",
-      JSON.stringify({ action: input.action, writes: ctx.provider.sent, overlappingOn: !!overlappingOn }));
+    const resultVerified = verified(result);
+    const desired = ctx.provider.ambiguous || overlappingOn ? "UNVERIFIED" : resultVerified ? "VERIFIED" : "PARTIAL";
+    const status = await ctx.store.finish(fence, desired, summary(desired, row, !resultVerified));
     recorded = true;
     if (status !== "VERIFIED") throw new OperationError(status === "UNVERIFIED" ? "Hasil perubahan belum pasti. Periksa Status sebelum mencoba lagi." : "Status belum sesuai permintaan. Periksa status terbaru sebelum tindakan berikutnya.");
     return result;
@@ -47,7 +60,8 @@ export async function runCoordinatedWrite<T>(input: {
       try {
         const row = input.protective ? await ctx.store.read(ctx.scope.campaignId) : null;
         const overlappingOn = input.protective && (!row || (row.status === "RUNNING" && ["ACTIVATE", "SCHEDULE_ON"].includes(row.action)));
-        await ctx.store.finish(fence, ctx.provider.ambiguous || overlappingOn ? "UNVERIFIED" : ctx.provider.sent ? "PARTIAL" : "RECONFIRM_REQUIRED", "Operasi selesai tanpa bukti sukses penuh. Gunakan status terbaru; tidak ada retry otomatis.");
+        const desired = ctx.provider.ambiguous || overlappingOn ? "UNVERIFIED" : ctx.provider.sent ? "PARTIAL" : "RECONFIRM_REQUIRED";
+        await ctx.store.finish(fence, desired, summary(desired, row));
       } catch { /* preserve original safety failure */ }
     }
     throw error;

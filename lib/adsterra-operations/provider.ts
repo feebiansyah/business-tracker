@@ -43,6 +43,7 @@ export class PlacementProvider {
   notDispatchedStatus: "PARTIAL" | "RECONFIRM_REQUIRED" | null = null;
   readonly warnings: string[] = [];
   readonly diagnostics: OperationDiagnostic[] = [];
+  lastStage: OperationDiagnostic["stage"] = "PREFLIGHT";
   whitelistRejection?: WhitelistRejection;
   recordDiagnostic(entry: OperationDiagnostic) {
     if (this.diagnostics.length < 4 && !this.diagnostics.some((e) => JSON.stringify(e) === JSON.stringify(entry))) this.diagnostics.push(entry);
@@ -58,6 +59,7 @@ export class PlacementProvider {
     if (url.origin !== "https://api3.adsterratools.com" || !url.pathname.startsWith("/advertiser/")) throw new OperationError("Endpoint Adsterra tidak diizinkan.");
     const write = init.method !== undefined && init.method !== "GET";
     const stage = diagnosticStage(url.pathname, init.method ?? "GET");
+    this.lastStage = stage;
     let marker: WriteMarker | undefined;
     let dispatched = false;
     let response: Response;
