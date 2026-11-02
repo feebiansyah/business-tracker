@@ -10,7 +10,7 @@ import { CampaignOperationStore } from "./repository";
 import { parseAdsterraConfigId, parseAdsterraConfigInput, parseShopeeAccountId } from "../adsterra-roi/config-input";
 import { saveAdsterraConfig, deleteAdsterraConfig } from "../adsterra-roi/config-repository";
 import type { PlacementProvider } from "./provider";
-import { diagnosticSummary, retainFailureSummary } from "./diagnostics";
+import { diagnosticSummary, retainFailureSummary, retainHistoricalCustomBidRisk } from "./diagnostics";
 
 /** Every existing writer shares the same physical-campaign guard. No HTTP in tx. */
 export async function runCoordinatedWrite<T>(input: {
@@ -104,7 +104,8 @@ export async function coordinatedAutoDisable(accountId: number, configId: number
       await tx.adsterraCampaignOperation.updateMany({ where: {
         campaignId: row.campaignId, operationId: row.operationId, generation: row.generation, status: row.status, uncertain: false,
       }, data: { status: row.status === "RUNNING" ? "PARTIAL" : "RECONFIRM_REQUIRED", phase: "FINISHED",
-        summary: retainFailureSummary(row.summary, JSON.stringify({ v: 1, status: row.status === "RUNNING" ? "PARTIAL" : "RECONFIRM_REQUIRED", phase: "NOT_DISPATCHED", metadata: "NOT_REQUIRED", diagnostics: [] })) } });
+        summary: retainHistoricalCustomBidRisk(row.summary, retainFailureSummary(row.summary,
+          JSON.stringify({ v: 1, status: row.status === "RUNNING" ? "PARTIAL" : "RECONFIRM_REQUIRED", phase: "NOT_DISPATCHED", metadata: "NOT_REQUIRED", diagnostics: [] }))) } });
     }
     return { autoScheduleEnabled: false, warning: row?.status === "RUNNING" ? "Auto nonaktif. Operasi lama dibatasi fencing; request provider yang sudah terkirim mungkin tetap diterapkan. Periksa status dan gunakan protective OFF bila perlu." : "" };
   }, { isolationLevel: "Serializable", maxWait: Math.min(5000, budget.remaining()), timeout: Math.min(5000, budget.remaining()) }));
