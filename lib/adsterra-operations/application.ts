@@ -99,11 +99,14 @@ export async function applyPlacementPlan(plan: ApplicationPlan, provider: Placem
     const expectedBids = plan.kind === "BLACKLIST" ? plan.before.bids.filter((bid) => !plan.target.includes(bid.placementId)) : plan.before.bids;
     if (bidDigest(after.bids) !== bidDigest(expectedBids)) return result("PARTIAL", "Sebagian Custom Bid belum kosong atau snapshot bid berubah. Tidak mengklaim sukses penuh.");
     const changed = !Array.isArray(previousTarget) || !exactSet(previousTarget, plan.target) || plan.resetBids.length > 0;
+    const actualTarget = plan.kind === "BLACKLIST" ? after.blacklist : after.whitelist;
+    const actualCount = Array.isArray(actualTarget) ? actualTarget.length : after.whitelist.length;
+    const label = plan.kind === "BLACKLIST" ? "Blacklist" : "Whitelist";
+    const message = changed ? `${label} berhasil diterapkan: ${actualCount} placement.` : `${label} sudah sesuai: ${actualCount} placement.`;
     if (plan.kind === "WHITELIST" && !Array.isArray(after.blacklist)) return result(changed ? "VERIFIED" : "NO_CHANGE",
-      `Whitelist cocok persis dengan target dan Custom Bid tetap sesuai. Blacklist API tidak dapat dibaca karena campaign memiliki Whitelist; bukan blacklist kosong atau deteksi mode editor.${changed ? "" : " Tidak ada mutasi provider."}`);
-    return result(changed ? "VERIFIED" : "NO_CHANGE", changed
-      ? `Kedua daftar dan dampak Custom Bid sudah diverifikasi. Ini bukan deteksi mode editor.${plan.kind === "BLACKLIST" && !plan.target.length ? " Blacklist API kosong: tidak ada placement yang dikecualikan." : ""}`
-      : "Kedua daftar dan Custom Bid sudah sesuai; tidak ada mutasi provider.");
+      `${message} Blacklist API tidak dapat dibaca karena campaign memiliki Whitelist.`);
+    return result(changed ? "VERIFIED" : "NO_CHANGE",
+      `${message}${plan.kind === "BLACKLIST" && !actualCount ? " Blacklist API kosong: tidak ada placement yang dikecualikan." : ""}`);
   } catch {
     provider.recordDiagnostic({ stage: phase as OperationDiagnostic["stage"], kind: "OPERATION_INTERRUPTED", httpStatus: null, reasons: ["Operation interrupted"] });
     return result(provider.ambiguous ? "UNVERIFIED" : provider.sent ? "PARTIAL" : "RECONFIRM_REQUIRED",
