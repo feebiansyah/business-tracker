@@ -67,11 +67,12 @@ export function MetaOffFeedback({ controls }: { controls: ReturnType<typeof useM
       <div className="flex flex-wrap gap-2"><button type="button" disabled={!!busy} onClick={() => void controls.execute()} className="rounded-md bg-red-700 px-3 py-2 font-medium text-white disabled:opacity-50">{busy === "execute" ? "Mematikan…" : "Matikan sesuai rencana"}</button><button type="button" disabled={!!busy} onClick={controls.clear} className="rounded-md border border-slate-300 bg-white px-3 py-2 disabled:opacity-50">Batal</button></div>
     </section>}
     {result && <section aria-label="Hasil OFF" className="min-w-0 space-y-2 rounded-lg border border-slate-300 bg-white p-3 text-sm">
-      <h3 className="font-semibold">Hasil OFF: {result.status === "COMPLETE" ? "Terverifikasi lengkap" : "Parsial / belum lengkap"}</h3>
+      <h3 className="font-semibold">Hasil OFF: {result.status} · {result.status === "COMPLETE" ? "Terverifikasi lengkap" : "Parsial / belum lengkap"}</h3>
       <p role={result.status === "PARTIAL" ? "alert" : "status"}>{result.message}</p>
-      <p className="text-xs text-slate-500">{time(result.finishedAt)} WIB · {result.requests}/100 request Meta · pembacaan akhir: {result.finalRead}</p>
+      <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium">{[...new Set(result.objects.map((row) => row.state))].map((state) => <span key={state}>{state}: {result.objects.filter((row) => row.state === state).length}</span>)}</p>
+      <details><summary className="w-fit cursor-pointer rounded py-1 text-xs font-medium text-slate-600 focus-visible:outline-2 focus-visible:outline-blue-600">Detail hasil ({result.objects.length} objek)</summary><p className="mt-1 text-xs text-slate-500">{time(result.finishedAt)} WIB · {result.requests}/100 request Meta · pembacaan akhir: {result.finalRead}</p>
       <div className="max-w-full overflow-x-auto"><table className="w-full min-w-150 text-left text-xs"><thead><tr><th className="p-2">Objek / ID</th><th className="p-2">Hasil</th><th className="p-2">Keterangan</th></tr></thead><tbody>{result.objects.map((row) => <tr key={row.object.id} className="border-t border-slate-200"><td className="p-2">{kinds[row.object.kind]} · {row.object.name ?? "Nama tidak tersedia"}<br/>{row.object.id}</td><td className="p-2 font-medium">{row.state}</td><td className="p-2">{row.message}{row.readAt && <span className="block text-slate-500">GET: {time(row.readAt)} WIB</span>}</td></tr>)}</tbody></table></div>
-      {result.newObjects.length > 0 && <p className="text-amber-900">{result.newObjects.length} objek baru ditemukan setelah tindakan; tidak termasuk rencana dan tidak diubah.</p>}
+      </details>{result.newObjects.length > 0 && <p className="text-amber-900">{result.newObjects.length} objek baru ditemukan setelah tindakan; tidak termasuk rencana dan tidak diubah.</p>}
     </section>}
   </div>;
 }
