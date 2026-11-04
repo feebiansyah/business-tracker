@@ -9,6 +9,14 @@ import type { OffConfirmation, OffPlan } from "./off-types";
 const lifetime = 5 * 60_000;
 const signature = (payload: string, config: MetaConfig) => createHmac("sha256", config.appSecret || config.accessToken).update(`meta-paused-confirmation:v1:${payload}`).digest();
 
+export class OffConfirmationExpiredError extends Error {
+  constructor() { super("Konfirmasi kedaluwarsa, buat konfirmasi baru."); }
+}
+
+export function assertOffConfirmationValid(expiresAt: number) {
+  if (!Number.isSafeInteger(expiresAt) || Date.now() >= expiresAt) throw new OffConfirmationExpiredError();
+}
+
 export function confirmOffPlan(plan: OffPlan, actorId: number, config: MetaConfig): OffConfirmation {
   const issuedAt = Date.now(), expiresAt = issuedAt + lifetime;
   const payload = Buffer.from(JSON.stringify({ version: 1, actorId, selection: plan.selection, digest: planDigest(plan), issuedAt, expiresAt, nonce: randomBytes(16).toString("hex") })).toString("base64url");
@@ -26,6 +34,7 @@ export function readOffConfirmation(value: unknown, actorId: number, config: Met
   const now = Date.now();
   if (claims.version !== 1 || claims.actorId !== actorId || typeof claims.digest !== "string" || !/^[a-f0-9]{64}$/.test(claims.digest)
     || !Number.isSafeInteger(claims.issuedAt) || !Number.isSafeInteger(claims.expiresAt) || (claims.issuedAt as number) > now
-    || (claims.expiresAt as number) <= now || (claims.expiresAt as number) - (claims.issuedAt as number) !== lifetime) throw new Error("Konfirmasi kedaluwarsa/tidak sesuai pengguna. Buat konfirmasi baru.");
-  return { selection: parseOffSelection(claims.selection), digest: claims.digest };
+    || (claims.expiresAt as number) - (claims.issuedAt as number) !== lifetime) throw new Error("Konfirmasi kedaluwarsa/tidak sesuai pengguna. Buat konfirmasi baru.");
+  assertOffConfirmationValid(claims.expiresAt as number);
+  return { selection: parseOffSelection(claims.selection), digest: claims.digest, expiresAt: claims.expiresAt as number };
 }

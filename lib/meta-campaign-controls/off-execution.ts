@@ -2,6 +2,7 @@ import "server-only";
 
 import { MetaReadError } from "./parse";
 import { hierarchyObjects, minimumRemainingRequests } from "./off-plan";
+import { assertOffConfirmationValid, OffConfirmationExpiredError } from "./off-confirmation";
 import { readCampaignPreview } from "./preview";
 import type { MetaPausedClient } from "./off-client";
 import type { OffExecution, OffObject, OffObjectResult, OffPlan } from "./off-types";
@@ -9,11 +10,12 @@ import type { MetaObjectView } from "./types";
 
 const pauseVerified = (row: OffObjectResult) => row.state === "VERIFIED_PAUSED" || row.state === "ALREADY_PAUSED";
 const identity = (object: OffObject) => JSON.stringify([object.kind, object.id, object.parentId, object.name]);
-const failureMessage = (error: unknown) => error instanceof MetaReadError && error.kind === "LIMIT" ? "Batas waktu/request tercapai; request berikutnya dihentikan."
+const failureMessage = (error: unknown) => error instanceof OffConfirmationExpiredError ? error.message
+  : error instanceof MetaReadError && error.kind === "LIMIT" ? "Batas waktu/request tercapai; request berikutnya dihentikan."
   : error instanceof MetaReadError && error.kind === "INTEGRITY" ? "Scope/relasi berubah atau tidak valid; konfirmasi ulang diperlukan."
     : "Pembacaan/verifikasi Meta gagal. Error bukan bukti objek sudah OFF.";
 
-export async function executeOffPlan(plan: OffPlan, client: MetaPausedClient): Promise<OffExecution> {
+export async function executeOffPlan(plan: OffPlan, client: MetaPausedClient, expiresAt: number): Promise<OffExecution> {
   // An execution result exists before the first possible write, so later failures retain all outcomes.
   const objects: OffObjectResult[] = plan.objects.map((object) => ({ object, state: "NOT_ATTEMPTED", message: "Belum dijalankan.", readAt: null, postSent: false }));
   const verifiedObjects: MetaObjectView[] = [];
@@ -25,9 +27,11 @@ export async function executeOffPlan(plan: OffPlan, client: MetaPausedClient): P
     return { status: "PARTIAL", message: "Rencana ditolak sebelum POST: biaya request/pagination teramati melampaui 100. Gunakan target tunggal yang lebih kecil.", objects, finalRead, newObjects, verifiedObjects, requests: client.budget.requests, finishedAt: new Date().toISOString() };
   }
   try {
+    assertOffConfirmationValid(expiresAt);
     for (let index = 0; index < objects.length; index++) {
       const row = objects[index];
       if (index > 0 && plan.selection.kind === "ALL" && !pauseVerified(objects[0])) { stopReason = "Campaign belum terverifikasi PAUSED; penulisan turunan dihentikan."; break; }
+      assertOffConfirmationValid(expiresAt);
       client.budget.remaining();
       if (row.object.configuredStatus === "PAUSED") {
         row.state = "ALREADY_PAUSED"; row.readAt = plan.hierarchy?.readAt ?? new Date().toISOString(); row.message = "configured_status PAUSED terverifikasi pada preflight; tidak di-POST ulang.";
@@ -48,7 +52,15 @@ export async function executeOffPlan(plan: OffPlan, client: MetaPausedClient): P
           stopReason = "Biaya pagination terbaru melampaui sisa budget verifikasi; POST berikutnya tidak dijalankan.";
           row.message = stopReason; break;
         }
-        client.budget.remaining();
+        // Reserve one bounded POST plus the observed proof GETs (including their
+        // permitted retry). A target stopped here has never been dispatched.
+        assertOffConfirmationValid(expiresAt);
+        const minimumWriteTime = 10_000 * (1 + 2 * client.proofReadCost(plan.target, row.object));
+        if (client.budget.remaining() < minimumWriteTime) {
+          stopReason = "Sisa waktu tidak cukup untuk POST dan verifikasi; tindakan dihentikan sebelum write.";
+          row.message = stopReason; break;
+        }
+        assertOffConfirmationValid(expiresAt);
         const requestsBeforePost = client.budget.requests;
         let acknowledgement;
         try { acknowledgement = await client.pause(row.object.id); }
@@ -104,7 +116,7 @@ export async function executeOffPlan(plan: OffPlan, client: MetaPausedClient): P
         row.readAt = new Date().toISOString();
       }
     }
-  } catch (error) { stopReason = failureMessage(error); }
+  } catch (error) { stopReason ||= failureMessage(error); }
   const complete = finalRead === "COMPLETE" && newObjects.length === 0 && objects.every(pauseVerified);
   return {
     status: complete ? "COMPLETE" : "PARTIAL",

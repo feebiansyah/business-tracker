@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth/session";
 import { getMetaConfig } from "@/lib/meta/config";
 import { MetaActionBudget } from "@/lib/meta-campaign-controls/action-budget";
 import { MetaPausedClient } from "@/lib/meta-campaign-controls/off-client";
-import { confirmOffPlan, readOffConfirmation } from "@/lib/meta-campaign-controls/off-confirmation";
+import { assertOffConfirmationValid, confirmOffPlan, OffConfirmationExpiredError, readOffConfirmation } from "@/lib/meta-campaign-controls/off-confirmation";
 import { executeOffPlan } from "@/lib/meta-campaign-controls/off-execution";
 import { buildOffPlan, minimumRemainingRequests, parseOffSelection, planDigest } from "@/lib/meta-campaign-controls/off-plan";
 import { loadPreviewTarget } from "@/lib/meta-campaign-controls/scope";
@@ -42,10 +42,13 @@ export async function executeMetaOffAction(confirmationToken: unknown): Promise<
       if (!target) return { success: false, status: "RECONFIRM_REQUIRED", message: "Scope target berubah/tidak tersedia. Konfirmasi ulang diperlukan." };
       const client = new MetaPausedClient(budget, config);
       const plan = await budget.waitReadOnly(() => buildOffPlan(confirmed.selection, target, client));
+      assertOffConfirmationValid(confirmed.expiresAt);
       if (planDigest(plan) !== confirmed.digest) return { success: false, status: "RECONFIRM_REQUIRED", message: "Target, nama/status, relasi, atau daftar objek berubah sejak konfirmasi. Tidak ada POST dijalankan. Baca dan konfirmasi ulang." };
       // NEVER race the mutation pipeline against a timeout. Every subsequent request checks the shared abort/deadline.
-      return { success: true, result: await executeOffPlan(plan, client) };
-    } catch (error) { return { success: false, status: "REJECTED", message: message(error) }; }
+      return { success: true, result: await executeOffPlan(plan, client, confirmed.expiresAt) };
+    } catch (error) { return error instanceof OffConfirmationExpiredError
+      ? { success: false, status: "RECONFIRM_REQUIRED", message: error.message }
+      : { success: false, status: "REJECTED", message: message(error) }; }
   } catch (error) {
     if (!(error instanceof MetaReadError) || error.kind !== "LIMIT") throw error;
     return { success: false, status: "REJECTED", message: error.message };
