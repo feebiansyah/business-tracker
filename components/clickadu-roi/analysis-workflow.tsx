@@ -63,7 +63,7 @@ export function ClickaduAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, c
       const prepared = await prepareClickaduListAction(shopeeAccountId, data, analysisMethod);
       if (!prepared.success) { setError(prepared.message); return; }
       const p = prepared.preview;
-      const label = (value: ClickaduListMethod) => value === "BLACKLIST" ? "Blacklist" : "Whitelist";
+      const label = (value: ClickaduListMethod | null) => value === "BLACKLIST" ? "Blacklist" : value === "WHITELIST" ? "Whitelist" : "Belum diinisialisasi";
       if (!window.confirm(`Campaign ${p.label} (${p.campaignId})\n${label(p.previousMethod)} → ${label(p.method)}\nTarget final: ${p.target.length} Zone.\nDaftar lama (${p.previousCount} Zone) diganti penuh, bukan ditambahkan. Tidak ada clear terpisah.\n${p.method === "BLACKLIST" && !p.target.length ? "Blacklist kosong: tidak ada Zone yang dikecualikan.\n" : ""}Konfirmasi penerapan?`)) return;
       const response = await applyClickaduListAction(shopeeAccountId, data, analysisMethod, p.precondition);
       if (response.success) {

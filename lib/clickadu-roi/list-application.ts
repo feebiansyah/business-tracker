@@ -8,7 +8,11 @@ type Dependencies = { getCampaign(id: string): Promise<Campaign>; updateCampaign
 
 export function readClickaduList(campaign: Campaign, campaignId: string): ClickaduListState {
   if (!/^\d+$/.test(campaignId) || String(campaign.id) !== campaignId) throw new BlacklistReplacementError("Identitas campaign Clickadu tidak cocok.");
-  const targeting = record(campaign.targeting), zone = record(targeting?.zone);
+  const targeting = record(campaign.targeting);
+  // A new campaign may omit Zone targeting entirely. This proves no selected
+  // method, not an actual Blacklist/Whitelist. Present malformed values fail below.
+  if (targeting && !Object.hasOwn(targeting, "zone")) return { method: null, zoneIds: [] };
+  const zone = record(targeting?.zone);
   if (!zone || typeof zone.isExcluded !== "boolean" || !Array.isArray(zone.list)
     || zone.list.some((id) => typeof id !== "string" || !/^\d+$/.test(id))) {
     throw new BlacklistReplacementError("Daftar/metode Zone Clickadu belum dapat diverifikasi.");

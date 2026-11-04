@@ -3,9 +3,9 @@ import { BLACKLIST_ROI_THRESHOLD, hasMinimumDecisionCost } from "../traffic-roi/
 import type { ClickaduRoiAnalysis } from "./types";
 
 export type ClickaduListMethod = "BLACKLIST" | "WHITELIST";
-export type ClickaduListState = { method: ClickaduListMethod; zoneIds: string[] };
+export type ClickaduListState = { method: ClickaduListMethod | null; zoneIds: string[] };
 export type ClickaduListPreview = {
-  configId: number; campaignId: string; label: string; previousMethod: ClickaduListMethod;
+  configId: number; campaignId: string; label: string; previousMethod: ClickaduListMethod | null;
   method: ClickaduListMethod; previousCount: number; target: string[]; precondition: string;
 };
 
