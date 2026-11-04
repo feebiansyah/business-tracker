@@ -52,10 +52,10 @@ export async function executeOffPlan(plan: OffPlan, client: MetaPausedClient, ex
           stopReason = "Biaya pagination terbaru melampaui sisa budget verifikasi; POST berikutnya tidak dijalankan.";
           row.message = stopReason; break;
         }
-        // Reserve one bounded POST plus the observed proof GETs (including their
-        // permitted retry). A target stopped here has never been dispatched.
+        // Reserve one bounded POST plus one observed proof GET round. GET retries
+        // use the actual remaining budget, not an additional pre-write reserve.
         assertOffConfirmationValid(expiresAt);
-        const minimumWriteTime = 10_000 * (1 + 2 * client.proofReadCost(plan.target, row.object));
+        const minimumWriteTime = 10_000 * (1 + client.proofReadCost(plan.target, row.object));
         if (client.budget.remaining() < minimumWriteTime) {
           stopReason = "Sisa waktu tidak cukup untuk POST dan verifikasi; tindakan dihentikan sebelum write.";
           row.message = stopReason; break;
