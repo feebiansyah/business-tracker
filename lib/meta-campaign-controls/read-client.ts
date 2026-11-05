@@ -8,6 +8,10 @@ const BASIC_FIELDS = ["id", "name", "account_id", "configured_status", "effectiv
 const TRANSIENT_CODES = new Set([1, 2, 4, 17, 32, 613]);
 const MAX_REQUESTS = 100;
 const MAX_OBJECTS = 5_000;
+const SETTINGS_FIELDS = {
+  adsets: ["id", "name", "campaign_id", "created_time", "configured_status", "effective_status", "targeting"],
+  ads: ["id", "name", "campaign_id", "adset_id", "configured_status", "effective_status", "creative{id,name,object_type,video_id,effective_object_story_id,object_story_spec,asset_feed_spec}"],
+} as const;
 export type MetaReadPage = { rows: unknown[]; after: string | null };
 
 /** GET-only client, deliberately separate from the unbounded/persisting Sync workflow. */
@@ -111,6 +115,12 @@ export class MetaCampaignReadClient {
     if (!/^[0-9]{1,100}$/.test(parentId) || (after !== undefined && !/^[\x21-\x7E]{1,4096}$/.test(after))) throw new MetaReadError("INTEGRITY", "ID/cursor pembuktian jenis Meta tidak valid.");
     const path = `${edge === "campaigns" ? "act_" : ""}${parentId}/${edge}`;
     return this.get(path, [...BASIC_FIELDS, ...(edge !== "campaigns" ? ["campaign_id"] : []), ...(edge === "ads" ? ["adset_id"] : [])], after);
+  }
+
+  /** Fixed-field, GET-only settings edges. No caller-provided path or field expression is accepted. */
+  async readSettingsPage(campaignId: string, edge: "adsets" | "ads", after?: string) {
+    if (!/^[0-9]{1,100}$/.test(campaignId) || (after !== undefined && !/^[\x21-\x7E]{1,4096}$/.test(after))) throw new MetaReadError("INTEGRITY", "ID/cursor pengaturan Meta tidak valid.");
+    return this.get(`${campaignId}/${edge}`, [...SETTINGS_FIELDS[edge]], after);
   }
 
   private observeMembership(path: string, after: string | undefined, payload: Record<string, unknown>) {
