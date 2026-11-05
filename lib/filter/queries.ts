@@ -6,7 +6,7 @@ import { buildDailyMetricView, isCommissionImportDateCovered, type DailyMetricSo
 import type { FilterParams, FilterSortKey, HistoryParams, HistorySortKey } from "@/lib/filter/server-pagination";
 import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-modes";
 
-export type FilterCampaignRow = { id: number; name: string; wlName: string; startTime: string | null; budget: number; days: number; totalSpend: number; costWithFee: number; totalCommission: number | null; profit: number | null; profitPercent: number | null };
+export type FilterCampaignRow = { id: number; name: string; wlName: string; startTime: string | null; budget: number; days: number; totalSpend: number; costWithFee: number; totalCommission: number | null; profit: number | null; profitPercent: number | null; hasPendingNote: boolean };
 export type PageInfo = { page: number; pageSize: 25 | 50 | 100; total: number; pageCount: number };
 export type FilterPageData = { shopeeAccount: { id: number; name: string }; metaAccounts: { id: number; name: string }[]; unresolvedBudgets: number; campaigns: FilterCampaignRow[]; pagination: PageInfo };
 
@@ -18,7 +18,7 @@ const filterOrderColumns: Record<FilterSortKey, string> = {
   name: "summary.name", wlName: "summary.wlName", startTime: "summary.startTime", budget: "summary.budget", days: "summary.days", totalSpend: "summary.totalSpend",
   costWithFee: "summary.costWithFee", totalCommission: "summary.totalCommission", profit: "summary.profit", profitPercent: "summary.profitPercent",
 };
-type FilterSqlRow = { id: number; name: string; wlName: string; startTime: Date | null; budget: Prisma.Decimal; days: bigint; totalSpend: Prisma.Decimal; costWithFee: Prisma.Decimal; totalCommission: Prisma.Decimal | null; profit: Prisma.Decimal | null; profitPercent: Prisma.Decimal | null };
+type FilterSqlRow = { id: number; name: string; wlName: string; startTime: Date | null; budget: Prisma.Decimal; days: bigint; totalSpend: Prisma.Decimal; costWithFee: Prisma.Decimal; totalCommission: Prisma.Decimal | null; profit: Prisma.Decimal | null; profitPercent: Prisma.Decimal | null; hasPendingNote: bigint | number | boolean };
 
 export function campaignModeWhere(mode: CampaignMode) {
   const config = campaignModeConfig[mode];
@@ -45,7 +45,10 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
   const shopeeAccount = await prisma.shopeeAccount.findUnique({ where: { id: shopeeAccountId }, select: { id: true, name: true, metaAccounts: { select: { id: true, name: true }, orderBy: { name: "asc" } } } });
   if (!shopeeAccount) return null;
   const scope = { metaAccount: { shopeeAccountId } };
-  const where = { ...scope, ...campaignModeWhere(mode), ...(params.wl ? { metaAccountId: params.wl } : {}), ...(params.q ? { name: { contains: params.q } } : {}) };
+  const startFrom = params.from ? new Date(`${params.from}T00:00:00.000Z`) : null;
+  const startBefore = startFrom ? new Date(startFrom) : null;
+  if (startBefore) startBefore.setUTCDate(startBefore.getUTCDate() + 1);
+  const where = { ...scope, ...campaignModeWhere(mode), ...(params.wl ? { metaAccountId: params.wl } : {}), ...(params.q ? { name: { contains: params.q } } : {}), ...(startFrom && startBefore ? { startTime: { gte: startFrom, lt: startBefore } } : {}) };
   const [unresolvedBudgets, total] = await Promise.all([
     prisma.campaign.count({ where: { ...scope, effectiveDailyBudget: null } }),
     prisma.campaign.count({ where }),
@@ -57,6 +60,7 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
   const rows = await prisma.$queryRaw<FilterSqlRow[]>(Prisma.sql`
     SELECT summary.* FROM (
       SELECT c.id, c.name, ma.name AS wlName, c.startTime, c.effectiveDailyBudget AS budget,
+        EXISTS(SELECT 1 FROM CampaignDailyMetric reminder WHERE reminder.campaignId = c.id AND reminder.completed = false AND TRIM(reminder.note) <> '') AS hasPendingNote,
         COUNT(DISTINCT dm.date) AS days,
         COALESCE(SUM(COALESCE(dm.spend, 0)), 0) AS totalSpend,
         COALESCE(SUM(COALESCE(dm.spend, 0)), 0) * 1.05 AS costWithFee,
@@ -66,11 +70,10 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
       FROM Campaign c
       INNER JOIN MetaAccount ma ON ma.id = c.metaAccountId
       LEFT JOIN CampaignDailyMetric dm ON dm.campaignId = c.id
-        AND (${params.from} = '' OR dm.date >= ${params.from})
-        AND (${params.to} = '' OR dm.date <= ${params.to})
       WHERE ma.shopeeAccountId = ${shopeeAccountId} AND ${modeSql.status} AND c.effectiveDailyBudget IS NOT NULL AND ${modeSql.budget}
         AND (${params.wl} IS NULL OR ma.id = ${params.wl})
         AND (${params.q} = '' OR LOCATE(${params.q}, c.name) > 0)
+        ${startFrom && startBefore ? Prisma.sql`AND c.startTime >= ${startFrom} AND c.startTime < ${startBefore}` : Prisma.empty}
       GROUP BY c.id, c.name, ma.name, c.startTime, c.effectiveDailyBudget
     ) summary
     ORDER BY ${orderColumn} IS NULL ASC, ${orderColumn} ${orderDirection}, summary.id ASC
@@ -78,7 +81,7 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
   `);
   return { shopeeAccount: { id: shopeeAccount.id, name: shopeeAccount.name }, metaAccounts: shopeeAccount.metaAccounts, unresolvedBudgets, pagination, campaigns: rows.map((row) => ({
     id: row.id, name: row.name, wlName: row.wlName, startTime: row.startTime ? dateString(row.startTime) : null, budget: Number(row.budget), days: Number(row.days), totalSpend: Number(row.totalSpend),
-    costWithFee: Number(row.costWithFee), totalCommission: numberValue(row.totalCommission), profit: numberValue(row.profit), profitPercent: numberValue(row.profitPercent),
+    costWithFee: Number(row.costWithFee), totalCommission: numberValue(row.totalCommission), profit: numberValue(row.profit), profitPercent: numberValue(row.profitPercent), hasPendingNote: Boolean(row.hasPendingNote),
   })) };
 }
 

@@ -20,6 +20,7 @@ import { getMetaConfig } from "@/lib/meta/config";
 import { parseShopeeOverviewTab, shopeeOverviewTabs, withShopeeOverviewTab } from "@/lib/dashboard/shopee-overview-params";
 
 export const dynamic = "force-dynamic";
+const trafficDate = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeZone: "UTC" });
 
 export default async function ShopeeAccountDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
@@ -28,14 +29,25 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
   const account = await prisma.shopeeAccount.findUnique({
     where: { id: shopeeAccountId },
     include: {
-      metaAccounts: { include: { businessManager: true }, orderBy: { name: "asc" } },
+      metaAccounts: { include: { businessManager: true, _count: { select: { campaigns: { where: { metaStatus: "ACTIVE" } } } } }, orderBy: { name: "asc" } },
       commissionImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
       clickImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
       trafficCredentials: { select: { provider: true } },
+      clickaduCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true, historySyncedThrough: true } },
+      adsterraCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true, historySyncedThrough: true } },
       _count: { select: { clickaduCampaignConfigs: true, adsterraCampaignConfigs: true } },
     },
   });
   if (!account) notFound();
+  const emptyWls = account.metaAccounts.filter((wl) => wl._count.campaigns === 0);
+  const [noteSummary] = await prisma.$queryRaw<{ count: bigint | number }[]>`
+    SELECT COUNT(*) AS count FROM CampaignDailyMetric dm
+    INNER JOIN Campaign c ON c.id = dm.campaignId
+    INNER JOIN MetaAccount ma ON ma.id = c.metaAccountId
+    WHERE ma.shopeeAccountId = ${shopeeAccountId}
+      AND dm.completed = false AND dm.note IS NOT NULL AND TRIM(dm.note) <> ''
+  `;
+  const pendingNotes = Number(noteSummary.count);
   const rawSearchParams = await searchParams;
   const dashboard = await getShopeeDashboardData(shopeeAccountId, rawSearchParams, prisma);
   if (!dashboard) notFound();
@@ -60,12 +72,51 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
   return (
     <section className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><Link href="/shopee" className="text-sm text-slate-500 hover:text-slate-900">← Akun Shopee</Link><div className="mt-3 flex items-center gap-3"><h2 className="text-2xl font-semibold tracking-tight text-slate-950">{account.name}</h2><StatusBadge status={account.status} /></div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500"><span>{account.lastMetaSyncAt ? `Terakhir Sync Meta: ${formatShopeeActivityTime(account.lastMetaSyncAt)}` : "Belum pernah Sync Meta"}</span><span>{account.commissionImports[0] ? `Terakhir Import Komisi: ${formatShopeeActivityTime(account.commissionImports[0].createdAt)}` : "Belum pernah Import Komisi"}</span><span>{account.clickImports[0] ? `Terakhir Import Klik: ${formatShopeeActivityTime(account.clickImports[0].createdAt)}` : "Belum pernah Import Klik"}</span></div></div>
+        <div><Link href="/shopee" className="text-sm text-slate-500 hover:text-slate-900">← Akun Shopee</Link><div className="mt-3 flex items-center gap-3"><h2 className="text-2xl font-semibold tracking-tight text-slate-950">{account.name}</h2><StatusBadge status={account.status} /></div></div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto"><Button variant="ghost" asChild><Link href={`/shopee/${account.id}/import`}>Import Shopee</Link></Button><Button asChild><Link href={`/meta/new?shopeeAccountId=${account.id}`}>Tambah WL</Link></Button></div>
       </div>
       <ShopeeAccountManagement accountId={account.id} accountName={account.name} />
       <TrafficBalances key={account.id} accounts={[{ id: account.id, name: account.name }]} variant="overview" />
-      <ShopeeOverviewSync key={`sync-${account.id}`} accountId={account.id} disabledReasons={disabledReasons} />
+      <section aria-label="Pengingat pekerjaan" className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 text-sm">
+        <h3 className="font-semibold text-slate-950">Pengingat pekerjaan</h3>
+        <div className="mt-3"><ShopeeOverviewSync key={`sync-${account.id}`} accountId={account.id} disabledReasons={disabledReasons} /></div>
+        <div className="mt-3 grid min-w-0 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <section aria-label="Shopee & Meta" className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+            <h4 className="text-sm font-semibold text-slate-950">Shopee &amp; Meta</h4>
+            <dl className="mt-2 divide-y divide-slate-100 text-slate-700">
+              <div className="py-2 first:pt-0"><dt className="text-xs text-slate-500">Sync Meta</dt><dd className="mt-0.5 break-words">{account.lastMetaSyncAt ? formatShopeeActivityTime(account.lastMetaSyncAt) : "Belum pernah"}</dd></div>
+              <div className="py-2"><dt className="text-xs text-slate-500">Import Komisi</dt><dd className="mt-0.5 break-words">{account.commissionImports[0] ? formatShopeeActivityTime(account.commissionImports[0].createdAt) : "Belum pernah"}</dd></div>
+              <div className="py-2 last:pb-0"><dt className="text-xs text-slate-500">Import Klik</dt><dd className="mt-0.5 break-words">{account.clickImports[0] ? formatShopeeActivityTime(account.clickImports[0].createdAt) : "Belum pernah"}</dd></div>
+            </dl>
+          </section>
+          {[{ name: "Clickadu", configs: account.clickaduCampaignConfigs }, { name: "Adsterra", configs: account.adsterraCampaignConfigs }].map(({ name, configs }) => {
+            const unsynced = configs.filter((config) => config.historySyncedThrough === null).length;
+            const earliest = configs.reduce<Date | null>((value, config) => config.historySyncedThrough && (!value || config.historySyncedThrough < value) ? config.historySyncedThrough : value, null);
+            const missing = configs.filter((config) => config.lastBlacklistReplacedAt === null);
+            const latest = configs.reduce<Date | null>((value, config) => config.lastBlacklistReplacedAt && (!value || config.lastBlacklistReplacedAt > value) ? config.lastBlacklistReplacedAt : value, null);
+            return <section key={name} aria-label={name} className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+              <h4 className="text-sm font-semibold text-slate-950">{name}</h4>
+              <dl className="mt-2 divide-y divide-slate-100">
+                <div className="pb-2"><dt className="text-xs text-slate-500">Cakupan Sync</dt><dd className={`mt-0.5 break-words ${configs.length === 0 ? "text-slate-700" : unsynced > 0 ? "text-red-900" : "text-emerald-900"}`}>{configs.length === 0 ? "Belum ada campaign" : unsynced === configs.length ? `${unsynced} campaign belum pernah Sync` : unsynced > 0 ? `${unsynced} campaign belum pernah Sync · lainnya data sampai ${trafficDate.format(earliest!)}` : `Data seluruh campaign sampai ${trafficDate.format(earliest!)}`}</dd></div>
+                <div className="pt-2"><dt className="text-xs text-slate-500">Riwayat Replace Blacklist</dt><dd className="mt-0.5 space-y-1 break-words text-slate-700">
+              <p>{configs.length === 0 ? "Belum ada campaign" : missing.length === configs.length ? "Belum ada riwayat Replace Blacklist" : missing.length > 0 ? `${missing.length} campaign belum memiliki riwayat Replace Blacklist` : `Riwayat Replace Blacklist terakhir ${formatShopeeActivityTime(latest!)}`}</p>
+              {missing.length > 0 && <ul className="space-y-0.5 text-xs">{missing.map((config, index) => <li key={`${config.campaignId}:${index}`} className="break-words [overflow-wrap:anywhere]">{config.label?.trim() || config.campaignId}</li>)}</ul>}
+              {missing.length > 0 && latest && <p className="text-xs">Riwayat Replace Blacklist terakhir {formatShopeeActivityTime(latest)}</p>}
+                </dd></div>
+              </dl>
+            </section>;
+          })}
+        </div>
+        <h4 className="mt-3 text-xs font-semibold text-slate-600">Perlu diperiksa</h4>
+        <div className="mt-2 grid min-w-0 gap-2 md:grid-cols-2">
+          <div className={`min-w-0 rounded-lg p-2 ${pendingNotes > 0 ? "bg-red-50 text-red-900" : "bg-emerald-50 text-emerald-900"}`}><p>Catatan: {pendingNotes > 0 ? `${pendingNotes} belum selesai` : "Tidak ada catatan belum selesai"}</p></div>
+          <div className={`min-w-0 rounded-lg p-2 ${account.metaAccounts.length === 0 ? "bg-slate-50 text-slate-700" : emptyWls.length > 0 ? "bg-red-50 text-red-900" : "bg-emerald-50 text-emerald-900"}`}>
+            <p>WL: {account.metaAccounts.length === 0 ? "Belum ada WL terhubung" : emptyWls.length === 0 ? "Semua memiliki campaign aktif" : `${emptyWls.length} tanpa campaign aktif`}</p>
+            {emptyWls.length > 0 && <ul className="mt-1 space-y-1">{emptyWls.map((wl) => <li key={wl.id} className="flex min-w-0 items-center gap-2"><span className="min-w-0 break-words [overflow-wrap:anywhere]">{wl.name}</span><span className="shrink-0"><StatusBadge status={wl.status} /></span></li>)}</ul>}
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">Berdasarkan data tersimpan terakhir.</p>
+      </section>
       <div className="space-y-4">
         <form method="get" className="grid gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex sm:flex-wrap sm:items-end">
           <input type="hidden" name="overviewTab" value={overviewTab} />
