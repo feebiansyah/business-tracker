@@ -5,7 +5,7 @@ import type { MetaCampaignReadClient, MetaReadPage } from "@/lib/meta-campaign-c
 import { creativeKinds, normalizeMetaCampaignSettings } from "./normalize";
 import type { MetaCampaignSettingsView } from "./types";
 
-type SettingsClient = Pick<MetaCampaignReadClient, "readSettingsPage" | "readStoryAttachments" | "page" | "claimObject" | "safeText">;
+type SettingsClient = Pick<MetaCampaignReadClient, "readSettingsPage" | "readCreatives" | "readStoryAttachments" | "page" | "claimObject" | "safeText">;
 
 type RecordValue = Record<string, unknown>;
 const asRecord = (value: unknown): RecordValue | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : null;
@@ -27,6 +27,31 @@ function attachmentTypes(value: unknown): Array<"Video" | "Gambar" | "Carousel">
     else if (media.includes("album") || type.includes("album") || type.includes("multi_share")) result.push("Carousel");
   }
   return [...new Set(result)];
+}
+
+async function resolveCreativeDetails(client: SettingsClient, ads: unknown[]) {
+  const ids = new Set<string>();
+  for (const raw of ads) {
+    const creative = asRecord(asRecord(raw)?.creative);
+    if (creative && creativeKinds(creative).length === 0 && typeof creative.id === "string" && /^[0-9]{1,100}$/.test(creative.id)) ids.add(creative.id);
+  }
+  if (!ids.size) return ads;
+  const details = new Map<string, RecordValue>();
+  const list = [...ids];
+  for (let index = 0; index < list.length; index += 50) {
+    const batch = list.slice(index, index + 50);
+    const payload = await client.readCreatives(batch);
+    for (const creativeId of batch) {
+      const detail = asRecord(payload[creativeId]);
+      if (detail?.id === creativeId) details.set(creativeId, detail);
+    }
+  }
+  return ads.map((raw) => {
+    const ad = asRecord(raw);
+    const creative = ad && asRecord(ad.creative);
+    const detail = creative && typeof creative.id === "string" ? details.get(creative.id) : undefined;
+    return ad && creative && detail ? { ...ad, creative: { ...creative, ...detail } } : raw;
+  });
 }
 
 async function resolveExistingPostTypes(client: SettingsClient, ads: unknown[]) {
@@ -98,6 +123,8 @@ export async function readMetaCampaignSettings(campaignId: string, client: Setti
     warnings.push(client.safeText(error instanceof Error ? error.message : "Daftar iklan belum dapat dibaca."));
   }
   if (ads.length) try {
+    try { ads = await resolveCreativeDetails(client, ads); }
+    catch (error) { if (error instanceof MetaReadError && error.kind === "INTEGRITY") throw error; }
     const fallback = await resolveExistingPostTypes(client, ads);
     ads = fallback.ads;
     if (!fallback.complete) complete = false;
@@ -106,6 +133,10 @@ export async function readMetaCampaignSettings(campaignId: string, client: Setti
     if (error instanceof MetaReadError && error.kind === "INTEGRITY") throw error;
     complete = false;
     warnings.push(client.safeText("Jenis konten postingan existing belum dapat dibaca dari Meta."));
+  }
+  if (ads.some((raw) => creativeKinds(asRecord(raw)?.creative).length === 0)) {
+    complete = false;
+    if (!warnings.some((warning) => warning.includes("Jenis konten"))) warnings.push("Jenis konten beberapa iklan tidak tersedia dari Meta.");
   }
   return normalizeMetaCampaignSettings({ adSets, ads, complete, warnings });
 }

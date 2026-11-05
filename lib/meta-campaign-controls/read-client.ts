@@ -8,9 +8,10 @@ const BASIC_FIELDS = ["id", "name", "account_id", "configured_status", "effectiv
 const TRANSIENT_CODES = new Set([1, 2, 4, 17, 32, 613]);
 const MAX_REQUESTS = 100;
 const MAX_OBJECTS = 5_000;
+const CREATIVE_FIELDS = ["id", "object_type", "video_id", "effective_object_story_id", "object_story_spec", "asset_feed_spec"] as const;
 const SETTINGS_FIELDS = {
   adsets: ["id", "name", "campaign_id", "created_time", "configured_status", "effective_status", "targeting"],
-  ads: ["id", "name", "campaign_id", "adset_id", "configured_status", "effective_status", "creative{id,name,object_type,video_id,effective_object_story_id,object_story_spec,asset_feed_spec}"],
+  ads: ["id", "name", "campaign_id", "adset_id", "configured_status", "effective_status", `creative{${CREATIVE_FIELDS.join(",")}}`],
 } as const;
 export type MetaReadPage = { rows: unknown[]; after: string | null };
 
@@ -129,6 +130,13 @@ export class MetaCampaignReadClient {
     const ids = [...new Set(storyIds)];
     if (!ids.length || ids.length > 50 || ids.some((id) => !/^[0-9]{1,100}_[0-9]{1,100}$/.test(id))) throw new MetaReadError("INTEGRITY", "ID postingan Meta untuk pembacaan jenis konten tidak valid.");
     return this.get("", ["id", "attachments{media_type,type,subattachments{media_type,type}}"], undefined, ids);
+  }
+
+  /** Fixed Marketing API multi-ID GET for creatives already returned by campaign/ads. */
+  async readCreatives(creativeIds: string[]) {
+    const ids = [...new Set(creativeIds)];
+    if (!ids.length || ids.length > 50 || ids.some((id) => !/^[0-9]{1,100}$/.test(id))) throw new MetaReadError("INTEGRITY", "ID Creative Meta tidak valid.");
+    return this.get("", [...CREATIVE_FIELDS], undefined, ids);
   }
 
   private observeMembership(path: string, after: string | undefined, payload: Record<string, unknown>) {
