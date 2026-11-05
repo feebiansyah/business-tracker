@@ -20,6 +20,7 @@ import { getMetaConfig } from "@/lib/meta/config";
 import { parseShopeeOverviewTab, shopeeOverviewTabs, withShopeeOverviewTab } from "@/lib/dashboard/shopee-overview-params";
 
 export const dynamic = "force-dynamic";
+const trafficDate = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeZone: "UTC" });
 
 export default async function ShopeeAccountDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
@@ -32,8 +33,8 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
       commissionImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
       clickImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
       trafficCredentials: { select: { provider: true } },
-      clickaduCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true } },
-      adsterraCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true } },
+      clickaduCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true, historySyncedThrough: true } },
+      adsterraCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true, historySyncedThrough: true } },
       _count: { select: { clickaduCampaignConfigs: true, adsterraCampaignConfigs: true } },
     },
   });
@@ -71,14 +72,26 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
   return (
     <section className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><Link href="/shopee" className="text-sm text-slate-500 hover:text-slate-900">← Akun Shopee</Link><div className="mt-3 flex items-center gap-3"><h2 className="text-2xl font-semibold tracking-tight text-slate-950">{account.name}</h2><StatusBadge status={account.status} /></div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500"><span>{account.lastMetaSyncAt ? `Terakhir Sync Meta: ${formatShopeeActivityTime(account.lastMetaSyncAt)}` : "Belum pernah Sync Meta"}</span><span>{account.commissionImports[0] ? `Terakhir Import Komisi: ${formatShopeeActivityTime(account.commissionImports[0].createdAt)}` : "Belum pernah Import Komisi"}</span><span>{account.clickImports[0] ? `Terakhir Import Klik: ${formatShopeeActivityTime(account.clickImports[0].createdAt)}` : "Belum pernah Import Klik"}</span></div></div>
+        <div><Link href="/shopee" className="text-sm text-slate-500 hover:text-slate-900">← Akun Shopee</Link><div className="mt-3 flex items-center gap-3"><h2 className="text-2xl font-semibold tracking-tight text-slate-950">{account.name}</h2><StatusBadge status={account.status} /></div></div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto"><Button variant="ghost" asChild><Link href={`/shopee/${account.id}/import`}>Import Shopee</Link></Button><Button asChild><Link href={`/meta/new?shopeeAccountId=${account.id}`}>Tambah WL</Link></Button></div>
       </div>
       <ShopeeAccountManagement accountId={account.id} accountName={account.name} />
       <TrafficBalances key={account.id} accounts={[{ id: account.id, name: account.name }]} variant="overview" />
-      <ShopeeOverviewSync key={`sync-${account.id}`} accountId={account.id} disabledReasons={disabledReasons} />
       <section aria-label="Pengingat pekerjaan" className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 text-sm">
         <h3 className="font-semibold text-slate-950">Pengingat pekerjaan</h3>
+        <h4 className="mt-2 text-xs font-semibold text-slate-600">Aktivitas terakhir</h4>
+        <div className="mt-2 grid min-w-0 gap-2 md:grid-cols-2">
+          <p className="min-w-0 rounded-lg bg-slate-50 p-2 text-slate-700">Sync Meta: {account.lastMetaSyncAt ? formatShopeeActivityTime(account.lastMetaSyncAt) : "Belum pernah"}</p>
+          <p className="min-w-0 rounded-lg bg-slate-50 p-2 text-slate-700">Import Komisi: {account.commissionImports[0] ? formatShopeeActivityTime(account.commissionImports[0].createdAt) : "Belum pernah"}</p>
+          <p className="min-w-0 rounded-lg bg-slate-50 p-2 text-slate-700">Import Klik: {account.clickImports[0] ? formatShopeeActivityTime(account.clickImports[0].createdAt) : "Belum pernah"}</p>
+          {[{ name: "Clickadu", configs: account.clickaduCampaignConfigs }, { name: "Adsterra", configs: account.adsterraCampaignConfigs }].map(({ name, configs }) => {
+            const unsynced = configs.filter((config) => config.historySyncedThrough === null).length;
+            const earliest = configs.reduce<Date | null>((value, config) => config.historySyncedThrough && (!value || config.historySyncedThrough < value) ? config.historySyncedThrough : value, null);
+            return <p key={name} className={`min-w-0 rounded-lg p-2 ${configs.length === 0 ? "bg-slate-50 text-slate-700" : unsynced > 0 ? "bg-red-50 text-red-900" : "bg-emerald-50 text-emerald-900"}`}>Sync {name}: {configs.length === 0 ? "Belum ada campaign" : unsynced === configs.length ? `${unsynced} campaign belum pernah Sync` : unsynced > 0 ? `${unsynced} campaign belum pernah Sync · lainnya data sampai ${trafficDate.format(earliest!)}` : `Data seluruh campaign sampai ${trafficDate.format(earliest!)}`}</p>;
+          })}
+        </div>
+        <div className="mt-3"><ShopeeOverviewSync key={`sync-${account.id}`} accountId={account.id} disabledReasons={disabledReasons} /></div>
+        <h4 className="mt-3 text-xs font-semibold text-slate-600">Perlu diperiksa</h4>
         <div className="mt-2 grid min-w-0 gap-2 md:grid-cols-2">
           <div className={`min-w-0 rounded-lg p-2 ${pendingNotes > 0 ? "bg-red-50 text-red-900" : "bg-emerald-50 text-emerald-900"}`}><p>Catatan: {pendingNotes > 0 ? `${pendingNotes} belum selesai` : "Tidak ada catatan belum selesai"}</p></div>
           <div className={`min-w-0 rounded-lg p-2 ${account.metaAccounts.length === 0 ? "bg-slate-50 text-slate-700" : emptyWls.length > 0 ? "bg-red-50 text-red-900" : "bg-emerald-50 text-emerald-900"}`}>
