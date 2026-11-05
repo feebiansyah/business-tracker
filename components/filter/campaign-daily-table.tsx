@@ -24,6 +24,7 @@ function percent(value: number | null) { return value === null ? "—" : `${valu
 function commission(value: number | null, imported: boolean) { const display = dailyCommissionDisplay(value, imported); return typeof display === "number" ? formatRupiah(display) : display; }
 
 function ManualCells({ mode, shopeeAccountId, campaignId, row, compact, onChange }: { mode: CampaignMode; shopeeAccountId: number; campaignId: number; row: DailyRow; compact: boolean; onChange: (patch: Partial<Pick<DailyRow, "note" | "completed">>) => void }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState("");
   function save(next: DailyRow) {
@@ -31,6 +32,7 @@ function ManualCells({ mode, shopeeAccountId, campaignId, row, compact, onChange
     startTransition(async () => {
       const result = await updateDailyMetricManualAction(shopeeAccountId, mode, campaignId, next.id, next.note ?? "", next.completed);
       setMessage(result.success ? "Tersimpan" : result.message);
+      if (result.success) router.refresh();
     });
   }
   return <>
