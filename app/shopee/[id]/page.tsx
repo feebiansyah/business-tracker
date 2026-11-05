@@ -28,7 +28,7 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
   const account = await prisma.shopeeAccount.findUnique({
     where: { id: shopeeAccountId },
     include: {
-      metaAccounts: { include: { businessManager: true }, orderBy: { name: "asc" } },
+      metaAccounts: { include: { businessManager: true, _count: { select: { campaigns: { where: { metaStatus: "ACTIVE" } } } } }, orderBy: { name: "asc" } },
       commissionImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
       clickImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
       trafficCredentials: { select: { provider: true } },
@@ -36,6 +36,7 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
     },
   });
   if (!account) notFound();
+  const emptyWls = account.metaAccounts.filter((wl) => wl._count.campaigns === 0);
   const rawSearchParams = await searchParams;
   const dashboard = await getShopeeDashboardData(shopeeAccountId, rawSearchParams, prisma);
   if (!dashboard) notFound();
@@ -66,6 +67,13 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
       <ShopeeAccountManagement accountId={account.id} accountName={account.name} />
       <TrafficBalances key={account.id} accounts={[{ id: account.id, name: account.name }]} variant="overview" />
       <ShopeeOverviewSync key={`sync-${account.id}`} accountId={account.id} disabledReasons={disabledReasons} />
+      <section aria-label="Campaign aktif WL terhubung" className={`min-w-0 rounded-xl border p-3 text-sm ${account.metaAccounts.length === 0 ? "border-slate-200 bg-slate-50 text-slate-700" : emptyWls.length > 0 ? "border-red-200 bg-red-50 text-red-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+        {account.metaAccounts.length === 0 ? <p>Belum ada WL terhubung.</p> : emptyWls.length === 0 ? <p className="font-medium">Semua WL memiliki campaign aktif.</p> : <>
+          <h3 className="font-semibold">WL tanpa campaign aktif ({emptyWls.length})</h3>
+          <ul className="mt-2 grid min-w-0 gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">{emptyWls.map((wl) => <li key={wl.id} className="flex min-w-0 items-center gap-2"><span className="min-w-0 break-words [overflow-wrap:anywhere]">{wl.name}</span><span className="shrink-0"><StatusBadge status={wl.status} /></span></li>)}</ul>
+        </>}
+        {account.metaAccounts.length > 0 && <p className="mt-1 text-xs opacity-80">Berdasarkan data sinkronisasi terakhir.</p>}
+      </section>
       <div className="space-y-4">
         <form method="get" className="grid gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex sm:flex-wrap sm:items-end">
           <input type="hidden" name="overviewTab" value={overviewTab} />
