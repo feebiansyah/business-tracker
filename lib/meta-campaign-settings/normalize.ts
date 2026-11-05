@@ -16,7 +16,8 @@ const COUNTRIES: Record<string, string> = { ID: "Indonesia" };
 
 function gender(targeting: UnknownRecord | null) {
   if (!targeting) return "Tidak tersedia";
-  if (targeting.genders === undefined) return "Tidak tersedia";
+  // Meta omits `genders` when the Ad Set targets every gender.
+  if (targeting.genders === undefined) return "Semua gender";
   const values = Array.isArray(targeting.genders) ? targeting.genders.filter((value): value is number => value === 1 || value === 2) : [];
   if (values.length === 2) return "Semua gender";
   if (values[0] === 1) return "Pria";
@@ -71,10 +72,11 @@ function placements(targeting: UnknownRecord | null) {
   return "Otomatis/Advantage+";
 }
 
-function creativeKinds(value: unknown): Array<"Video" | "Gambar" | "Carousel"> {
+export function creativeKinds(value: unknown): Array<"Video" | "Gambar" | "Carousel"> {
   const creative = record(value);
   if (!creative) return [];
   const result: Array<"Video" | "Gambar" | "Carousel"> = [];
+  for (const resolved of strings(creative.resolved_content_types)) if (["Video", "Gambar", "Carousel"].includes(resolved)) result.push(resolved as "Video" | "Gambar" | "Carousel");
   const type = text(creative.object_type)?.toUpperCase();
   if (type === "VIDEO" || creative.video_id !== undefined) result.push("Video");
   if (["PHOTO", "IMAGE"].includes(type ?? "")) result.push("Gambar");

@@ -46,7 +46,7 @@ export class MetaCampaignReadClient {
     return remaining;
   }
 
-  private async get(path: string, fields: string[], after?: string) {
+  private async get(path: string, fields: string[], after?: string, ids?: string[]) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const remaining = this.remaining();
       if (this.requests >= MAX_REQUESTS) throw new MetaReadError("LIMIT", "Batas 100 request/halaman tercapai; hierarchy belum lengkap.");
@@ -55,6 +55,7 @@ export class MetaCampaignReadClient {
       url.searchParams.set("fields", fields.join(","));
       url.searchParams.set("limit", "100");
       if (after) url.searchParams.set("after", after);
+      if (ids) url.searchParams.set("ids", ids.join(","));
       if (this.proof) url.searchParams.set("appsecret_proof", this.proof);
       let response: Response;
       let payload: Record<string, unknown>;
@@ -121,6 +122,13 @@ export class MetaCampaignReadClient {
   async readSettingsPage(campaignId: string, edge: "adsets" | "ads", after?: string) {
     if (!/^[0-9]{1,100}$/.test(campaignId) || (after !== undefined && !/^[\x21-\x7E]{1,4096}$/.test(after))) throw new MetaReadError("INTEGRITY", "ID/cursor pengaturan Meta tidak valid.");
     return this.get(`${campaignId}/${edge}`, [...SETTINGS_FIELDS[edge]], after);
+  }
+
+  /** One fixed multi-ID GET resolves existing-post media without one request per ad. */
+  async readStoryAttachments(storyIds: string[]) {
+    const ids = [...new Set(storyIds)];
+    if (!ids.length || ids.length > 50 || ids.some((id) => !/^[0-9]{1,100}_[0-9]{1,100}$/.test(id))) throw new MetaReadError("INTEGRITY", "ID postingan Meta untuk pembacaan jenis konten tidak valid.");
+    return this.get("", ["id", "attachments{media_type,type,subattachments{media_type,type}}"], undefined, ids);
   }
 
   private observeMembership(path: string, after: string | undefined, payload: Record<string, unknown>) {
