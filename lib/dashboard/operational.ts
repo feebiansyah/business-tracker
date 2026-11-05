@@ -4,8 +4,9 @@ export type OperationalAccountInput = {
   metaAccounts: { status?: string; spendHistorySyncedThrough: Date | null; activeCampaignCount: number }[];
   commissionCovered: boolean;
   clickCovered: boolean;
-  clickaduCampaignConfigs: { lastBlacklistReplacedAt: Date | null }[];
-  adsterraCampaignConfigs: { lastBlacklistReplacedAt: Date | null }[];
+  pendingNoteCount: number;
+  clickaduCampaignConfigs: { historySyncedThrough: Date | null }[];
+  adsterraCampaignConfigs: { historySyncedThrough: Date | null }[];
 };
 
 export type OperationalAccountStatus = {
@@ -16,8 +17,10 @@ export type OperationalAccountStatus = {
   commissionComplete: boolean;
   clickComplete: boolean;
   complete: boolean;
-  clickaduPendingReplacementCount: number;
-  adsterraPendingReplacementCount: number;
+  pendingNoteCount: number;
+  emptyActiveWlCount: number;
+  clickadu: { totalConfigCount: number; coveredConfigCount: number; complete: boolean };
+  adsterra: { totalConfigCount: number; coveredConfigCount: number; complete: boolean };
   needsAttention: boolean;
 };
 
@@ -40,16 +43,22 @@ export function getJakartaPreviousDate(now = new Date()) {
   return dateKey(jakartaToday);
 }
 
-export function buildOperationalDashboard(accounts: OperationalAccountInput[], targetDate: string, todayDate = getJakartaDate(new Date())) {
+function trafficCoverage(configs: { historySyncedThrough: Date | null }[], targetDate: string) {
+  const coveredConfigCount = configs.filter((config) => config.historySyncedThrough !== null && dateKey(config.historySyncedThrough) >= targetDate).length;
+  return { totalConfigCount: configs.length, coveredConfigCount, complete: coveredConfigCount === configs.length };
+}
+
+export function buildOperationalDashboard(accounts: OperationalAccountInput[], targetDate: string) {
   const statuses: OperationalAccountStatus[] = accounts.map((account) => {
     // WL yang sudah terkonfirmasi nonaktif/tidak tersedia tidak ditagih histori D-1.
     // WL aktif tetap mengikuti aturan kelengkapan yang sudah ada.
     const eligibleWl = account.metaAccounts.filter((wl) => wl.status === undefined || wl.status === "ACTIVE");
     const coveredWlCount = eligibleWl.filter((wl) => wl.spendHistorySyncedThrough !== null && dateKey(wl.spendHistorySyncedThrough) >= targetDate).length;
     const metaComplete = account.metaAccounts.length > 0 && coveredWlCount === eligibleWl.length;
-    const clickaduPendingReplacementCount = account.clickaduCampaignConfigs.filter((config) => config.lastBlacklistReplacedAt === null || getJakartaDate(config.lastBlacklistReplacedAt) !== todayDate).length;
-    const adsterraPendingReplacementCount = account.adsterraCampaignConfigs.filter((config) => config.lastBlacklistReplacedAt === null || getJakartaDate(config.lastBlacklistReplacedAt) !== todayDate).length;
-    const complete = metaComplete && account.commissionCovered && account.clickCovered;
+    const emptyActiveWlCount = account.metaAccounts.filter((wl) => wl.status === "ACTIVE" && wl.activeCampaignCount === 0).length;
+    const clickadu = trafficCoverage(account.clickaduCampaignConfigs, targetDate);
+    const adsterra = trafficCoverage(account.adsterraCampaignConfigs, targetDate);
+    const complete = metaComplete && account.commissionCovered && account.clickCovered && account.pendingNoteCount === 0 && emptyActiveWlCount === 0 && clickadu.complete && adsterra.complete;
     return {
       id: account.id,
       name: account.name,
@@ -58,9 +67,11 @@ export function buildOperationalDashboard(accounts: OperationalAccountInput[], t
       commissionComplete: account.commissionCovered,
       clickComplete: account.clickCovered,
       complete,
-      clickaduPendingReplacementCount,
-      adsterraPendingReplacementCount,
-      needsAttention: !complete || clickaduPendingReplacementCount > 0 || adsterraPendingReplacementCount > 0,
+      pendingNoteCount: account.pendingNoteCount,
+      emptyActiveWlCount,
+      clickadu,
+      adsterra,
+      needsAttention: !complete,
     };
   });
   return {

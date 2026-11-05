@@ -20,44 +20,36 @@ export default async function DashboardPage() {
   return <section className="min-w-0 space-y-4">
     <header><h2 className="text-2xl font-semibold tracking-tight text-slate-950">Dashboard</h2><p className="mt-1 text-sm text-slate-500">Target data: {targetLabel(data.targetDate)}</p></header>
     <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">{stats.map(([label, value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"><p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 text-xl font-semibold text-slate-950">{value}</p></div>)}</div>
-    <div className="grid min-w-0 items-start gap-4 min-[1440px]:grid-cols-[minmax(0,2fr)_minmax(28rem,1fr)]">
-      <div className="min-w-0 space-y-3">
-        <section aria-labelledby="dashboard-data-title" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <h3 id="dashboard-data-title" className="px-3 py-2 text-sm font-semibold text-slate-950">Status Data</h3>
-          <div className="max-w-full overflow-x-auto overscroll-x-contain">
-            <table className="w-full min-w-175 text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{["Shopee", "Meta", "Komisi", "Klik Shopee", "Status"].map((label) => <th key={label} className="px-3 py-2 font-medium">{label}</th>)}</tr></thead>
-              <tbody className="divide-y divide-slate-200">
-                {data.accounts.map((account) => <tr key={account.id}>
-                  <td className="px-3 py-2 align-top font-medium"><Link href={`/shopee/${account.id}`} className="text-blue-700 hover:underline">{account.name}</Link></td>
-                  <td className="px-3 py-2 align-top"><DataStatus complete={account.meta.complete} detail={`${account.meta.coveredWlCount}/${account.meta.totalWlCount} WL lengkap`} /></td>
-                  <td className="px-3 py-2 align-top"><DataStatus complete={account.commissionComplete} /></td>
-                  <td className="px-3 py-2 align-top"><DataStatus complete={account.clickComplete} /></td>
-                  <td className="px-3 py-2 align-top"><DataStatus complete={account.complete} detail={account.complete ? "LENGKAP" : "BELUM LENGKAP"} /></td>
-                </tr>)}
-                {data.accounts.length === 0 && <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-500">Belum ada akun Shopee.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <section aria-labelledby="dashboard-attention-title" className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-          <h3 id="dashboard-attention-title" className="text-sm font-semibold text-slate-950">Perlu Perhatian <span className="font-normal text-slate-500">· {data.summary.needsAttention} akun perlu dicek</span></h3>
-          {data.summary.needsAttention === 0 ? <p className="mt-1 text-sm text-emerald-700">Semua akun Shopee sudah lengkap untuk {targetLabel(data.targetDate)}.</p> : <div className="mt-2 divide-y divide-slate-200">
-            {data.accounts.filter((account) => account.needsAttention).map((account) => <div key={account.id} className="py-2 first:pt-0 last:pb-0">
-              <Link href={`/shopee/${account.id}`} className="text-sm font-medium text-blue-700 hover:underline">{account.name}</Link>
-              <ul className="mt-1 space-y-0.5 text-sm text-slate-600">
-                {!account.meta.complete && <li>• Meta: {account.meta.totalWlCount === 0 ? "belum ada WL terhubung" : `${account.meta.totalWlCount - account.meta.coveredWlCount} WL belum ter-cover sampai D-1`}</li>}
-                {!account.commissionComplete && <li>• Komisi: data D-1 belum diimport</li>}
-                {!account.clickComplete && <li>• Klik Shopee: data D-1 belum diimport</li>}
-                {account.clickaduPendingReplacementCount > 0 && <li>• Clickadu: {account.clickaduPendingReplacementCount > 1 ? `${account.clickaduPendingReplacementCount} campaign belum replace zone hari ini` : "belum replace zone hari ini"}</li>}
-                {account.adsterraPendingReplacementCount > 0 && <li>• Adsterra: {account.adsterraPendingReplacementCount > 1 ? `${account.adsterraPendingReplacementCount} campaign belum replace placement hari ini` : "belum replace placement hari ini"}</li>}
-              </ul>
-            </div>)}
-          </div>}
-        </section>
+    <section aria-labelledby="dashboard-work-title" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <h3 id="dashboard-work-title" className="px-3 py-2 text-sm font-semibold text-slate-950">Status pekerjaan per Shopee</h3>
+      <div className="max-w-full overflow-x-auto overscroll-x-contain">
+        <table className="w-full min-w-175 text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{["Shopee", "Data D-1", "Pengingat", "Status"].map((label) => <th key={label} className="px-3 py-2 font-medium">{label}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-200">
+            {data.accounts.map((account) => {
+              const reminders = [
+                account.pendingNoteCount > 0 ? `${account.pendingNoteCount} catatan belum selesai` : null,
+                account.emptyActiveWlCount > 0 ? `${account.emptyActiveWlCount} WL aktif tanpa campaign aktif` : null,
+                !account.clickadu.complete ? `Clickadu: ${account.clickadu.coveredConfigCount}/${account.clickadu.totalConfigCount} campaign ter-cover D-1` : null,
+                !account.adsterra.complete ? `Adsterra: ${account.adsterra.coveredConfigCount}/${account.adsterra.totalConfigCount} campaign ter-cover D-1` : null,
+              ].filter((message) => message !== null);
+              return <tr key={account.id}>
+                <td className="max-w-64 break-words px-3 py-2 align-top font-medium"><Link href={`/shopee/${account.id}`} className="text-blue-700 hover:underline">{account.name}</Link></td>
+                <td className="px-3 py-2 align-top"><div className="flex flex-wrap gap-x-3 gap-y-2">
+                  <div><p className="mb-1 text-xs text-slate-500">Meta</p><DataStatus complete={account.meta.complete} detail={`${account.meta.coveredWlCount}/${account.meta.totalWlCount} WL`} /></div>
+                  <div><p className="mb-1 text-xs text-slate-500">Komisi</p><DataStatus complete={account.commissionComplete} detail={account.commissionComplete ? "Lengkap" : "Belum"} /></div>
+                  <div><p className="mb-1 text-xs text-slate-500">Klik Shopee</p><DataStatus complete={account.clickComplete} detail={account.clickComplete ? "Lengkap" : "Belum"} /></div>
+                </div></td>
+                <td className="px-3 py-2 align-top">{reminders.length === 0 ? <p className="text-emerald-700">Tidak ada pengingat</p> : <ul className="space-y-1 text-amber-800">{reminders.map((message) => <li key={message}>{message}</li>)}</ul>}</td>
+                <td className="px-3 py-2 align-top"><DataStatus complete={account.complete} detail={account.complete ? "LENGKAP" : "PERLU DICEK"} /></td>
+              </tr>;
+            })}
+            {data.accounts.length === 0 && <tr><td colSpan={4} className="px-3 py-4 text-center text-slate-500">Belum ada akun Shopee.</td></tr>}
+          </tbody>
+        </table>
       </div>
-      <TrafficBalances accounts={data.accounts.map(({ id, name }) => ({ id, name }))} variant="dashboard" />
-    </div>
+    </section>
+    <TrafficBalances accounts={data.accounts.map(({ id, name }) => ({ id, name }))} variant="dashboard" />
     <AdsterraCampaignControls accounts={data.accounts.map((account) => ({ id: account.id, name: account.name, campaigns: account.adsterraCampaigns }))} />
   </section>;
 }
