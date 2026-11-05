@@ -79,18 +79,34 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
       <TrafficBalances key={account.id} accounts={[{ id: account.id, name: account.name }]} variant="overview" />
       <section aria-label="Pengingat pekerjaan" className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 text-sm">
         <h3 className="font-semibold text-slate-950">Pengingat pekerjaan</h3>
-        <h4 className="mt-2 text-xs font-semibold text-slate-600">Aktivitas terakhir</h4>
-        <div className="mt-2 grid min-w-0 gap-2 md:grid-cols-2">
-          <p className="min-w-0 rounded-lg bg-slate-50 p-2 text-slate-700">Sync Meta: {account.lastMetaSyncAt ? formatShopeeActivityTime(account.lastMetaSyncAt) : "Belum pernah"}</p>
-          <p className="min-w-0 rounded-lg bg-slate-50 p-2 text-slate-700">Import Komisi: {account.commissionImports[0] ? formatShopeeActivityTime(account.commissionImports[0].createdAt) : "Belum pernah"}</p>
-          <p className="min-w-0 rounded-lg bg-slate-50 p-2 text-slate-700">Import Klik: {account.clickImports[0] ? formatShopeeActivityTime(account.clickImports[0].createdAt) : "Belum pernah"}</p>
+        <div className="mt-3"><ShopeeOverviewSync key={`sync-${account.id}`} accountId={account.id} disabledReasons={disabledReasons} /></div>
+        <div className="mt-3 grid min-w-0 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <section aria-label="Shopee & Meta" className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+            <h4 className="text-sm font-semibold text-slate-950">Shopee &amp; Meta</h4>
+            <dl className="mt-2 divide-y divide-slate-100 text-slate-700">
+              <div className="py-2 first:pt-0"><dt className="text-xs text-slate-500">Sync Meta</dt><dd className="mt-0.5 break-words">{account.lastMetaSyncAt ? formatShopeeActivityTime(account.lastMetaSyncAt) : "Belum pernah"}</dd></div>
+              <div className="py-2"><dt className="text-xs text-slate-500">Import Komisi</dt><dd className="mt-0.5 break-words">{account.commissionImports[0] ? formatShopeeActivityTime(account.commissionImports[0].createdAt) : "Belum pernah"}</dd></div>
+              <div className="py-2 last:pb-0"><dt className="text-xs text-slate-500">Import Klik</dt><dd className="mt-0.5 break-words">{account.clickImports[0] ? formatShopeeActivityTime(account.clickImports[0].createdAt) : "Belum pernah"}</dd></div>
+            </dl>
+          </section>
           {[{ name: "Clickadu", configs: account.clickaduCampaignConfigs }, { name: "Adsterra", configs: account.adsterraCampaignConfigs }].map(({ name, configs }) => {
             const unsynced = configs.filter((config) => config.historySyncedThrough === null).length;
             const earliest = configs.reduce<Date | null>((value, config) => config.historySyncedThrough && (!value || config.historySyncedThrough < value) ? config.historySyncedThrough : value, null);
-            return <p key={name} className={`min-w-0 rounded-lg p-2 ${configs.length === 0 ? "bg-slate-50 text-slate-700" : unsynced > 0 ? "bg-red-50 text-red-900" : "bg-emerald-50 text-emerald-900"}`}>Sync {name}: {configs.length === 0 ? "Belum ada campaign" : unsynced === configs.length ? `${unsynced} campaign belum pernah Sync` : unsynced > 0 ? `${unsynced} campaign belum pernah Sync · lainnya data sampai ${trafficDate.format(earliest!)}` : `Data seluruh campaign sampai ${trafficDate.format(earliest!)}`}</p>;
+            const missing = configs.filter((config) => config.lastBlacklistReplacedAt === null);
+            const latest = configs.reduce<Date | null>((value, config) => config.lastBlacklistReplacedAt && (!value || config.lastBlacklistReplacedAt > value) ? config.lastBlacklistReplacedAt : value, null);
+            return <section key={name} aria-label={name} className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+              <h4 className="text-sm font-semibold text-slate-950">{name}</h4>
+              <dl className="mt-2 divide-y divide-slate-100">
+                <div className="pb-2"><dt className="text-xs text-slate-500">Cakupan Sync</dt><dd className={`mt-0.5 break-words ${configs.length === 0 ? "text-slate-700" : unsynced > 0 ? "text-red-900" : "text-emerald-900"}`}>{configs.length === 0 ? "Belum ada campaign" : unsynced === configs.length ? `${unsynced} campaign belum pernah Sync` : unsynced > 0 ? `${unsynced} campaign belum pernah Sync · lainnya data sampai ${trafficDate.format(earliest!)}` : `Data seluruh campaign sampai ${trafficDate.format(earliest!)}`}</dd></div>
+                <div className="pt-2"><dt className="text-xs text-slate-500">Riwayat Replace Blacklist</dt><dd className="mt-0.5 space-y-1 break-words text-slate-700">
+              <p>{configs.length === 0 ? "Belum ada campaign" : missing.length === configs.length ? "Belum ada riwayat Replace Blacklist" : missing.length > 0 ? `${missing.length} campaign belum memiliki riwayat Replace Blacklist` : `Riwayat Replace Blacklist terakhir ${formatShopeeActivityTime(latest!)}`}</p>
+              {missing.length > 0 && <ul className="space-y-0.5 text-xs">{missing.map((config, index) => <li key={`${config.campaignId}:${index}`} className="break-words [overflow-wrap:anywhere]">{config.label?.trim() || config.campaignId}</li>)}</ul>}
+              {missing.length > 0 && latest && <p className="text-xs">Riwayat Replace Blacklist terakhir {formatShopeeActivityTime(latest)}</p>}
+                </dd></div>
+              </dl>
+            </section>;
           })}
         </div>
-        <div className="mt-3"><ShopeeOverviewSync key={`sync-${account.id}`} accountId={account.id} disabledReasons={disabledReasons} /></div>
         <h4 className="mt-3 text-xs font-semibold text-slate-600">Perlu diperiksa</h4>
         <div className="mt-2 grid min-w-0 gap-2 md:grid-cols-2">
           <div className={`min-w-0 rounded-lg p-2 ${pendingNotes > 0 ? "bg-red-50 text-red-900" : "bg-emerald-50 text-emerald-900"}`}><p>Catatan: {pendingNotes > 0 ? `${pendingNotes} belum selesai` : "Tidak ada catatan belum selesai"}</p></div>
@@ -98,15 +114,6 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
             <p>WL: {account.metaAccounts.length === 0 ? "Belum ada WL terhubung" : emptyWls.length === 0 ? "Semua memiliki campaign aktif" : `${emptyWls.length} tanpa campaign aktif`}</p>
             {emptyWls.length > 0 && <ul className="mt-1 space-y-1">{emptyWls.map((wl) => <li key={wl.id} className="flex min-w-0 items-center gap-2"><span className="min-w-0 break-words [overflow-wrap:anywhere]">{wl.name}</span><span className="shrink-0"><StatusBadge status={wl.status} /></span></li>)}</ul>}
           </div>
-          {[{ name: "Clickadu", configs: account.clickaduCampaignConfigs }, { name: "Adsterra", configs: account.adsterraCampaignConfigs }].map(({ name, configs }) => {
-            const missing = configs.filter((config) => config.lastBlacklistReplacedAt === null);
-            const latest = configs.reduce<Date | null>((value, config) => config.lastBlacklistReplacedAt && (!value || config.lastBlacklistReplacedAt > value) ? config.lastBlacklistReplacedAt : value, null);
-            return <div key={name} className="min-w-0 space-y-1 rounded-lg bg-slate-50 p-2 text-slate-700">
-              <p>{name}: {configs.length === 0 ? "Belum ada campaign" : missing.length === configs.length ? "Belum ada riwayat Replace Blacklist" : missing.length > 0 ? `${missing.length} campaign belum memiliki riwayat Replace Blacklist` : `Riwayat Replace Blacklist terakhir ${formatShopeeActivityTime(latest!)}`}</p>
-              {missing.length > 0 && <ul className="space-y-0.5 text-xs">{missing.map((config, index) => <li key={`${config.campaignId}:${index}`} className="break-words [overflow-wrap:anywhere]">{config.label?.trim() || config.campaignId}</li>)}</ul>}
-              {missing.length > 0 && latest && <p className="text-xs">Riwayat Replace Blacklist terakhir {formatShopeeActivityTime(latest)}</p>}
-            </div>;
-          })}
         </div>
         <p className="mt-2 text-xs text-slate-500">Berdasarkan data tersimpan terakhir.</p>
       </section>
