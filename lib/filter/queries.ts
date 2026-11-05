@@ -45,7 +45,10 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
   const shopeeAccount = await prisma.shopeeAccount.findUnique({ where: { id: shopeeAccountId }, select: { id: true, name: true, metaAccounts: { select: { id: true, name: true }, orderBy: { name: "asc" } } } });
   if (!shopeeAccount) return null;
   const scope = { metaAccount: { shopeeAccountId } };
-  const where = { ...scope, ...campaignModeWhere(mode), ...(params.wl ? { metaAccountId: params.wl } : {}), ...(params.q ? { name: { contains: params.q } } : {}) };
+  const startFrom = params.from ? new Date(`${params.from}T00:00:00.000Z`) : null;
+  const startBefore = startFrom ? new Date(startFrom) : null;
+  if (startBefore) startBefore.setUTCDate(startBefore.getUTCDate() + 1);
+  const where = { ...scope, ...campaignModeWhere(mode), ...(params.wl ? { metaAccountId: params.wl } : {}), ...(params.q ? { name: { contains: params.q } } : {}), ...(startFrom && startBefore ? { startTime: { gte: startFrom, lt: startBefore } } : {}) };
   const [unresolvedBudgets, total] = await Promise.all([
     prisma.campaign.count({ where: { ...scope, effectiveDailyBudget: null } }),
     prisma.campaign.count({ where }),
@@ -66,11 +69,10 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
       FROM Campaign c
       INNER JOIN MetaAccount ma ON ma.id = c.metaAccountId
       LEFT JOIN CampaignDailyMetric dm ON dm.campaignId = c.id
-        AND (${params.from} = '' OR dm.date >= ${params.from})
-        AND (${params.to} = '' OR dm.date <= ${params.to})
       WHERE ma.shopeeAccountId = ${shopeeAccountId} AND ${modeSql.status} AND c.effectiveDailyBudget IS NOT NULL AND ${modeSql.budget}
         AND (${params.wl} IS NULL OR ma.id = ${params.wl})
         AND (${params.q} = '' OR LOCATE(${params.q}, c.name) > 0)
+        ${startFrom && startBefore ? Prisma.sql`AND c.startTime >= ${startFrom} AND c.startTime < ${startBefore}` : Prisma.empty}
       GROUP BY c.id, c.name, ma.name, c.startTime, c.effectiveDailyBudget
     ) summary
     ORDER BY ${orderColumn} IS NULL ASC, ${orderColumn} ${orderDirection}, summary.id ASC
