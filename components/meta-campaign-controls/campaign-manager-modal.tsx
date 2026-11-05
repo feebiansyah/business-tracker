@@ -24,7 +24,7 @@ function ObjectStatus({ object, action }: { object: MetaObjectView; action: Reac
       <div className="min-w-0 flex-1"><p className="break-words font-medium text-slate-950">{object.name ?? "Nama tidak tersedia"}</p><StatusBadge object={object}/></div>
       {action}
     </div>
-    <details className="text-xs"><summary className="w-fit cursor-pointer rounded py-1 text-slate-600 focus-visible:outline-2 focus-visible:outline-blue-600">Detail</summary><div className="space-y-1 pb-1">
+    <div className="text-xs"><div className="space-y-1 pb-1">
     <p className="break-all text-xs text-slate-500">ID: {object.id}</p>
     <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
       <div><dt className="inline text-slate-500">Konfigurasi: </dt><dd className="inline break-all font-medium">{object.configuredStatus ?? "Tidak tersedia"}</dd></div>
@@ -33,7 +33,7 @@ function ObjectStatus({ object, action }: { object: MetaObjectView; action: Reac
     {!object.diagnostics.available ? <p className="text-xs text-slate-500">Informasi masalah tidak tersedia dari Meta pada pembacaan ini.</p>
       : object.diagnostics.messages.length === 0 ? <p className="text-xs text-slate-500">Meta mengembalikan daftar masalah kosong pada pembacaan ini.</p>
         : <ul className="space-y-1 text-xs text-amber-800">{object.diagnostics.messages.map((message, index) => <li key={index} className="break-words">{message}</li>)}</ul>}
-    </div></details>
+    </div></div>
   </div>;
 }
 
@@ -73,12 +73,12 @@ export function CampaignManagerModal({ shopeeAccountId, campaignId, mode, campai
         <button type="button" disabled={actionLock.busy} onClick={() => { if (!actionLock.isLocked()) onClose(); }} aria-label="Tutup Kelola Iklan" autoFocus className="size-9 shrink-0 rounded-md text-xl hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50">×</button>
       </header>
       <div className="min-h-0 min-w-0 space-y-3 overflow-y-auto p-3 sm:p-4" aria-busy={state.loading}>
-        <details className="text-xs text-slate-600"><summary className="w-fit cursor-pointer rounded py-1 font-medium focus-visible:outline-2 focus-visible:outline-blue-600">Informasi dan status Meta</summary><div className="mt-1 space-y-2 break-words">
+        <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600"><p className="font-medium">Informasi dan status Meta</p><div className="mt-1 space-y-2 break-words">
+          {data && <><p className="break-all">Campaign ID: {data.target.campaign.id} · WL ID: {data.target.wl.id} · Shopee ID: {data.target.shopee.id}</p><p>Pembacaan terbaru: {readTime.format(new Date(data.readAt))} WIB</p></>}
           <p>Pembacaan tidak mengubah data. OFF hanya berjalan setelah konfirmasi rencana server. Konfigurasi ACTIVE tidak otomatis berarti sedang tayang; effective status dapat dipengaruhi campaign atau set iklan induk. Error atau status tidak tersedia bukan berarti OFF.</p>
           <p>Snapshot live sementara, bukan histori atau bukti akses write. Status dapat berubah selama pembacaan; daftar Filter/Fix tetap mengikuti Sync existing. Sync database tidak otomatis dilakukan.</p>
-          {data && <><p className="break-all">Campaign ID: {data.target.campaign.id} · WL ID: {data.target.wl.id} · Shopee ID: {data.target.shopee.id}</p><p>Pembacaan terbaru: {readTime.format(new Date(data.readAt))} WIB</p></>}
           {controls.attempted && <p>Utamakan hasil GET terverifikasi. Objek lain yang belum dibaca ulang masih memakai snapshot awal; Refresh manual untuk hierarchy terbaru.</p>}
-        </div></details>
+        </div></div>
         <MetaOffFeedback controls={controls}/>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p role="status" className="text-sm font-medium">{state.loading ? "Sedang membaca hierarchy…" : !result?.success ? "Pembacaan gagal" : data?.readState === "COMPLETE" ? "Pembacaan lengkap" : data?.readState === "INTEGRITY_ERROR" ? "Gagal validasi integritas — hierarchy tidak lengkap" : "Pembacaan parsial — hierarchy belum lengkap"}</p>
@@ -92,8 +92,8 @@ export function CampaignManagerModal({ shopeeAccountId, campaignId, mode, campai
           {data.adSets.length === 0 && <p className="p-3 text-sm text-slate-500">{data.adSetsComplete ? "Meta mengembalikan daftar set iklan kosong untuk campaign ini." : "Belum ada set iklan yang berhasil diverifikasi; jangan dianggap campaign kosong."}</p>}
           {data.adSets.map((adSet) => <section key={adSet.id} aria-label={`Set iklan ${adSet.id}`} className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
             <div className="p-3"><h3 className="mb-1 text-xs font-semibold uppercase text-slate-500">Ad Set · {adSet.ads.length} Iklan berhasil dimuat</h3><ObjectStatus object={display(adSet)} action={<button type="button" disabled={actionDisabled} onClick={() => void controls.begin("ADSET", adSet.id)} className="shrink-0 rounded-md border border-red-300 px-3 py-2 text-xs font-medium text-red-800 disabled:opacity-50">OFF Set Iklan</button>}/></div>
-            <details className="border-t border-slate-100"><summary className="cursor-pointer px-3 py-2 text-sm font-medium text-blue-800 focus-visible:outline-2 focus-visible:outline-blue-600">Lihat {adSet.ads.length} Iklan</summary><div className="divide-y divide-slate-100">{adSet.ads.map((ad) => <div key={ad.id} className="min-w-0 p-3 sm:pl-6"><ObjectStatus object={display(ad)} action={<button type="button" disabled={actionDisabled} onClick={() => void controls.begin("AD", ad.id)} aria-label={`OFF Iklan ${ad.name ?? ad.id}`} className="shrink-0 rounded-md border border-red-300 px-3 py-2 text-xs font-medium text-red-800 disabled:opacity-50">OFF</button>}/></div>)}</div>
-            {adSet.ads.length === 0 && <p className="p-3 text-sm text-slate-500">{data.adsComplete ? "Tidak ada iklan pada set ini dalam respons Meta." : "Belum ada iklan terverifikasi pada set ini; pembacaan iklan belum lengkap."}</p>}</details>
+            <div className="border-t border-slate-100"><p className="px-3 py-2 text-sm font-medium text-blue-800 focus-visible:outline-2 focus-visible:outline-blue-600">Iklan ({adSet.ads.length})</p><div className="divide-y divide-slate-100">{adSet.ads.map((ad) => <div key={ad.id} className="min-w-0 p-3 sm:pl-6"><ObjectStatus object={display(ad)} action={<button type="button" disabled={actionDisabled} onClick={() => void controls.begin("AD", ad.id)} aria-label={`OFF Iklan ${ad.name ?? ad.id}`} className="shrink-0 rounded-md border border-red-300 px-3 py-2 text-xs font-medium text-red-800 disabled:opacity-50">OFF</button>}/></div>)}</div>
+            {adSet.ads.length === 0 && <p className="p-3 text-sm text-slate-500">{data.adsComplete ? "Tidak ada iklan pada set ini dalam respons Meta." : "Belum ada iklan terverifikasi pada set ini; pembacaan iklan belum lengkap."}</p>}</div>
           </section>)}
         </>}
       </div>
