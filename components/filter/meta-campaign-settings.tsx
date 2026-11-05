@@ -10,6 +10,8 @@ const fields: Array<[keyof Pick<MetaAdSetSettings, "contentType" | "placements" 
   ["contentType", "Jenis konten"], ["placements", "Penempatan"], ["age", "Umur"], ["locations", "Lokasi"], ["gender", "Gender"],
 ];
 
+const isContentTypeWarning = (warning: string) => warning.startsWith("Jenis konten");
+
 function SettingsCard({ value, reference = false }: { value: MetaAdSetSettings; reference?: boolean }) {
   return <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
     <div className="mb-3 flex min-w-0 flex-wrap items-start justify-between gap-2">
@@ -41,6 +43,10 @@ export function MetaCampaignSettings({ mode, shopeeAccountId, campaignId }: { mo
   }, [campaignId, mode, shopeeAccountId]);
   useEffect(() => { const gate = gateRef.current; void load(); return () => { gate.invalidate(); }; }, [load]);
 
+  const warnings = result?.success ? result.data.warnings : [];
+  const visibleWarnings = warnings.filter((warning) => !isContentTypeWarning(warning));
+  const showPartialNotice = Boolean(result?.success && result.data.partial && (visibleWarnings.length > 0 || warnings.length === 0));
+
   return <div className="min-w-0 space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-xs text-slate-500">Dibaca langsung dari Meta. Tidak disimpan dan tidak mengubah iklan.</p>
@@ -52,7 +58,7 @@ export function MetaCampaignSettings({ mode, shopeeAccountId, campaignId }: { mo
       <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
         <span>Shopee: <strong className="text-slate-800">{result.target.shopeeName}</strong></span><span>WL: <strong className="text-slate-800">{result.target.wlName}</strong></span><span>Set iklan: <strong className="text-slate-800">{result.data.adSetCount}</strong></span>
       </div>
-      {result.data.partial ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><strong>Data sebagian.</strong> Kesamaan seluruh set iklan belum dapat dipastikan.{result.data.warnings.map((warning) => <p key={warning} className="mt-1 break-words text-xs">{warning}</p>)}</div> : null}
+      {showPartialNotice ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><strong>Data sebagian.</strong> Kesamaan seluruh set iklan belum dapat dipastikan.{visibleWarnings.map((warning) => <p key={warning} className="mt-1 break-words text-xs">{warning}</p>)}</div> : null}
       {!result.data.reference ? <p className="rounded-lg bg-slate-100 p-4 text-sm text-slate-600">Set iklan belum tersedia atau belum dapat dibaca.</p> : <SettingsCard value={result.data.reference} reference />}
       {result.data.sameAcrossAll ? <p className="rounded-lg bg-emerald-50 p-3 text-sm font-medium text-emerald-700">Sama pada {result.data.matchingAdSetCount} Set Iklan.</p> : null}
       {result.data.differences.length ? <div className="space-y-2"><p className="rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-800">Ada {result.data.differences.length} Set Iklan dengan pengaturan berbeda dari acuan.</p>{result.data.differences.map((difference) => <SettingsCard key={difference.id} value={difference} />)}</div> : null}

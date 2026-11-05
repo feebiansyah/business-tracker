@@ -26,7 +26,11 @@ test("settings UI loads through the read-only action and renders direct informat
   assert.match(source, /Umur/);
   assert.match(source, /Lokasi/);
   assert.match(source, /Gender/);
-  assert.match(source, /Data sebagian/);
+  assert.match(source, /isContentTypeWarning/);
+  assert.match(source, /visibleWarnings/);
+  assert.match(source, /showPartialNotice/);
+  assert.match(source, /warnings\.length === 0/);
+  assert.doesNotMatch(source, /\{result\.data\.partial \? <div/);
   assert.doesNotMatch(source, /<details/);
 });
 
