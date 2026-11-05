@@ -15,7 +15,7 @@ export async function CampaignWorkspacePage({ mode, params, searchParams }: { mo
   return <section className="min-w-0 space-y-6">
     <div className="min-w-0"><Link href={`/shopee/${data.shopeeAccount.id}`} className="text-sm text-slate-500 hover:text-slate-900">← Detail Shopee</Link><p className="mt-3 text-sm font-medium text-slate-500">{config.description}</p><h2 className="break-words text-2xl font-semibold tracking-tight text-slate-950">{config.title} — {data.shopeeAccount.name}</h2></div>
     {data.unresolvedBudgets > 0 && <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{data.unresolvedBudgets} campaign memiliki budget UNRESOLVED dan tidak dimasukkan.</p>}
-    <form method="get" className="grid min-w-0 grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-end">
+    <form method="get" className="sticky top-14 z-20 grid min-w-0 grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex sm:flex-wrap sm:items-end">
       <input type="hidden" name="sort" value={state.sort} /><input type="hidden" name="dir" value={state.dir} /><input type="hidden" name="pageSize" value={state.pageSize} />
       <label className="grid min-w-0 gap-1 text-xs font-medium text-slate-600 sm:min-w-56 sm:flex-1">Cari campaign<input name="q" defaultValue={state.q} placeholder="Cari campaign..." className={`${control} outline-none focus:ring-2 focus:ring-slate-300`} /></label>
       <label className="grid min-w-0 gap-1 text-xs font-medium text-slate-600">WL<select name="wl" defaultValue={state.wl ?? ""} className={control}><option value="">Semua WL</option>{data.metaAccounts.map((wl) => <option key={wl.id} value={wl.id}>{wl.name}</option>)}</select></label>
