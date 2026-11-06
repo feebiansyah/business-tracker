@@ -32,6 +32,8 @@ export default async function DashboardPage() {
                 account.emptyActiveWlCount > 0 ? `${account.emptyActiveWlCount} WL aktif tanpa campaign aktif` : null,
                 !account.clickadu.complete ? `Clickadu: ${account.clickadu.coveredConfigCount}/${account.clickadu.totalConfigCount} campaign ter-cover D-1` : null,
                 !account.adsterra.complete ? `Adsterra: ${account.adsterra.coveredConfigCount}/${account.adsterra.totalConfigCount} campaign ter-cover D-1` : null,
+                account.clickaduNeverReplacedCount > 0 ? `Clickadu: ${account.clickaduNeverReplacedCount} campaign belum Replace Zone` : null,
+                account.adsterraNeverReplacedCount > 0 ? `Adsterra: ${account.adsterraNeverReplacedCount} campaign belum Replace Placement` : null,
               ].filter((message) => message !== null);
               return <tr key={account.id}>
                 <td className="max-w-64 break-words px-3 py-2 align-top font-medium"><Link href={`/shopee/${account.id}`} className="text-blue-700 hover:underline">{account.name}</Link></td>

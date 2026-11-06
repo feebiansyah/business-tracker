@@ -5,8 +5,8 @@ export type OperationalAccountInput = {
   commissionCovered: boolean;
   clickCovered: boolean;
   pendingNoteCount: number;
-  clickaduCampaignConfigs: { historySyncedThrough: Date | null }[];
-  adsterraCampaignConfigs: { historySyncedThrough: Date | null }[];
+  clickaduCampaignConfigs: { historySyncedThrough: Date | null; lastBlacklistReplacedAt: Date | null }[];
+  adsterraCampaignConfigs: { historySyncedThrough: Date | null; lastBlacklistReplacedAt: Date | null }[];
 };
 
 export type OperationalAccountStatus = {
@@ -19,6 +19,8 @@ export type OperationalAccountStatus = {
   complete: boolean;
   pendingNoteCount: number;
   emptyActiveWlCount: number;
+  clickaduNeverReplacedCount: number;
+  adsterraNeverReplacedCount: number;
   clickadu: { totalConfigCount: number; coveredConfigCount: number; complete: boolean };
   adsterra: { totalConfigCount: number; coveredConfigCount: number; complete: boolean };
   needsAttention: boolean;
@@ -58,7 +60,9 @@ export function buildOperationalDashboard(accounts: OperationalAccountInput[], t
     const emptyActiveWlCount = account.metaAccounts.filter((wl) => wl.status === "ACTIVE" && wl.activeCampaignCount === 0).length;
     const clickadu = trafficCoverage(account.clickaduCampaignConfigs, targetDate);
     const adsterra = trafficCoverage(account.adsterraCampaignConfigs, targetDate);
-    const complete = metaComplete && account.commissionCovered && account.clickCovered && account.pendingNoteCount === 0 && emptyActiveWlCount === 0 && clickadu.complete && adsterra.complete;
+    const clickaduNeverReplacedCount = account.clickaduCampaignConfigs.filter((config) => config.lastBlacklistReplacedAt === null).length;
+    const adsterraNeverReplacedCount = account.adsterraCampaignConfigs.filter((config) => config.lastBlacklistReplacedAt === null).length;
+    const complete = metaComplete && account.commissionCovered && account.clickCovered && account.pendingNoteCount === 0 && emptyActiveWlCount === 0 && clickadu.complete && adsterra.complete && clickaduNeverReplacedCount === 0 && adsterraNeverReplacedCount === 0;
     return {
       id: account.id,
       name: account.name,
@@ -69,6 +73,8 @@ export function buildOperationalDashboard(accounts: OperationalAccountInput[], t
       complete,
       pendingNoteCount: account.pendingNoteCount,
       emptyActiveWlCount,
+      clickaduNeverReplacedCount,
+      adsterraNeverReplacedCount,
       clickadu,
       adsterra,
       needsAttention: !complete,
