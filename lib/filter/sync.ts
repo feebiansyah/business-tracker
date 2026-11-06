@@ -9,6 +9,7 @@ import { checkpointUpdatesForSuccessfulChunk, planCampaignCoverage } from "@/lib
 import { upsertCampaignDailyBudgetSnapshot } from "@/lib/dashboard/budget-snapshots";
 import { persistMetaAccountDailySpend } from "@/lib/dashboard/account-spend";
 import { buildMonthlyChunks, getAccountSpendHistoryStart } from "@/lib/filter/date-ranges";
+import { reconcileInactiveAccount } from "@/lib/filter/inactive-reconciliation";
 
 export type FilterSyncSummary = {
   wlTotal: number;
@@ -87,8 +88,10 @@ export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSum
           await prisma.metaAccount.update({ where: { id: wl.id }, data: { status: nextStatus } });
         }
         if (nextStatus !== "ACTIVE") {
+          await reconcileInactiveAccount(wl, client, today, summary);
           summary.wlSkipped += 1;
           summary.skippedWlNames.push(`${wl.name} (${nextStatus})`);
+          if (wlIndex < account.metaAccounts.length - 1) await client.waitBetweenAccounts();
           continue;
         }
       }
