@@ -59,8 +59,8 @@ export async function completeMetaSyncRunIfTerminal(db: Pick<Prisma.TransactionC
   return true;
 }
 
-export async function getMetaSyncProgress(db: Pick<Prisma.TransactionClient, "metaSyncRun" | "metaSyncWlProgress">, shopeeAccountId: number): Promise<MetaSyncProgress | null> {
-  const run = await db.metaSyncRun.findFirst({ where: { shopeeAccountId }, orderBy: { createdAt: "desc" } });
+export async function getMetaSyncProgress(db: Pick<Prisma.TransactionClient, "metaSyncRun" | "metaSyncWlProgress">, shopeeAccountId: number, runId?: string): Promise<MetaSyncProgress | null> {
+  const run = runId ? await db.metaSyncRun.findFirst({ where: { id: runId, shopeeAccountId } }) : await db.metaSyncRun.findUnique({ where: { activeShopeeAccountId: shopeeAccountId } }) ?? await db.metaSyncRun.findFirst({ where: { shopeeAccountId }, orderBy: { createdAt: "desc" } });
   if (!run) return null;
   const rows = await db.metaSyncWlProgress.findMany({ where: { runId: run.id }, orderBy: { position: "asc" }, select: { position: true, name: true, phase: true } });
   const current = rows.find(row => row.phase !== "DONE");

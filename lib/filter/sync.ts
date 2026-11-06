@@ -41,6 +41,7 @@ function startTime(value: string | undefined) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+// Legacy domain characterization entry point. Production Server Actions use runMetaSyncBatch.
 export async function syncFilter(shopeeAccountId: number): Promise<FilterSyncSummary> {
   if (!Number.isInteger(shopeeAccountId) || shopeeAccountId <= 0) throw new FilterSyncError("Akun Shopee tidak valid.");
   const account = await prisma.shopeeAccount.findUnique({

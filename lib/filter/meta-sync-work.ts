@@ -15,6 +15,7 @@ export type SyncCursor = {
   inactive?: boolean; step?: "CAMPAIGNS" | "ADSETS" | "PERSIST" | "PLAN";
   after?: string; seen?: string[]; campaigns?: MetaCampaign[]; adSets?: MetaAdSet[]; offset?: number;
   coverage?: SyncCoverage; rangeIndex?: number; spendCheckpoint?: string | null;
+  knownCampaigns?: SyncCampaignCoverage[]; persisted?: SyncCampaignCoverage[];
 };
 export type MetaSyncWorkUnit = { kind: "STATUS" | "METADATA" | "DONE" | "ADVANCE" } | { kind: "ACCOUNT_SPEND" | "CAMPAIGN_INSIGHTS"; range: { since: string; until: string }; campaignIds?: number[] };
 
@@ -41,7 +42,8 @@ export function buildMetaSyncCoverage(input: { inactive: boolean; spendCheckpoin
 export function planNextMetaSyncUnit(progress: { phase: string; cursor: SyncCursor }): MetaSyncWorkUnit {
   if (progress.phase === "ACCOUNT_SPEND" || progress.phase === "CAMPAIGN_INSIGHTS") {
     const range = (progress.phase === "ACCOUNT_SPEND" ? progress.cursor.coverage?.spend : progress.cursor.coverage?.insights)?.[progress.cursor.rangeIndex ?? 0];
-    return range ? { kind: progress.phase, range: { since: range.since, until: range.until }, ...("campaignIds" in range ? { campaignIds: range.campaignIds } : {}) } : { kind: "ADVANCE" };
+    const campaignIds = progress.phase === "CAMPAIGN_INSIGHTS" ? progress.cursor.coverage?.insights[progress.cursor.rangeIndex ?? 0]?.campaignIds : undefined;
+    return range ? { kind: progress.phase, range: { since: range.since, until: range.until }, ...(campaignIds ? { campaignIds } : {}) } : { kind: "ADVANCE" };
   }
   return { kind: progress.phase as Extract<MetaSyncPhase, "STATUS" | "METADATA" | "DONE"> };
 }
