@@ -16,6 +16,7 @@ export type SyncCursor = {
   after?: string; seen?: string[]; campaigns?: MetaCampaign[]; adSets?: MetaAdSet[]; offset?: number;
   coverage?: SyncCoverage; rangeIndex?: number; spendCheckpoint?: string | null;
   knownCampaigns?: SyncCampaignCoverage[]; persisted?: SyncCampaignCoverage[];
+  metadataDate?: string; budgetSnapshotEligible?: boolean;
 };
 export type MetaSyncWorkUnit = { kind: "STATUS" | "METADATA" | "DONE" | "ADVANCE" } | { kind: "ACCOUNT_SPEND" | "CAMPAIGN_INSIGHTS"; range: { since: string; until: string }; campaignIds?: number[] };
 

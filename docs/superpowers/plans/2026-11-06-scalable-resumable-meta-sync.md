@@ -392,3 +392,11 @@ Review concurrency, lease recovery, checkpoint ordering, midnight boundary, D-1 
 - [ ] **Step 6: Commit any approved verification-only fixes and push**
 
 Push only to `fix/meta-sync-scalable-resume`. Do not merge or deploy. Report SHA, exact files changed, migration, targeted/full test counts, build/static results, and known limitations.
+
+### Verification outcome (2026-11-06)
+
+- Tasks 1–7 implemented with fake-provider/database red/green coverage; final targeted suite: 70 passed / 0 failed. Scale fixtures cover 61 WL and two WL with 300 campaigns each, March history, phase resume, repeated runs, rate limiting, transaction retries and stale owners.
+- Full suite: 603 passed / 74 failed. All 74 failing names match the baseline suite (564 passed / 74 failed before the three new characterization cases); no existing failures were repaired in this branch.
+- TypeScript, scoped ESLint, Prisma validation, webpack production build and diff whitespace checks passed. Native component mock measured no horizontal overflow at exact 390px and 1440px viewports.
+- Independent review corrections preserve usage-aware inter-WL pacing across fresh clients and honor HTTP-date Retry-After within the opt-in deadline. A local fake HTTP stream confirms deadline abort closes a stalled response body.
+- The migration is a review artifact only; it was not applied. Real MySQL locking/deadlocks and live Meta cursor longevity remain unverified. No live Meta/database writes, merge or deploy were performed.

@@ -51,11 +51,12 @@ export async function runMetaSyncBatch({ shopeeAccountId, owner, now = new Date(
     if (!wl) throw new Error("WL tidak lagi berada dalam scope akun Shopee.");
     check();
     client = new MetaGraphClient();
+    client.restoreSyncUsagePercent(lease.usagePercent);
     const cursor = current.cursor as unknown as SyncCursor;
     const unit = planNextMetaSyncUnit({ phase: current.phase, cursor });
     const save = async (tx: Prisma.TransactionClient, phase: string, next: SyncCursor, status = "RUNNING") => {
       await tx.metaSyncWlProgress.update({ where: { id: current.id }, data: { phase, cursor: next as unknown as Prisma.InputJsonValue, status, error: null } });
-      await tx.metaSyncRun.update({ where: { id: run.id }, data: { status: "RUNNING", summary: summary as unknown as Prisma.InputJsonValue, error: null } });
+      await tx.metaSyncRun.update({ where: { id: run.id }, data: { status: "RUNNING", summary: summary as unknown as Prisma.InputJsonValue, usagePercent: client!.getSyncUsagePercent(), error: null } });
       await completeMetaSyncRunIfTerminal(tx,run.id,new Date());
     };
     const finish = async (tx: Prisma.TransactionClient) => {
@@ -69,6 +70,12 @@ export async function runMetaSyncBatch({ shopeeAccountId, owner, now = new Date(
       if (!after) delete next.after;
       return next;
     };
+    const observedMetadata = (next: SyncCursor) => {
+      const observedDate = syncDate(new Date());
+      next.metadataDate = cursor.metadataDate ?? observedDate;
+      next.budgetSnapshotEligible = (cursor.budgetSnapshotEligible ?? true) && next.metadataDate === observedDate;
+      return next;
+    };
     if (unit.kind === "STATUS") {
       const status = await client.getSyncAccountStatus(current.accountId,options);
       await transaction(async tx => {
@@ -80,12 +87,12 @@ export async function runMetaSyncBatch({ shopeeAccountId, owner, now = new Date(
     } else if (unit.kind === "METADATA") {
       if (cursor.step === "CAMPAIGNS") {
         const page = await client.getSyncPage<MetaCampaign>("campaigns",current.accountId,undefined,{ ...options, after: cursor.after });
-        const next = nextPage(page.after); next.campaigns = [...(cursor.campaigns ?? []),...page.data];
+        const next = observedMetadata(nextPage(page.after)); next.campaigns = [...(cursor.campaigns ?? []),...page.data];
         if (!page.after) { next.step = !cursor.inactive || next.campaigns.some(c => resolveEffectiveDailyBudget(c,[]).source === "UNRESOLVED") ? "ADSETS" : "PERSIST"; }
         await transaction(tx => save(tx,"METADATA",next));
       } else if (cursor.step === "ADSETS") {
         const page = await client.getSyncPage<MetaAdSet>("adSets",current.accountId,undefined,{ ...options, after: cursor.after });
-        const next = nextPage(page.after); next.adSets = [...(cursor.adSets ?? []),...page.data];
+        const next = observedMetadata(nextPage(page.after)); next.adSets = [...(cursor.adSets ?? []),...page.data];
         if (!page.after) next.step = "PERSIST";
         await transaction(tx => save(tx,"METADATA",next));
       } else if (cursor.step === "PERSIST") {
@@ -99,7 +106,7 @@ export async function runMetaSyncBatch({ shopeeAccountId, owner, now = new Date(
             check();
             const metadata = campaignSyncMetadata(campaign,sets.get(campaign.id) ?? [],wl.id);
             const stored = await upsertCampaignMetadata(metadata,tx); persisted.push(asCoverage(stored));
-            if (!cursor.inactive && metadata.effectiveDailyBudget !== null) await upsertCampaignDailyBudgetSnapshot(tx,stored.id,run.targetDate.toISOString().slice(0,10),metadata.effectiveDailyBudget);
+            if (!cursor.inactive && metadata.effectiveDailyBudget !== null && cursor.budgetSnapshotEligible && cursor.metadataDate === syncDate(new Date())) await upsertCampaignDailyBudgetSnapshot(tx,stored.id,cursor.metadataDate,metadata.effectiveDailyBudget);
             if (metadata.budgetSource === "UNRESOLVED") summary.unresolvedBudgets++;
             summary.campaignsProcessed++;
           }
@@ -156,7 +163,7 @@ export async function runMetaSyncBatch({ shopeeAccountId, owner, now = new Date(
     // Do not release while HTTP, backoff or a DB transaction is still pending: all were awaited above.
     if (paused) {
       await transaction(async tx => {
-        await tx.metaSyncRun.update({ where: { id: run.id }, data: { status: isRateLimit(error) ? "PAUSED_RATE_LIMIT" : "RUNNING", error: error instanceof MetaSyncPauseError ? error.message : "Sync dijeda karena batas request Meta. Lanjutkan setelah beberapa saat." } });
+        await tx.metaSyncRun.update({ where: { id: run.id }, data: { status: isRateLimit(error) ? "PAUSED_RATE_LIMIT" : "RUNNING", usagePercent: client?.getSyncUsagePercent() ?? lease.usagePercent, error: error instanceof MetaSyncPauseError ? error.message : "Sync dijeda karena batas request Meta. Lanjutkan setelah beberapa saat." } });
       }).catch(() => { /* An expired/stale lease cannot publish a result; cursor remains resumable. */ });
       return result(false,true);
     }
@@ -169,7 +176,7 @@ export async function runMetaSyncBatch({ shopeeAccountId, owner, now = new Date(
         summary.wlSkipped++; summary.skippedWlNames.push(`${current.name} (UNAVAILABLE)`);
       } else { summary.wlFailed++; summary.failedWlNames.push(current.name); }
       await tx.metaSyncWlProgress.update({ where: { id: current.id }, data: { phase: "DONE", status: unavailable ? "SKIPPED" : "FAILED", cursor: {}, error: unavailable ? null : safeError(error) } });
-      await tx.metaSyncRun.update({ where: { id: run.id }, data: { status: "RUNNING", summary: summary as unknown as Prisma.InputJsonValue, error: unavailable ? null : safeError(error) } });
+      await tx.metaSyncRun.update({ where: { id: run.id }, data: { status: "RUNNING", summary: summary as unknown as Prisma.InputJsonValue, usagePercent: client?.getSyncUsagePercent() ?? lease.usagePercent, error: unavailable ? null : safeError(error) } });
       await completeMetaSyncRunIfTerminal(tx,run.id,new Date());
     });
     return result();

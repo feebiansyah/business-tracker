@@ -6,6 +6,7 @@ CREATE TABLE `MetaSyncRun` (
   `targetDate` DATE NOT NULL,
   `status` VARCHAR(32) NOT NULL DEFAULT 'RUNNING',
   `generation` INTEGER NOT NULL DEFAULT 0,
+  `usagePercent` INTEGER NOT NULL DEFAULT 0,
   `leaseOwner` VARCHAR(64) NULL,
   `leaseExpiresAt` DATETIME(3) NULL,
   `summary` JSON NOT NULL,

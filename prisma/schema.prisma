@@ -237,6 +237,7 @@ model MetaSyncRun {
   targetDate           DateTime @db.Date
   status               String   @default("RUNNING") @db.VarChar(32)
   generation           Int      @default(0)
+  usagePercent         Int      @default(0)
   leaseOwner           String?  @db.VarChar(64)
   leaseExpiresAt       DateTime?
   summary              Json

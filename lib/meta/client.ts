@@ -104,6 +104,12 @@ export class MetaGraphClient {
   }
 
   // Opt-in only. Legacy all-page methods below retain their original contract.
+  restoreSyncUsagePercent(value: number) {
+    this.usagePercent = Number.isFinite(value) && value >= 0 ? value : 0;
+  }
+
+  getSyncUsagePercent() { return this.usagePercent; }
+
   async getSyncAccountStatus(accountId: string, options: MetaSyncReadOptions): Promise<number | undefined> {
     const url = new URL(`${this.baseUrl}/act_${encodeURIComponent(accountId)}`);
     url.searchParams.set("fields", "account_status");
@@ -157,7 +163,9 @@ export class MetaGraphClient {
         if (response.ok && !payload.error) return payload;
         const errorCode = Number(payload.error?.code);
         if (attempt < MAX_RETRIES && TEMPORARY_ERROR_CODES.has(errorCode)) {
-          const retryAfter = Number(response.headers.get("retry-after"))*1000;
+          const rawRetryAfter = response.headers.get("retry-after");
+          const delaySeconds = Number(rawRetryAfter);
+          const retryAfter = rawRetryAfter && !Number.isFinite(delaySeconds) ? Date.parse(rawRetryAfter)-Date.now() : delaySeconds*1000;
           const wait = Math.max(BASE_RETRY_DELAY_MS*2**attempt, Number.isFinite(retryAfter) ? retryAfter : 0);
           if (wait >= options.deadline-Date.now()) throw new MetaSyncPauseError("RETRY_AFTER",[17,32,613].includes(errorCode));
           await new Promise<void>((resolve,reject) => {
