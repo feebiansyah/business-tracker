@@ -78,6 +78,7 @@ model ShopeeAccount {
   clickaduCampaignConfigs ClickaduCampaignConfig[]
   adsterraCampaignConfigs AdsterraCampaignConfig[]
   trafficCredentials      TrafficCredential[]
+  metaSyncRuns            MetaSyncRun[]
 }
 
 model TrafficCredential {
@@ -226,6 +227,44 @@ model MetaAccount {
   shopeeAccount   ShopeeAccount?          @relation(fields: [shopeeAccountId], references: [id])
   campaigns       Campaign[]
   dailySpends     MetaAccountDailySpend[]
+  metaSyncProgress MetaSyncWlProgress[]
+}
+
+model MetaSyncRun {
+  id                    String   @id @default(cuid()) @db.VarChar(36)
+  shopeeAccountId       Int
+  activeShopeeAccountId Int?     @unique
+  targetDate           DateTime @db.Date
+  status               String   @default("RUNNING") @db.VarChar(32)
+  generation           Int      @default(0)
+  leaseOwner           String?  @db.VarChar(64)
+  leaseExpiresAt       DateTime?
+  summary              Json
+  error                String?  @db.VarChar(500)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  shopeeAccount        ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
+  progress             MetaSyncWlProgress[]
+
+  @@index([shopeeAccountId, createdAt])
+}
+
+model MetaSyncWlProgress {
+  id            String   @id @default(cuid()) @db.VarChar(36)
+  runId         String   @db.VarChar(36)
+  metaAccountId Int?
+  accountId     String   @db.VarChar(191)
+  name          String   @db.VarChar(191)
+  position      Int
+  status        String   @default("PENDING") @db.VarChar(16)
+  phase         String   @default("STATUS") @db.VarChar(32)
+  cursor        Json
+  error         String?  @db.VarChar(500)
+  run           MetaSyncRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  metaAccount   MetaAccount? @relation(fields: [metaAccountId], references: [id], onDelete: SetNull)
+
+  @@unique([runId, position])
+  @@unique([runId, metaAccountId])
 }
 
 model MetaAccountDailySpend {
