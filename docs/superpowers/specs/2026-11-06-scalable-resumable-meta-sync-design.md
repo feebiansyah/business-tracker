@@ -82,6 +82,10 @@ This is simpler technically but creates operator burden and makes omissions like
 
 ## Architecture
 
+### Approved client scope extension
+
+The resumable path uses an opt-in page interface in `lib/meta/client.ts` (and focused client tests). Existing all-page methods retain their default behavior. A unit has a 45-second deadline, a 30-second HTTP deadline with 10-second request caps, and a 120-second lease. Fetch/body reads, pagination boundaries, retry backoff and Retry-After observe abort/deadline; excessive Retry-After returns an identified pause rather than waiting beyond the unit. One page cursor is persisted with the successful page; date coverage advances only after the final page. Metadata is not complete until all campaign/required Ad Set pages and bounded metadata writes finish. The lease is fenced and is released only after awaited work has stopped. No Promise.race-only cancellation is used for provider work.
+
 ### Persisted run and progress
 
 Add sync-specific persistence scoped to one Shopee account. It records:

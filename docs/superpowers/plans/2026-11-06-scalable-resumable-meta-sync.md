@@ -12,6 +12,8 @@
 
 ## Global Constraints
 
+- Approved extension: modify `lib/meta/client.ts` and focused Meta client tests for opt-in abortable deadline/cursor pagination only. Preserve every existing method's default behavior. Implement/test this prerequisite before Task 5's executor; persist page cursors, advance date checkpoints only on final page, and keep lease longer than unit deadline plus safety margin. Record implementation details in the design's approved extension.
+
 - Scope is only Meta Sync scalability, resumability, locking, progress, and unit-scoped transient retry.
 - Preserve Asia/Jakarta boundaries, D-1 overlap, ACTIVE through today, INACTIVE through yesterday, UNAVAILABLE handling, budget/status rules, and all current checkpoints.
 - Preserve existing metric meanings and Meta-derived field mappings.
