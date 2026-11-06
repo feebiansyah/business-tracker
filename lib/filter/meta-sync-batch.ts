@@ -16,9 +16,9 @@ const isRateLimit = (error: unknown) => error instanceof MetaApiError && [4,17,3
 const safeError = (error: unknown) => error instanceof MetaApiError ? `Pembacaan Meta gagal${error.code ? ` (kode ${error.code})` : ""}.` : "Unit Sync gagal disimpan. WL lain dapat dilanjutkan.";
 const asCoverage = (c: { id: number; metaCampaignId: string; startTime: Date | null; historySyncedThrough: Date | null; metaStatus?: string | null; effectiveDailyBudget?: { toNumber(): number } | null }): SyncCampaignCoverage => ({ id: c.id, metaCampaignId: c.metaCampaignId, startDate: c.startTime ? syncDate(c.startTime) : null, historySyncedThrough: c.historySyncedThrough ? syncDate(c.historySyncedThrough) : null, metaStatus: c.metaStatus ?? null, effectiveDailyBudget: c.effectiveDailyBudget?.toNumber() ?? null });
 
-export async function runMetaSyncBatch({ shopeeAccountId, owner, now = new Date() }: { shopeeAccountId: number; owner: string; now?: Date }): Promise<MetaSyncBatchResult> {
+export async function runMetaSyncBatch({ shopeeAccountId, owner, now = new Date(), startedAt = Date.now() }: { shopeeAccountId: number; owner: string; now?: Date; startedAt?: number }): Promise<MetaSyncBatchResult> {
   if (!Number.isInteger(shopeeAccountId) || shopeeAccountId <= 0 || !owner || owner.length > 64) throw new Error("Akun Shopee tidak valid.");
-  const startedAt = Date.now();
+  if (Date.now()-startedAt >= META_SYNC_UNIT_MS) throw new MetaSyncPauseError("DEADLINE");
   const run = await startOrResumeMetaSyncRun(prisma,shopeeAccountId,syncDate(now),now);
   const lease = await claimMetaSyncLease(prisma,run.id,owner,new Date());
   const result = async (blocked = false, paused = false): Promise<MetaSyncBatchResult> => {
