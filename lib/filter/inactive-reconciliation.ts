@@ -8,6 +8,7 @@ import { checkpointUpdatesForSuccessfulChunk, planCampaignCoverage } from "@/lib
 import { buildMonthlyChunks, getAccountSpendHistoryStart } from "@/lib/filter/date-ranges";
 import { persistMetaAccountDailySpend } from "@/lib/dashboard/account-spend";
 import type { FilterSyncSummary } from "@/lib/filter/sync";
+import { inactiveThroughDate } from "@/lib/filter/meta-sync-work";
 
 type InactiveAccount = { id: number; accountId: string; spendHistorySyncedThrough: Date | null };
 
@@ -16,9 +17,7 @@ function indonesiaDate(value: Date) {
 }
 
 export async function reconcileInactiveAccount(wl: InactiveAccount, client: MetaGraphClient, today: string, summary: FilterSyncSummary) {
-  const previousDay = new Date(today + "T00:00:00.000Z");
-  previousDay.setUTCDate(previousDay.getUTCDate() - 1);
-  const through = previousDay.toISOString().slice(0, 10);
+  const through = inactiveThroughDate(today);
   const knownCampaigns = await prisma.campaign.findMany({
     where: { metaAccountId: wl.id },
     select: { id: true, metaCampaignId: true, startTime: true, historySyncedThrough: true },
