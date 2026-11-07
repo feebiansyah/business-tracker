@@ -8,8 +8,8 @@ import { retryMetaSyncTransaction } from "@/lib/filter/persistence";
 import { accountId, businessDate, cpc, dateValue, metaId, nameValue, readInsight, slotValue, statusValue } from "./model";
 import type { PrefilterBatch, PrefilterData, PrefilterProgress, PrefilterSlot } from "./types";
 
-type Db = Pick<PrismaClient, "shopeeAccount" | "metaPrefilterRun" | "metaPrefilterRow" | "$transaction">;
-type Tx = Pick<Prisma.TransactionClient, "shopeeAccount" | "metaPrefilterRun" | "metaPrefilterRow">;
+type Db = Pick<PrismaClient, "shopeeAccount" | "campaign" | "metaPrefilterRun" | "metaPrefilterRow" | "$transaction">;
+type Tx = Pick<Prisma.TransactionClient, "shopeeAccount" | "campaign" | "metaPrefilterRun" | "metaPrefilterRow">;
 type Scope = { id: number; name: string; accountId: string }[];
 type Cursor = { index: number; phase: "CAMPAIGNS" | "INSIGHTS" | "SKIP" | "PRUNE" | "PUBLISH"; after?: string; seen?: string[]; skipReason?: string };
 type Client = Pick<MetaGraphClient, "getSyncPage" | "restoreSyncUsagePercent" | "getSyncUsagePercent">;
@@ -33,6 +33,13 @@ async function accountScope(db: Tx, id: number) {
 function validScope(wls: Scope): Scope { return wls.map(w => ({ id: w.id, name: w.name.slice(0,191), accountId: accountId(w.accountId) })).sort((a,b)=>a.id-b.id); }
 function sameScope(a: Scope,b: Scope) { return a.length === b.length && a.every((w,i)=>w.id === b[i].id && w.accountId === b[i].accountId); }
 
+async function firstDayIds(db: Tx, ids: string[], date: string): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const stored = await db.campaign.findMany({ where: { metaCampaignId: { in: ids } }, select: { metaCampaignId: true, firstDeliveryEligible: true, firstDeliveryDate: true } });
+  const excluded = new Set(stored.filter(c=>!c.firstDeliveryEligible || c.firstDeliveryDate !== null && c.firstDeliveryDate.toISOString().slice(0,10) !== date).map(c=>c.metaCampaignId));
+  return new Set(ids.filter(id=>!excluded.has(id)));
+}
+
 export async function readPrefilterData(shopeeAccountId: number, db: Db = prisma, now = new Date()): Promise<PrefilterData> {
   if (!Number.isSafeInteger(shopeeAccountId) || shopeeAccountId <= 0) throw new SafeError("Akun Shopee tidak valid.");
   return db.$transaction(async tx => {
@@ -44,7 +51,9 @@ export async function readPrefilterData(shopeeAccountId: number, db: Db = prisma
   ]);
   const ids = [awal?.id,akhir?.id].filter((id): id is string => !!id);
   const rows = ids.length ? await tx.metaPrefilterRow.findMany({ where: { runId: { in: ids }, spend: { gt: 0 } }, orderBy: [{ campaignName: "asc" }, { metaCampaignId: "asc" }] }) : [];
-  const snapshot = (run: MetaPrefilterRun | null) => run ? { runId: run.id, requestedAt: run.requestedAt.toISOString(), finishedAt: run.finishedAt!.toISOString(), skipped: skippedNames(run), rows: rows.filter(r=>r.runId === run.id).map(r=>({ metaCampaignId: r.metaCampaignId, campaignName: r.campaignName, metaAccountId: r.metaAccountId, wlName: r.wlName, configuredStatus: r.configuredStatus, effectiveStatus: r.effectiveStatus, spend: r.spend!.toString(), withFee: new Prisma.Decimal(r.spend!.toString()).mul("1.05").toString(), clicks: r.clicks?.toString() ?? null, cpc: cpc(r.spend!.toString(),r.clicks) })) } : null;
+  // Also filter snapshots published before first-day classification was introduced.
+  const eligible = await firstDayIds(tx,[...new Set(rows.map(r=>r.metaCampaignId))],date);
+  const snapshot = (run: MetaPrefilterRun | null) => run ? { runId: run.id, requestedAt: run.requestedAt.toISOString(), finishedAt: run.finishedAt!.toISOString(), skipped: skippedNames(run), rows: rows.filter(r=>r.runId === run.id && eligible.has(r.metaCampaignId)).map(r=>({ metaCampaignId: r.metaCampaignId, campaignName: r.campaignName, metaAccountId: r.metaAccountId, wlName: r.wlName, configuredStatus: r.configuredStatus, effectiveStatus: r.effectiveStatus, spend: r.spend!.toString(), withFee: new Prisma.Decimal(r.spend!.toString()).mul("1.05").toString(), clicks: r.clicks?.toString() ?? null, cpc: cpc(r.spend!.toString(),r.clicks) })) } : null;
   return { account: { id: account.id, name: account.name }, businessDate: date, snapshots: { AWAL: snapshot(awal), AKHIR: snapshot(akhir) }, progress: active && logicalDate(active) === date ? progress(active) : null };
   },{ isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 10_000 });
 }
@@ -154,6 +163,7 @@ export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: 
       await transaction(async tx=>{
         check();
         const existing = ids.length ? await tx.metaPrefilterRow.findMany({ where: { runId: lease.id, metaCampaignId: { in: ids } } }) : [];
+        const eligible = kind === "insights" ? await firstDayIds(tx,ids,logicalDate(lease)) : null;
         if (existing.some(r=>r.metaAccountId !== wl.id)) throw new SafeError("Relasi campaign/WL berubah. Snapshot tidak diterapkan.");
         const data: Prisma.MetaPrefilterRowCreateManyInput[] = [];
         for (const raw of page.data) {
@@ -164,7 +174,7 @@ export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: 
             data.push({ ...base,campaignName: nameValue(row.name,campaignId), configuredStatus: statusValue(row.status),effectiveStatus: statusValue(row.effective_status) });
           } else {
             const row = readInsight(raw as MetaCampaignInsight,logicalDate(lease));
-            if (row) data.push({ ...base,campaignName: old?.campaignName ?? row.campaignName,configuredStatus: old?.configuredStatus ?? null,effectiveStatus: old?.effectiveStatus ?? null,spend: row.spend,clicks: row.clicks });
+            if (row && eligible!.has(campaignId)) data.push({ ...base,campaignName: old?.campaignName ?? row.campaignName,configuredStatus: old?.configuredStatus ?? null,effectiveStatus: old?.effectiveStatus ?? null,spend: row.spend,clicks: row.clicks });
           }
         }
         if (ids.length) await tx.metaPrefilterRow.deleteMany({ where: { runId: lease.id,metaCampaignId: { in: ids } } });
