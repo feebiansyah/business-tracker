@@ -79,6 +79,53 @@ model ShopeeAccount {
   adsterraCampaignConfigs AdsterraCampaignConfig[]
   trafficCredentials      TrafficCredential[]
   metaSyncRuns            MetaSyncRun[]
+  metaPrefilterRuns       MetaPrefilterRun[]
+}
+
+model MetaPrefilterRun {
+  id                    String   @id @default(cuid()) @db.VarChar(36)
+  shopeeAccountId        Int
+  activeShopeeAccountId  Int?     @unique
+  businessDate          DateTime @db.Date
+  slot                  String   @db.VarChar(8)
+  revision              Int
+  requestedAt           DateTime
+  finishedAt            DateTime?
+  status                String   @default("RUNNING") @db.VarChar(32)
+  scope                 Json
+  cursor                Json
+  skipped               Json
+  pages                 Int      @default(0)
+  generation            Int      @default(0)
+  usagePercent          Int      @default(0)
+  leaseOwner            String?  @db.VarChar(64)
+  leaseExpiresAt        DateTime?
+  error                 String?  @db.VarChar(300)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  shopeeAccount         ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
+  rows                  MetaPrefilterRow[]
+
+  @@unique([shopeeAccountId, businessDate, slot, revision], map: "MetaPrefilterRun_revision_key")
+  @@index([shopeeAccountId, businessDate, slot, status, revision], map: "MetaPrefilterRun_snapshot_idx")
+}
+
+model MetaPrefilterRow {
+  id                    String   @id @default(cuid()) @db.VarChar(36)
+  runId                 String   @db.VarChar(36)
+  metaCampaignId        String   @db.VarChar(64)
+  metaAccountId         Int
+  accountId             String   @db.VarChar(64)
+  wlName                String   @db.VarChar(191)
+  campaignName          String   @db.VarChar(1024)
+  configuredStatus      String?  @db.VarChar(50)
+  effectiveStatus       String?  @db.VarChar(50)
+  spend                 Decimal? @db.Decimal(24, 6)
+  clicks                BigInt?
+  run                   MetaPrefilterRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, metaCampaignId])
+  @@index([runId, metaAccountId])
 }
 
 model TrafficCredential {

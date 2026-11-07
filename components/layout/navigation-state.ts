@@ -1,8 +1,8 @@
-export type ShopeeWorkflowSlug = "import" | "filter" | "fix" | "off-filter" | "off-fix" | "clickadu-roi" | "adsterra-roi";
+export type ShopeeWorkflowSlug = "import" | "prefilter" | "filter" | "fix" | "off-filter" | "off-fix" | "clickadu-roi" | "adsterra-roi";
 export type ShopeeNavigationKey = "overview" | ShopeeWorkflowSlug;
 export type ShopeeWorkflowGroupKey = "meta-ads" | "traffic";
 
-const workflowSlugs = new Set<ShopeeWorkflowSlug>(["import", "filter", "fix", "off-filter", "off-fix", "clickadu-roi", "adsterra-roi"]);
+const workflowSlugs = new Set<ShopeeWorkflowSlug>(["import", "prefilter", "filter", "fix", "off-filter", "off-fix", "clickadu-roi", "adsterra-roi"]);
 
 export type SidebarExpansionState = {
   shopeeExpanded: boolean;
@@ -42,7 +42,7 @@ export function reduceSidebarExpansion(state: SidebarExpansionState, action: Sid
 }
 
 function getWorkflowGroup(workflow: string | undefined): ShopeeWorkflowGroupKey[] {
-  if (["filter", "fix", "off-filter", "off-fix"].includes(workflow ?? "")) return ["meta-ads"];
+  if (["prefilter", "filter", "fix", "off-filter", "off-fix"].includes(workflow ?? "")) return ["meta-ads"];
   if (["clickadu-roi", "adsterra-roi"].includes(workflow ?? "")) return ["traffic"];
   return [];
 }
