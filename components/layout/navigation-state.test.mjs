@@ -93,3 +93,7 @@ test("allows Meta Ads and Traffic subgroups to toggle manually", () => {
   assert.deepEqual(trafficOpened.expandedSubgroups, ["traffic"]);
   assert.deepEqual(bothOpened.expandedSubgroups, ["traffic", "meta-ads"]);
 });
+test("PraFilter is a Meta Ads workflow for the selected account", () => {
+  assert.equal(getShopeeNavigationState("/shopee/7/prefilter",7).activeWorkflow,"prefilter");
+  assert.deepEqual(createSidebarExpansionState("/shopee/7/prefilter").expandedSubgroups,["meta-ads"]);
+});
