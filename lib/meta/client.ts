@@ -11,6 +11,15 @@ type MetaPage<T> = {
   error?: { message?: string; code?: number };
 };
 
+export type MetaSyncReadKind = "campaigns" | "adSets" | "spend" | "insights";
+export type MetaSyncReadOptions = { deadline: number; signal?: AbortSignal; after?: string };
+export class MetaSyncPauseError extends Error {
+  constructor(readonly reason: "DEADLINE" | "REQUEST_TIMEOUT" | "ABORTED" | "RETRY_AFTER", readonly rateLimited = false) {
+    super(rateLimited ? "Sync dijeda karena batas request Meta. Lanjutkan setelah beberapa saat." : "Batas waktu unit Sync tercapai. Progres tersimpan dapat dilanjutkan.");
+    this.name = "MetaSyncPauseError";
+  }
+}
+
 const TEMPORARY_ERROR_CODES = new Set([1, 2, 17, 32, 613]);
 const MAX_RETRIES = 3;
 const BASE_RETRY_DELAY_MS = 1_000;
@@ -92,6 +101,88 @@ export class MetaGraphClient {
   getAccountDailySpend(accountId: string, range: MetaInsightRange) {
     const request = accountDailySpendRequest(accountId, range);
     return this.getAllPages<MetaAccountDailySpend>(request.path, request.fields, request.params);
+  }
+
+  // Opt-in only. Legacy all-page methods below retain their original contract.
+  restoreSyncUsagePercent(value: number) {
+    this.usagePercent = Number.isFinite(value) && value >= 0 ? value : 0;
+  }
+
+  getSyncUsagePercent() { return this.usagePercent; }
+
+  async getSyncAccountStatus(accountId: string, options: MetaSyncReadOptions): Promise<number | undefined> {
+    const url = new URL(`${this.baseUrl}/act_${encodeURIComponent(accountId)}`);
+    url.searchParams.set("fields", "account_status");
+    if (this.appSecretProof) url.searchParams.set("appsecret_proof", this.appSecretProof);
+    const payload = await this.fetchSyncPage<MetaAdAccount>(url, options);
+    const status = (payload as unknown as MetaAdAccount).account_status;
+    return typeof status === "number" ? status : undefined;
+  }
+
+  async getSyncPage<T>(kind: MetaSyncReadKind, accountId: string, range: MetaInsightRange | undefined, options: MetaSyncReadOptions): Promise<{ data: T[]; after?: string }> {
+    if ((kind === "spend" || kind === "insights") && !range) throw new MetaApiError("Rentang Sync Meta tidak valid.");
+    const request: { path: string; fields: string[]; params?: Record<string,string> } = kind === "campaigns" ? campaignsRequest(accountId) : kind === "adSets" ? adSetsRequest(accountId) : kind === "spend" ? accountDailySpendRequest(accountId,range!) : campaignInsightsRequest(accountId,range!);
+    const url = new URL(`${this.baseUrl}${request.path}`);
+    url.searchParams.set("fields",request.fields.join(",")); url.searchParams.set("limit","100");
+    for (const [key,value] of Object.entries(request.params ?? {})) url.searchParams.set(key,value);
+    if (options.after) url.searchParams.set("after",options.after);
+    if (this.appSecretProof) url.searchParams.set("appsecret_proof",this.appSecretProof);
+    const payload = await this.fetchSyncPage<T>(url,options);
+    const after = payload.paging?.cursors?.after;
+    if (!Array.isArray(payload.data) || payload.data.length > 100 || (after !== undefined && (typeof after !== "string" || after.length > 8192 || after === options.after))) throw new MetaApiError("Halaman Sync Meta tidak valid atau cursor berulang.");
+    return { data: payload.data, ...(after ? { after } : {}) };
+  }
+
+  private async fetchSyncPage<T>(url: URL, options: MetaSyncReadOptions): Promise<MetaPage<T>> {
+    const controller = new AbortController();
+    const check = () => {
+      if (controller.signal.aborted) throw controller.signal.reason;
+      if (Date.now() >= options.deadline) throw new MetaSyncPauseError("DEADLINE");
+    };
+    const abort = () => controller.abort(new MetaSyncPauseError("ABORTED"));
+    options.signal?.addEventListener("abort",abort,{ once: true });
+    if (options.signal?.aborted) abort();
+    const deadlineTimer = setTimeout(() => controller.abort(new MetaSyncPauseError("DEADLINE")),Math.max(0,options.deadline-Date.now()));
+    try {
+      for (let attempt=0; attempt<=MAX_RETRIES; attempt++) {
+        check();
+        const request = new AbortController();
+        const requestTimer = setTimeout(() => request.abort(new MetaSyncPauseError("REQUEST_TIMEOUT")),Math.min(10_000, Math.max(0, options.deadline-Date.now())));
+        const signal = AbortSignal.any([controller.signal,request.signal]);
+        let response: Response, payload: MetaPage<T>;
+        try {
+          response = await fetch(url,{ headers: { Authorization: `Bearer ${this.config.accessToken}` }, cache: "no-store", signal });
+          this.readUsageHeaders(response.headers);
+          payload = await response.json() as MetaPage<T>;
+          signal.throwIfAborted(); check();
+        } catch (error) {
+          if (signal.aborted) throw signal.reason;
+          if (error instanceof SyntaxError) throw new MetaApiError("Meta Graph API mengembalikan respons tidak valid.");
+          throw error;
+        } finally { clearTimeout(requestTimer); }
+        if (response.ok && !payload.error) return payload;
+        const errorCode = Number(payload.error?.code);
+        if (attempt < MAX_RETRIES && TEMPORARY_ERROR_CODES.has(errorCode)) {
+          const rawRetryAfter = response.headers.get("retry-after");
+          const delaySeconds = Number(rawRetryAfter);
+          const retryAfter = rawRetryAfter && !Number.isFinite(delaySeconds) ? Date.parse(rawRetryAfter)-Date.now() : delaySeconds*1000;
+          const wait = Math.max(BASE_RETRY_DELAY_MS*2**attempt, Number.isFinite(retryAfter) ? retryAfter : 0);
+          if (wait >= options.deadline-Date.now()) throw new MetaSyncPauseError("RETRY_AFTER",[17,32,613].includes(errorCode));
+          await new Promise<void>((resolve,reject) => {
+            const onAbort = () => { clearTimeout(timer); controller.signal.removeEventListener("abort",onAbort); reject(controller.signal.reason); };
+            const timer = setTimeout(() => { controller.signal.removeEventListener("abort",onAbort); resolve(); },wait);
+            controller.signal.addEventListener("abort",onAbort,{ once: true });
+            if (controller.signal.aborted) onAbort();
+          });
+          continue;
+        }
+        throw new MetaApiError(`${this.redactSecrets(payload.error?.message ?? `Request Meta gagal dengan HTTP ${response.status}`)}${Number.isFinite(errorCode) ? ` (kode ${errorCode})` : ""}`,Number.isFinite(errorCode) ? errorCode : undefined);
+      }
+      throw new MetaApiError("Meta Graph API gagal setelah batas retry tercapai.");
+    } finally {
+      clearTimeout(deadlineTimer); options.signal?.removeEventListener("abort",abort);
+      controller.abort(new MetaSyncPauseError("ABORTED"));
+    }
   }
 
   async waitBetweenBusinesses() {

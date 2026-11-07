@@ -1,21 +1,27 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { syncFilterAction, type FilterSyncActionState } from "@/app/shopee/[id]/filter/actions";
 import { syncClickaduDailyAction } from "@/app/shopee/[id]/clickadu-roi/actions";
 import { syncAdsterraDailyAction } from "@/app/shopee/[id]/adsterra-roi/actions";
 import { Button } from "@/components/ui/button";
 import { shopeeOverviewTabs, type ShopeeOverviewTab } from "@/lib/dashboard/shopee-overview-params";
+import type { MetaSyncProgress } from "@/lib/filter/meta-sync-state";
 
 const labels = { meta: "Meta", clickadu: "Clickadu", adsterra: "Adsterra" };
+const phaseLabels = { STATUS: "Status WL", METADATA: "Campaign dan budget", ACCOUNT_SPEND: "Spend WL", CAMPAIGN_INSIGHTS: "Histori campaign", DONE: "Selesai" };
 
-export function ShopeeOverviewSync({ accountId, disabledReasons }: {
+export function ShopeeOverviewSync({ accountId, disabledReasons, initialMetaProgress }: {
   accountId: number;
   disabledReasons: Record<ShopeeOverviewTab, string | null>;
+  initialMetaProgress?: MetaSyncProgress | null;
 }) {
   const router = useRouter();
   const inFlight = useRef(false);
+  const generation = useRef(0);
+  const [metaProgress, setMetaProgress] = useState(initialMetaProgress ?? null);
+  useEffect(() => () => { generation.current++; }, [accountId]);
   const [running, setRunning] = useState<ShopeeOverviewTab | null>(null);
   const [results, setResults] = useState<Partial<Record<ShopeeOverviewTab, FilterSyncActionState>>>({});
   const [refreshError, setRefreshError] = useState("");
@@ -24,24 +30,37 @@ export function ShopeeOverviewSync({ accountId, disabledReasons }: {
   function sync(provider: ShopeeOverviewTab) {
     if (inFlight.current || pending || disabledReasons[provider]) return;
     inFlight.current = true;
+    const scope = generation.current;
     setRunning(provider);
     setRefreshError("");
     setResults((current) => ({ ...current, [provider]: undefined }));
     startTransition(async () => {
       try {
-        const result = provider === "meta"
-          ? await syncFilterAction(accountId, { success: false, message: "" })
-          : provider === "clickadu" ? await syncClickaduDailyAction(accountId) : await syncAdsterraDailyAction(accountId);
-        setResults((current) => ({ ...current, [provider]: result }));
+        if (provider === "meta") {
+          let result: FilterSyncActionState;
+          do {
+            result = await syncFilterAction(accountId, { success: false, message: "" });
+            if (scope !== generation.current) return;
+            if (result.metaBatch) setMetaProgress(result.metaBatch.progress);
+            setResults((current) => ({ ...current, meta: result }));
+          } while (result.metaBatch?.shouldContinue);
+        } else {
+          const result = provider === "clickadu" ? await syncClickaduDailyAction(accountId) : await syncAdsterraDailyAction(accountId);
+          if (scope !== generation.current) return;
+          setResults((current) => ({ ...current, [provider]: result }));
+        }
       } catch {
+        if (scope !== generation.current) return;
         setResults((current) => ({ ...current, [provider]: {
           success: false,
           message: `Hasil Sync ${labels[provider]} tidak dapat dimuat. Sebagian data mungkin sudah tersimpan; periksa hasil sebelum mencoba kembali.`,
         } }));
       } finally {
-        try { router.refresh(); }
-        catch { setRefreshError("Tampilan belum berhasil diperbarui. Muat ulang halaman untuk melihat data terbaru."); }
-        finally { inFlight.current = false; setRunning(null); }
+        if (scope === generation.current) {
+          try { router.refresh(); }
+          catch { setRefreshError("Tampilan belum berhasil diperbarui. Muat ulang halaman untuk melihat data terbaru."); }
+          finally { inFlight.current = false; setRunning(null); }
+        }
       }
     });
   }
@@ -62,13 +81,18 @@ export function ShopeeOverviewSync({ accountId, disabledReasons }: {
     </ul>}
     {pending && running === null && <p role="status" className="text-xs text-slate-500">Memperbarui data Overview...</p>}
     {shopeeOverviewTabs.map((provider) => {
-      const result = results[provider];
+      const result = results[provider] ?? (provider === "meta" && metaProgress ? {
+        success: metaProgress.status === "COMPLETE",
+        message: metaProgress.status === "RUNNING" ? "Progres Sync tersimpan. Klik Sync Meta untuk melanjutkan." : metaProgress.status === "PAUSED_RATE_LIMIT" ? "Sync dijeda karena batas request Meta. Lanjutkan setelah beberapa saat." : metaProgress.status === "COMPLETE" ? "Sync Meta selesai." : "Sync selesai sebagian. Klik Sync Meta untuk mencoba WL yang gagal.",
+        summary: metaProgress.summary,
+      } : undefined);
       if (!result) return null;
       const summary = result.summary;
       return <div key={provider} role={result.success ? "status" : "alert"}
         className={`min-w-0 break-words rounded-lg border p-3 text-sm ${result.success ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}
       >
         <p className="font-medium">{labels[provider]}: {result.message}</p>
+        {provider === "meta" && metaProgress && <p className="mt-1">{metaProgress.status} · WL {metaProgress.current} dari {metaProgress.total}{metaProgress.wlName ? ` · ${metaProgress.wlName}` : ""}{metaProgress.phase ? ` · ${phaseLabels[metaProgress.phase]}` : ""}</p>}
         {summary && <p className="mt-1">WL sukses {summary.wlSucceeded}/{summary.wlTotal} · WL dilewati {summary.wlSkipped} · WL gagal {summary.wlFailed} · Campaign {summary.campaignsProcessed} · Row histori {summary.insightRowsStored}</p>}
         {summary?.skippedWlNames.length ? <p className="mt-1">WL nonaktif/tidak tersedia: {summary.skippedWlNames.join(", ")}</p> : null}
         {summary?.failedWlNames.length ? <p className="mt-1">WL gagal: {summary.failedWlNames.join(", ")}</p> : null}

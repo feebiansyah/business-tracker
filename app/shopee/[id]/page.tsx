@@ -18,6 +18,7 @@ import { clickaduOverviewParamsToSearch, parseClickaduOverviewParams } from "@/l
 import { TrafficBalances } from "@/components/traffic-balances/traffic-balances";
 import { getMetaConfig } from "@/lib/meta/config";
 import { parseShopeeOverviewTab, shopeeOverviewTabs, withShopeeOverviewTab } from "@/lib/dashboard/shopee-overview-params";
+import { getMetaSyncProgress } from "@/lib/filter/meta-sync-state";
 
 export const dynamic = "force-dynamic";
 const trafficDate = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeZone: "UTC" });
@@ -39,6 +40,7 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
     },
   });
   if (!account) notFound();
+  const metaSyncProgress = await getMetaSyncProgress(prisma,shopeeAccountId);
   const emptyWls = account.metaAccounts.filter((wl) => wl._count.campaigns === 0);
   const [noteSummary] = await prisma.$queryRaw<{ count: bigint | number }[]>`
     SELECT COUNT(*) AS count FROM CampaignDailyMetric dm
@@ -79,7 +81,7 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
       <TrafficBalances key={account.id} accounts={[{ id: account.id, name: account.name }]} variant="overview" />
       <section aria-label="Pengingat pekerjaan" className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 text-sm">
         <h3 className="font-semibold text-slate-950">Pengingat pekerjaan</h3>
-        <div className="mt-3"><ShopeeOverviewSync key={`sync-${account.id}`} accountId={account.id} disabledReasons={disabledReasons} /></div>
+        <div className="mt-3"><ShopeeOverviewSync key={`sync-${account.id}`} accountId={account.id} disabledReasons={disabledReasons} initialMetaProgress={metaSyncProgress} /></div>
         <div className="mt-3 grid min-w-0 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
           <section aria-label="Shopee & Meta" className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
             <h4 className="text-sm font-semibold text-slate-950">Shopee &amp; Meta</h4>
