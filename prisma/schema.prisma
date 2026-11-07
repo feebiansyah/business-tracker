@@ -293,6 +293,8 @@ model Campaign {
   metaCampaignId            String    @unique
   name                      String
   startTime                 DateTime?
+  firstDeliveryDate         DateTime? @db.Date
+  firstDeliveryEligible     Boolean   @default(false)
   metaStatus                String?
   effectiveStatus           String?
   effectiveDailyBudget      Decimal?  @db.Decimal(18, 2)

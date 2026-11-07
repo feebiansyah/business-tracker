@@ -12,7 +12,7 @@ import { formatRupiah } from "@/lib/filter/table-utils";
 import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-modes";
 
 const columns: { key: FilterSortKey; label: string }[] = [
-  { key: "name", label: "Campaign" }, { key: "wlName", label: "WL" }, { key: "startTime", label: "Tanggal Mulai" }, { key: "budget", label: "Budget/Hari" },
+  { key: "name", label: "Campaign" }, { key: "wlName", label: "WL" }, { key: "startTime", label: "Tanggal Mulai Tayang" }, { key: "budget", label: "Budget/Hari" },
   { key: "days", label: "Hari" }, { key: "totalSpend", label: "Total Spend" }, { key: "costWithFee", label: "+5%" },
   { key: "totalCommission", label: "Total Komisi" }, { key: "profit", label: "Profit" }, { key: "profitPercent", label: "% Profit" },
 ];

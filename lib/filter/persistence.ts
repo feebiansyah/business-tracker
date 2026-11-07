@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { metaFieldsFromInsight } from "@/lib/filter/metrics";
 import type { MetaCampaignInsight } from "@/lib/meta/types";
 import type { BudgetSource } from "@/lib/filter/types";
-import type { Prisma } from "@/lib/generated/prisma/client";
+import { Prisma } from "@/lib/generated/prisma/client";
 
 export type CampaignMetadataInput = {
   metaCampaignId: string;
@@ -29,7 +29,7 @@ export async function upsertCampaignMetadata(input: CampaignMetadataInput, db: P
   };
   return db.campaign.upsert({
     where: { metaCampaignId: input.metaCampaignId },
-    create: { metaCampaignId: input.metaCampaignId, ...metadata },
+    create: { metaCampaignId: input.metaCampaignId, ...metadata, firstDeliveryEligible: true },
     update: metadata,
   });
 }
@@ -83,6 +83,23 @@ export async function persistInsightChunk(
 
   if (options.advanceCheckpoint === false) return relevantInsights.length;
   const checkpointDate = dateOnly(checkpointThrough);
+  // Only a fully persisted range may establish delivery. Earlier pages can arrive out of order.
+  // A single scoped update keeps legacy rows and an already established date untouched.
+  if (checkpointCampaignIds.length) {
+    const establishDelivery = () => db.$executeRaw(Prisma.sql`
+      UPDATE Campaign c
+      INNER JOIN (
+        SELECT campaignId, MIN(date) AS firstDate
+        FROM CampaignDailyMetric
+        WHERE campaignId IN (${Prisma.join(checkpointCampaignIds)}) AND spend > 0 AND date <= ${checkpointDate}
+        GROUP BY campaignId
+      ) delivery ON delivery.campaignId = c.id
+      SET c.firstDeliveryDate = delivery.firstDate
+      WHERE c.firstDeliveryEligible = true AND c.firstDeliveryDate IS NULL
+    `);
+    if (options.db) await establishDelivery();
+    else await retryMetaSyncTransaction(establishDelivery);
+  }
   const updateCheckpoint = () => db.campaign.updateMany({
     where: {
       id: { in: checkpointCampaignIds },

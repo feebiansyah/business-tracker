@@ -48,7 +48,11 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
   const startFrom = params.from ? new Date(`${params.from}T00:00:00.000Z`) : null;
   const startBefore = startFrom ? new Date(startFrom) : null;
   if (startBefore) startBefore.setUTCDate(startBefore.getUTCDate() + 1);
-  const where = { ...scope, ...campaignModeWhere(mode), ...(params.wl ? { metaAccountId: params.wl } : {}), ...(params.q ? { name: { contains: params.q } } : {}), ...(startFrom && startBefore ? { startTime: { gte: startFrom, lt: startBefore } } : {}) };
+  const baseWhere = { ...scope, ...campaignModeWhere(mode), ...(params.wl ? { metaAccountId: params.wl } : {}), ...(params.q ? { name: { contains: params.q } } : {}) };
+  const where = startFrom && startBefore ? { AND: [baseWhere, { OR: [
+    { firstDeliveryDate: { gte: startFrom, lt: startBefore } },
+    { firstDeliveryDate: null, startTime: { gte: startFrom, lt: startBefore } },
+  ] }] } : baseWhere;
   const [unresolvedBudgets, total] = await Promise.all([
     prisma.campaign.count({ where: { ...scope, effectiveDailyBudget: null } }),
     prisma.campaign.count({ where }),
@@ -59,7 +63,7 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
   const modeSql = campaignModeSql(mode);
   const rows = await prisma.$queryRaw<FilterSqlRow[]>(Prisma.sql`
     SELECT summary.* FROM (
-      SELECT c.id, c.name, ma.name AS wlName, c.startTime, c.effectiveDailyBudget AS budget,
+      SELECT c.id, c.name, ma.name AS wlName, COALESCE(c.firstDeliveryDate, c.startTime) AS startTime, c.effectiveDailyBudget AS budget,
         EXISTS(SELECT 1 FROM CampaignDailyMetric reminder WHERE reminder.campaignId = c.id AND reminder.completed = false AND TRIM(reminder.note) <> '') AS hasPendingNote,
         COUNT(DISTINCT dm.date) AS days,
         COALESCE(SUM(COALESCE(dm.spend, 0)), 0) AS totalSpend,
@@ -73,8 +77,8 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
       WHERE ma.shopeeAccountId = ${shopeeAccountId} AND ${modeSql.status} AND c.effectiveDailyBudget IS NOT NULL AND ${modeSql.budget}
         AND (${params.wl} IS NULL OR ma.id = ${params.wl})
         AND (${params.q} = '' OR LOCATE(${params.q}, c.name) > 0)
-        ${startFrom && startBefore ? Prisma.sql`AND c.startTime >= ${startFrom} AND c.startTime < ${startBefore}` : Prisma.empty}
-      GROUP BY c.id, c.name, ma.name, c.startTime, c.effectiveDailyBudget
+        ${startFrom && startBefore ? Prisma.sql`AND COALESCE(c.firstDeliveryDate, c.startTime) >= ${startFrom} AND COALESCE(c.firstDeliveryDate, c.startTime) < ${startBefore}` : Prisma.empty}
+      GROUP BY c.id, c.name, ma.name, c.firstDeliveryDate, c.startTime, c.effectiveDailyBudget
     ) summary
     ORDER BY ${orderColumn} IS NULL ASC, ${orderColumn} ${orderDirection}, summary.id ASC
     LIMIT ${pagination.pageSize} OFFSET ${(pagination.page - 1) * pagination.pageSize}
@@ -102,7 +106,7 @@ export async function getCampaignWorkspaceDetail(shopeeAccountId: number, mode: 
   if (!Number.isInteger(shopeeAccountId) || shopeeAccountId <= 0 || !Number.isInteger(campaignId) || campaignId <= 0) return null;
   const campaign = await prisma.campaign.findFirst({
     where: { id: campaignId, ...campaignModeWhere(mode), metaAccount: { shopeeAccountId } },
-    select: { id: true, name: true, metaStatus: true, startTime: true, effectiveDailyBudget: true, metaAccount: { select: { name: true } } },
+    select: { id: true, name: true, metaStatus: true, startTime: true, firstDeliveryDate: true, effectiveDailyBudget: true, metaAccount: { select: { name: true } } },
   });
   if (!campaign) return null;
   const [total, spendAggregate, commissionImports] = await Promise.all([
@@ -133,8 +137,9 @@ export async function getCampaignWorkspaceDetail(shopeeAccountId: number, mode: 
     commissionImported: isCommissionImportDateCovered(dateString(metric.date), importedRanges),
     clickFp: metric.clickFp, shopeeClicks: metric.shopeeClicks, cpcFp: numberValue(metric.cpcFp), note: metric.note, completed: Boolean(metric.completed),
   }));
+  const deliveryDate = campaign.firstDeliveryDate ?? campaign.startTime;
   return {
-    campaign: { id: campaign.id, name: campaign.name, wlName: campaign.metaAccount.name, budget: Number(campaign.effectiveDailyBudget), status: campaign.metaStatus!, startDate: campaign.startTime ? dateString(campaign.startTime) : null, totalSpend: Number(spendAggregate._sum.spend ?? 0) },
+    campaign: { id: campaign.id, name: campaign.name, wlName: campaign.metaAccount.name, budget: Number(campaign.effectiveDailyBudget), status: campaign.metaStatus!, startDate: deliveryDate ? dateString(deliveryDate) : null, totalSpend: Number(spendAggregate._sum.spend ?? 0) },
     dailyMetrics: sources.map(buildDailyMetricView), pagination, state: { ...params, page: pagination.page },
   };
 }
