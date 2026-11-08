@@ -27,7 +27,6 @@ export const shopeeWorkflowGroups: ShopeeWorkflowGroup[] = [
     key: "meta-ads",
     label: "Meta Ads",
     items: [
-      { key: "prefilter", href: "prefilter", label: "PraFilter" },
       { key: "filter", href: "filter", label: "Filter" },
       { key: "fix", href: "fix", label: "Fix" },
       { key: "off-filter", href: "off-filter", label: "OFF Filter" },

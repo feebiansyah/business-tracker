@@ -44,7 +44,6 @@ test("groups Meta Ads and Traffic workflows without changing routes", () => {
       key: "meta-ads",
       label: "Meta Ads",
       items: [
-        { href: "prefilter", label: "PraFilter" },
         { href: "filter", label: "Filter" },
         { href: "fix", label: "Fix" },
         { href: "off-filter", label: "OFF Filter" },
@@ -64,7 +63,6 @@ test("groups Meta Ads and Traffic workflows without changing routes", () => {
   assert.deepEqual(shopeeWorkflows.map(({ href, label }) => ({ href, label })), [
     { href: "", label: "Overview" },
     { href: "import", label: "Import Data" },
-    { href: "prefilter", label: "PraFilter" },
     { href: "filter", label: "Filter" },
     { href: "fix", label: "Fix" },
     { href: "off-filter", label: "OFF Filter" },
