@@ -54,8 +54,11 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
     { firstDeliveryDate: { gte: startFrom, lt: startBefore } },
     { firstDeliveryDate: null, startTime: { gte: startFrom, lt: startBefore } },
   ] }] } : baseWhere;
+  const unresolvedStatus: Prisma.CampaignWhereInput = campaignModeConfig[mode].active
+    ? { metaStatus: "ACTIVE", metaAccount: { status: "ACTIVE" } }
+    : { OR: [{ metaStatus: { not: "ACTIVE" } }, { metaStatus: null }, { metaAccount: { status: { not: "ACTIVE" } } }] };
   const [unresolved, total] = await Promise.all([
-    prisma.campaign.findMany({ where: { ...scope, effectiveDailyBudget: null }, select: { id: true, name: true, metaCampaignId: true, metaStatus: true, metaAccountId: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
+    prisma.campaign.findMany({ where: { AND: [scope, unresolvedStatus], effectiveDailyBudget: null }, select: { id: true, name: true, metaCampaignId: true, metaStatus: true, metaAccountId: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
     prisma.campaign.count({ where }),
   ]);
   const wlNames = new Map(shopeeAccount.metaAccounts.map(wl => [wl.id, wl.name]));

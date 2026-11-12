@@ -16,7 +16,7 @@ export async function CampaignWorkspacePage({ mode, params, searchParams }: { mo
     <div className="min-w-0"><Link href={`/shopee/${data.shopeeAccount.id}`} className="text-sm text-slate-500 hover:text-slate-900">← Detail Shopee</Link><p className="mt-3 text-sm font-medium text-slate-500">{config.description}</p><h2 className="break-words text-2xl font-semibold tracking-tight text-slate-950">{config.title} — {data.shopeeAccount.name}</h2></div>
     {data.unresolvedBudgets > 0 && <details className="min-w-0 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       <summary className="cursor-pointer font-medium">{data.unresolvedBudgets} campaign memiliki budget UNRESOLVED dan tidak dimasukkan. Lihat detail</summary>
-      <p className="mt-2 text-xs">Budget belum tersedia dari Sync Meta. Periksa anggaran Campaign/Ad Set di Meta, lalu jalankan Sync Meta kembali. Daftar ini mencakup seluruh WL dalam akun Shopee ini.</p>
+      <p className="mt-2 text-xs">Kategori Filter/Fix belum dapat ditentukan karena budget belum tersedia. Periksa anggaran Campaign/Ad Set di Meta, lalu jalankan Sync Meta kembali. Daftar mengikuti kelompok status halaman dalam akun Shopee ini.</p>
       <ul className="mt-3 max-h-64 overflow-y-auto overscroll-contain divide-y divide-amber-200 rounded-lg border border-amber-200 bg-white/70">
         {data.unresolvedBudgetCampaigns.map(campaign => <li key={campaign.id} className="grid min-w-0 gap-1 px-3 py-2 text-xs sm:grid-cols-2">
           <div className="min-w-0"><p className="break-words font-semibold [overflow-wrap:anywhere]">{campaign.name}</p><p className="break-words [overflow-wrap:anywhere]">WL: {campaign.wlName}</p></div>
