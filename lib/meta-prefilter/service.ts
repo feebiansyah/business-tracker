@@ -8,8 +8,8 @@ import { retryMetaSyncTransaction } from "@/lib/filter/persistence";
 import { accountId, businessDate, cpc, dateValue, metaId, nameValue, readInsight, slotValue, statusValue } from "./model";
 import type { PrefilterBatch, PrefilterData, PrefilterProgress, PrefilterSlot } from "./types";
 
-type Db = Pick<PrismaClient, "shopeeAccount" | "campaign" | "metaPrefilterRun" | "metaPrefilterRow" | "$transaction">;
-type Tx = Pick<Prisma.TransactionClient, "shopeeAccount" | "campaign" | "metaPrefilterRun" | "metaPrefilterRow">;
+type Db = Pick<PrismaClient, "shopeeAccount" | "campaign" | "metaPrefilterRun" | "metaPrefilterRow" | "metaPrefilterNote" | "$transaction">;
+type Tx = Pick<Prisma.TransactionClient, "shopeeAccount" | "campaign" | "metaPrefilterRun" | "metaPrefilterRow" | "metaPrefilterNote">;
 type Scope = { id: number; name: string; accountId: string }[];
 type Cursor = { index: number; phase: "CAMPAIGNS" | "INSIGHTS" | "SKIP" | "PRUNE" | "PUBLISH"; after?: string; seen?: string[]; skipReason?: string };
 type Client = Pick<MetaGraphClient, "getSyncPage" | "restoreSyncUsagePercent" | "getSyncUsagePercent">;
@@ -53,8 +53,9 @@ export async function readPrefilterData(shopeeAccountId: number, db: Db = prisma
   const rows = ids.length ? await tx.metaPrefilterRow.findMany({ where: { runId: { in: ids }, spend: { gt: 0 } }, orderBy: [{ campaignName: "asc" }, { metaCampaignId: "asc" }] }) : [];
   // Also filter snapshots published before first-day classification was introduced.
   const eligible = await firstDayIds(tx,[...new Set(rows.map(r=>r.metaCampaignId))],date);
+  const notes = eligible.size ? await tx.metaPrefilterNote.findMany({ where: { shopeeAccountId, businessDate: dateValue(date), metaCampaignId: { in: [...eligible] } }, select: { metaCampaignId: true, note: true, completed: true } }) : [];
   const snapshot = (run: MetaPrefilterRun | null) => run ? { runId: run.id, requestedAt: run.requestedAt.toISOString(), finishedAt: run.finishedAt!.toISOString(), skipped: skippedNames(run), rows: rows.filter(r=>r.runId === run.id && eligible.has(r.metaCampaignId)).map(r=>({ metaCampaignId: r.metaCampaignId, campaignName: r.campaignName, metaAccountId: r.metaAccountId, wlName: r.wlName, configuredStatus: r.configuredStatus, effectiveStatus: r.effectiveStatus, spend: r.spend!.toString(), withFee: new Prisma.Decimal(r.spend!.toString()).mul("1.05").toString(), clicks: r.clicks?.toString() ?? null, cpc: cpc(r.spend!.toString(),r.clicks) })) } : null;
-  return { account: { id: account.id, name: account.name }, businessDate: date, snapshots: { AWAL: snapshot(awal), AKHIR: snapshot(akhir) }, progress: active && logicalDate(active) === date ? progress(active) : null };
+  return { account: { id: account.id, name: account.name }, businessDate: date, snapshots: { AWAL: snapshot(awal), AKHIR: snapshot(akhir) }, progress: active && logicalDate(active) === date ? progress(active) : null, notes };
   },{ isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 10_000 });
 }
 

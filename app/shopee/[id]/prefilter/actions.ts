@@ -4,6 +4,13 @@ import { randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/auth/session";
 import { readPrefilterData, runPrefilterBatch } from "@/lib/meta-prefilter/service";
 import type { PrefilterBatch, PrefilterData, PrefilterSlot } from "@/lib/meta-prefilter/types";
+import { savePrefilterNote, type NoteInput } from "@/lib/meta-prefilter/notes";
+
+export async function savePrefilterNoteAction(input: NoteInput) {
+  await requireUser({ readOnly: true });
+  try { return { success: true as const, note: await savePrefilterNote(input) }; }
+  catch { return { success: false as const, message: "Note belum tersimpan. Pastikan snapshot dan tanggal masih sesuai, lalu coba lagi." }; }
+}
 
 export async function snapshotPrefilterAction(shopeeAccountId: number, slot: PrefilterSlot, runId?: string): Promise<{ success: true; batch: PrefilterBatch } | { success: false; message: string }> {
   const startedAt = Date.now(), receivedAt = new Date();

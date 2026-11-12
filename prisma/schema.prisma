@@ -80,6 +80,19 @@ model ShopeeAccount {
   trafficCredentials      TrafficCredential[]
   metaSyncRuns            MetaSyncRun[]
   metaPrefilterRuns       MetaPrefilterRun[]
+  metaPrefilterNotes      MetaPrefilterNote[]
+}
+
+model MetaPrefilterNote {
+  shopeeAccountId Int
+  businessDate   DateTime @db.Date
+  metaCampaignId String   @db.VarChar(64)
+  note           String   @default("") @db.VarChar(2000)
+  completed      Boolean  @default(false)
+  updatedAt      DateTime @updatedAt
+  shopeeAccount  ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
+
+  @@id([shopeeAccountId, businessDate, metaCampaignId])
 }
 
 model MetaPrefilterRun {

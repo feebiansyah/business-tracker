@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { readPrefilterAction, snapshotPrefilterAction } from "@/app/shopee/[id]/prefilter/actions";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { readPrefilterAction, savePrefilterNoteAction, snapshotPrefilterAction } from "@/app/shopee/[id]/prefilter/actions";
 import type { PrefilterData, PrefilterProgress, PrefilterRow, PrefilterSlot } from "@/lib/meta-prefilter/types";
 
 const slots = ["AWAL","AKHIR"] as const;
@@ -10,15 +10,16 @@ const rupiah = new Intl.NumberFormat("id-ID",{ style: "currency",currency: "IDR"
 const money = (value: string | number | null) => value === null ? "—" : rupiah.format(Number(value));
 const time = (value: string) => new Intl.DateTimeFormat("id-ID",{ dateStyle: "medium",timeStyle: "medium",timeZone: "Asia/Jakarta" }).format(new Date(value))+" WIB";
 
-function Metrics({ row }: { row?: PrefilterRow }) {
-  if (!row) return <span className="text-slate-400">—</span>;
-  return <div className="space-y-1 text-xs"><p className="font-semibold text-slate-900">Spend {money(row.spend)}</p><p>+5%: {money(row.withFee)}</p><p>Klik Meta (link): {row.clicks === null ? "—" : new Intl.NumberFormat("id-ID").format(BigInt(row.clicks))}</p><p className="font-medium">CPC: {money(row.cpc)}</p><p className="break-words text-slate-500">Konfigurasi: {row.configuredStatus ?? "Tidak tersedia"}<br/>Effective: {row.effectiveStatus ?? "Tidak tersedia"}</p></div>;
-}
+const clicks = (value: string | bigint | null | undefined) => value == null ? "—" : new Intl.NumberFormat("id-ID").format(BigInt(value));
+const numericCell = "whitespace-nowrap px-2 py-2 text-right tabular-nums";
 
 export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
   const [data,setData] = useState(initial), [busy,setBusy] = useState<PrefilterSlot | null>(null);
   const [notice,setNotice] = useState<{ text: string; ok?: boolean } | null>(null);
   const [query,setQuery] = useState(""), [wl,setWl] = useState("");
+  const [drafts,setDrafts] = useState<Record<string,string>>({});
+  const [noteFeedback,setNoteFeedback] = useState<Record<string,{pending?: boolean; ok?: boolean; text: string}>>({});
+  const noteSaves = useRef(new Set<string>());
   const inFlight = useRef(false), epoch = useRef(0);
   useEffect(()=>()=>{ epoch.current++; },[initial.account.id]);
   useEffect(()=>{
@@ -27,13 +28,32 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
     const timer = setTimeout(()=>{
       epoch.current++; inFlight.current=false; setBusy(null);
       const date = new Intl.DateTimeFormat("en-CA",{ timeZone: "Asia/Jakarta",year: "numeric",month: "2-digit",day: "2-digit" }).format(new Date());
-      setData(current=>({ ...current,businessDate: date,snapshots: { AWAL: null,AKHIR: null },progress: null }));
+      setData(current=>({ ...current,businessDate: date,snapshots: { AWAL: null,AKHIR: null },progress: null,notes: [] }));
+      setDrafts({}); setNoteFeedback({}); noteSaves.current.clear();
       setNotice({ text: "Tanggal WIB berganti. Ambil snapshot hari ini; data kemarin tidak ditampilkan." });
     },Math.max(0,midnight-Date.now()));
     return ()=>clearTimeout(timer);
   },[data.businessDate]);
+  async function saveNote(metaCampaignId: string, note: string, completed: boolean) {
+    const saved = data.notes.find(n=>n.metaCampaignId === metaCampaignId);
+    if (inFlight.current || noteSaves.current.has(metaCampaignId) || (note.trim() === (saved?.note ?? "") && completed === (saved?.completed ?? false))) return;
+    noteSaves.current.add(metaCampaignId);
+    const ticket = epoch.current;
+    setNoteFeedback(current=>({...current,[metaCampaignId]:{pending:true,text:"Menyimpan…"}}));
+    try {
+      const result = await savePrefilterNoteAction({shopeeAccountId:initial.account.id,businessDate:data.businessDate,metaCampaignId,note,completed});
+      if (ticket !== epoch.current) return;
+      if (result.success) {
+        setData(current=>({...current,notes:[...current.notes.filter(n=>n.metaCampaignId !== metaCampaignId),result.note]}));
+        setDrafts(current=>({...current,[metaCampaignId]:result.note.note}));
+      }
+      setNoteFeedback(current=>({...current,[metaCampaignId]:{ok:result.success,text:result.success ? "Tersimpan" : result.message}}));
+    } catch {
+      if (ticket === epoch.current) setNoteFeedback(current=>({...current,[metaCampaignId]:{text:"Note belum tersimpan. Coba lagi."}}));
+    } finally { if (ticket === epoch.current) noteSaves.current.delete(metaCampaignId); }
+  }
   async function capture(slot: PrefilterSlot) {
-    if (inFlight.current) return;
+    if (inFlight.current || noteSaves.current.size) return;
     inFlight.current = true; const ticket = epoch.current;
     setBusy(slot); setNotice(null);
     try {
@@ -72,6 +92,9 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
   });
   const wlOptions = [...new Map([...joined.values()].map(r=>{ const row = (r.AKHIR ?? r.AWAL)!; return [row.metaAccountId,row.wlName] as const; })).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
   const progress: PrefilterProgress | null = data.progress;
+  const notes = new Map(data.notes.map(n=>[n.metaCampaignId,n]));
+  const pendingNotes = data.notes.filter(n=>joined.has(n.metaCampaignId) && n.note.trim() && !n.completed).length;
+  const savingNote = Object.values(noteFeedback).some(n=>n.pending);
   return <div className="min-w-0 space-y-3">
     <p className="text-sm text-slate-600">Hari berjalan (WIB): {new Intl.DateTimeFormat("id-ID",{ dateStyle: "long",timeZone: "UTC" }).format(new Date(data.businessDate+"T00:00:00Z"))}</p>
     {notice && <p role={notice.ok ? "status" : "alert"} className={`rounded-lg border p-3 text-sm ${notice.ok ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>{notice.text}</p>}
@@ -83,17 +106,30 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
         <h3 className="font-semibold">{label[slot]}</h3>
         {snapshot ? <p className="text-xs leading-relaxed text-slate-600">Klik: {time(snapshot.requestedAt)}<br/>Selesai: {time(snapshot.finishedAt)} · {snapshot.rows.length} campaign dengan spend &gt; 0</p> : <p className="text-xs text-slate-500">Belum ada snapshot COMPLETE hari ini.</p>}
         {snapshot?.skipped.length ? <p className="break-words text-xs text-amber-800">WL dilewati: {snapshot.skipped.join("; ")}. Data WL tersebut tidak termasuk snapshot.</p> : null}
-        <button type="button" disabled={!!busy || !!(progress && progress.slot !== slot && ["RUNNING","PAUSED_RATE_LIMIT"].includes(progress.status))} onClick={()=>capture(slot)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy === slot ? "Mengambil…" : `${resume ? "Lanjutkan" : snapshot ? "Perbarui" : "Ambil"} ${label[slot]}`}</button>
+        <button type="button" disabled={!!busy || savingNote || !!(progress && progress.slot !== slot && ["RUNNING","PAUSED_RATE_LIMIT"].includes(progress.status))} onClick={()=>capture(slot)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy === slot ? "Mengambil…" : `${resume ? "Lanjutkan" : snapshot ? "Perbarui" : "Ambil"} ${label[slot]}`}</button>
       </section>;
     })}</div>
     <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
       <label className="grid min-w-0 gap-1 text-xs sm:flex-1">Cari campaign<input value={query} onChange={event=>setQuery(event.target.value)} disabled={!!busy} className="h-9 min-w-0 rounded-md border border-slate-300 px-3 text-sm"/></label>
       <label className="grid min-w-0 gap-1 text-xs">WL<select value={wl} onChange={event=>setWl(event.target.value)} disabled={!!busy} className="h-9 min-w-0 max-w-full rounded-md border border-slate-300 px-2 text-sm"><option value="">Semua WL</option>{wlOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
       <p className="text-xs text-slate-500">{rows.length} campaign · CPC tertinggi (Akhir, fallback Awal)</p>
+      {pendingNotes > 0 && <span role="status" className="self-start rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700">{pendingNotes} note belum selesai</span>}
     </div>
-    <div className="min-w-0 max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="w-full min-w-200 text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-600"><tr><th className="p-3">Campaign / WL</th><th className="p-3">Snapshot Awal</th><th className="p-3">Snapshot Akhir</th><th className="p-3">Perubahan Akhir − Awal</th></tr></thead><tbody className="divide-y divide-slate-200">{rows.map(row=>{
+    <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="max-w-full overflow-x-auto overscroll-x-contain" tabIndex={0} role="region" aria-label="Tabel PraFilter"><table className="w-full min-w-[1440px] text-left text-xs"><thead className="bg-slate-50 text-slate-600 [&_th]:px-2 [&_th]:py-2"><tr className="border-b border-slate-200"><th rowSpan={2}>Campaign</th><th rowSpan={2}>WL</th><th rowSpan={2}>Jenis</th><th colSpan={3} className="text-center">Snapshot Awal</th><th colSpan={3} className="text-center">Snapshot Akhir</th><th colSpan={3} className="text-center">Perubahan Akhir − Awal</th><th rowSpan={2}>Note</th><th rowSpan={2} className="text-center">Selesai</th></tr><tr>{["awal","akhir","perubahan"].map(group=><Fragment key={group}><th className="text-right">CPC</th><th className="text-right">Spend +5%</th><th className="text-right">{group === "perubahan" ? "Klik" : "Klik Meta"}</th></Fragment>)}</tr></thead><tbody className="divide-y divide-slate-200">{rows.map(row=>{
       const last = (row.AKHIR ?? row.AWAL)!;
-      return <tr key={last.metaCampaignId}><td className="max-w-72 break-words p-3 align-top"><p className="font-medium">{last.campaignName}</p><p className="mt-1 text-xs text-slate-500">{last.wlName}<br/><span className="break-all">{last.metaCampaignId}</span></p></td><td className="p-3 align-top"><Metrics row={row.AWAL}/></td><td className="p-3 align-top"><Metrics row={row.AKHIR}/></td><td className="p-3 align-top text-xs">{row.AWAL && row.AKHIR ? <><p>Δ Spend: {money(Number(row.AKHIR.spend)-Number(row.AWAL.spend))}</p><p className="mt-1">Δ CPC: {money(row.AKHIR.cpc === null || row.AWAL.cpc === null ? null : Number(row.AKHIR.cpc)-Number(row.AWAL.cpc))}</p></> : "—"}</td></tr>;
-    })}{!rows.length && <tr><td colSpan={4} className="p-6 text-center text-slate-500">Belum ada campaign dengan spend &gt; 0 pada snapshot COMPLETE yang sesuai filter.</td></tr>}</tbody></table></div>
+      const saved = notes.get(last.metaCampaignId), draft = drafts[last.metaCampaignId] ?? saved?.note ?? "", feedback = noteFeedback[last.metaCampaignId];
+      const delta = row.AWAL && row.AKHIR ? {cpc: row.AWAL.cpc === null || row.AKHIR.cpc === null ? null : Number(row.AKHIR.cpc)-Number(row.AWAL.cpc),fee:Number(row.AKHIR.withFee)-Number(row.AWAL.withFee),clicks:row.AWAL.clicks === null || row.AKHIR.clicks === null ? null : BigInt(row.AKHIR.clicks)-BigInt(row.AWAL.clicks)} : null;
+      return <tr key={last.metaCampaignId} className="align-top"><td className="w-52 min-w-40 max-w-56 break-words px-2 py-2"><span className="font-medium">{last.campaignName}</span>{saved?.note.trim() && !saved.completed && <span title="Ada catatan belum selesai" aria-label="Ada catatan belum selesai" className="ml-1 inline-block size-2 rounded-full bg-red-500"/>}<span className="mt-0.5 block break-all text-[10px] text-slate-500">{last.metaCampaignId}</span></td><td className="max-w-32 break-words px-2 py-2">{last.wlName}</td><td className="px-2 py-2 text-slate-400">—</td>
+        {slots.map(slot=><Fragment key={slot}><td className={numericCell}>{money(row[slot]?.cpc ?? null)}</td><td className={numericCell}>{money(row[slot]?.withFee ?? null)}</td><td className={numericCell}>{clicks(row[slot]?.clicks)}</td></Fragment>)}
+        <td className={numericCell}>{money(delta?.cpc ?? null)}</td><td className={numericCell}>{money(delta?.fee ?? null)}</td><td className={numericCell}>{clicks(delta?.clicks)}</td>
+        <td className="w-44 px-2 py-2"><input aria-label={`Note ${last.campaignName}`} value={draft} maxLength={2000} disabled={!!busy || !!feedback?.pending} placeholder="Tambahkan note" onChange={event=>{
+          setDrafts(current=>({...current,[last.metaCampaignId]:event.target.value}));
+          setNoteFeedback(current=>{const next={...current};delete next[last.metaCampaignId];return next;});
+        }} onBlur={event=>{
+          // Let the same row's checkbox save draft + completion together, without swallowing its click.
+          if (event.relatedTarget?.getAttribute("data-note-campaign") !== last.metaCampaignId) return saveNote(last.metaCampaignId,event.currentTarget.value,saved?.completed ?? false);
+        }} className="w-40 rounded-md border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-50"/>{feedback && <span role="status" className={`mt-1 block text-[10px] ${feedback.ok || feedback.pending ? "text-slate-500" : "text-red-600"}`}>{feedback.text}</span>}</td>
+        <td className="px-2 py-2 text-center"><input type="checkbox" data-note-campaign={last.metaCampaignId} aria-label={`Selesai ${last.campaignName}`} checked={saved?.completed ?? false} disabled={!!busy || !!feedback?.pending} onChange={event=>saveNote(last.metaCampaignId,draft,event.target.checked)} onBlur={()=>saveNote(last.metaCampaignId,draft,saved?.completed ?? false)} className="size-4 accent-slate-900"/></td></tr>;
+    })}{!rows.length && <tr><td colSpan={14} className="p-6 text-center text-slate-500">Belum ada campaign dengan spend &gt; 0 pada snapshot COMPLETE yang sesuai filter.</td></tr>}</tbody></table></div></div>
   </div>;
 }
