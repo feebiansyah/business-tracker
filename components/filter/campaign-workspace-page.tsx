@@ -24,6 +24,19 @@ export async function CampaignWorkspacePage({ mode, params, searchParams }: { mo
         </li>)}
       </ul>
     </details>}
+    {data.duplicateCampaignNames.length > 0 && <details className="min-w-0 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <summary className="cursor-pointer font-medium">{data.duplicateCampaignNames.length} nama campaign ganda berisiko membuat import ambigu. Lihat detail.</summary>
+      <p className="mt-2 text-xs">Ubah salah satu nama campaign agar unik, lalu Sync Meta. Pemeriksaan mencakup seluruh WL dan status dalam akun Shopee ini.</p>
+      <ul className="mt-3 max-h-64 overflow-y-auto overscroll-contain divide-y divide-amber-200 rounded-lg border border-amber-200 bg-white/70">
+        {data.duplicateCampaignNames.map(group => <li key={group.name} className="min-w-0 px-3 py-2">
+          <p className="break-words font-semibold [overflow-wrap:anywhere]">{group.name || "(Nama kosong)"}</p>
+          {group.campaigns.map(campaign => <div key={campaign.metaCampaignId} className="mt-2 grid min-w-0 gap-1 text-xs sm:grid-cols-2">
+            <div className="min-w-0"><p className="break-words [overflow-wrap:anywhere]">{campaign.name}</p><p className="break-words [overflow-wrap:anywhere]">WL: {campaign.wlName}</p></div>
+            <div className="min-w-0"><p className="break-all">Meta Campaign ID: {campaign.metaCampaignId}</p><p>Status: {campaign.status ?? "Belum tersedia"}</p><p>Mulai tayang: {campaign.startDate ?? "Belum tersedia"}</p></div>
+          </div>)}
+        </li>)}
+      </ul>
+    </details>}
     <form method="get" className="sticky top-14 z-20 grid min-w-0 grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex sm:flex-wrap sm:items-end">
       <input type="hidden" name="sort" value={state.sort} /><input type="hidden" name="dir" value={state.dir} /><input type="hidden" name="pageSize" value={state.pageSize} />
       <label className="grid min-w-0 gap-1 text-xs font-medium text-slate-600 sm:min-w-56 sm:flex-1">Cari campaign<input name="q" defaultValue={state.q} placeholder="Cari campaign..." className={`${control} outline-none focus:ring-2 focus:ring-slate-300`} /></label>
