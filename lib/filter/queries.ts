@@ -8,7 +8,8 @@ import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-mod
 
 export type FilterCampaignRow = { id: number; name: string; wlName: string; startTime: string | null; budget: number; days: number; totalSpend: number; costWithFee: number; totalCommission: number | null; profit: number | null; profitPercent: number | null; hasPendingNote: boolean };
 export type PageInfo = { page: number; pageSize: 25 | 50 | 100; total: number; pageCount: number };
-export type FilterPageData = { shopeeAccount: { id: number; name: string }; metaAccounts: { id: number; name: string }[]; unresolvedBudgets: number; campaigns: FilterCampaignRow[]; pagination: PageInfo };
+export type UnresolvedBudgetCampaign = { id: number; name: string; metaCampaignId: string; wlName: string; status: string | null };
+export type FilterPageData = { shopeeAccount: { id: number; name: string }; metaAccounts: { id: number; name: string }[]; unresolvedBudgets: number; unresolvedBudgetCampaigns: UnresolvedBudgetCampaign[]; campaigns: FilterCampaignRow[]; pagination: PageInfo };
 
 function dateString(date: Date) { return date.toISOString().slice(0, 10); }
 function numberValue(value: Prisma.Decimal | bigint | number | null) { return value === null ? null : Number(value); }
@@ -68,10 +69,12 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
     { firstDeliveryDate: { gte: startFrom, lt: startBefore } },
     { firstDeliveryDate: null, startTime: { gte: startFrom, lt: startBefore } },
   ] }] : [])] };
-  const [unresolvedBudgets, total] = await Promise.all([
-    prisma.campaign.count({ where: { ...scope, effectiveDailyBudget: null } }),
+  const [unresolved, total] = await Promise.all([
+    prisma.campaign.findMany({ where: { ...scope, effectiveDailyBudget: null }, select: { id: true, name: true, metaCampaignId: true, metaStatus: true, metaAccountId: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
     prisma.campaign.count({ where }),
   ]);
+  const wlNames = new Map(shopeeAccount.metaAccounts.map(wl => [wl.id, wl.name]));
+  const unresolvedBudgetCampaigns = unresolved.map(c => ({ id: c.id, name: c.name, metaCampaignId: c.metaCampaignId, wlName: wlNames.get(c.metaAccountId) ?? `WL ${c.metaAccountId}`, status: c.metaStatus }));
   const pagination = pageInfo(total, params.page, params.pageSize);
   const orderColumn = Prisma.raw(filterOrderColumns[params.sort]);
   const orderDirection = Prisma.raw(params.dir === "asc" ? "ASC" : "DESC");
@@ -99,7 +102,7 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
     ORDER BY ${orderColumn} IS NULL ASC, ${orderColumn} ${orderDirection}, summary.id ASC
     LIMIT ${pagination.pageSize} OFFSET ${(pagination.page - 1) * pagination.pageSize}
   `);
-  return { shopeeAccount: { id: shopeeAccount.id, name: shopeeAccount.name }, metaAccounts: shopeeAccount.metaAccounts, unresolvedBudgets, pagination, campaigns: rows.map((row) => ({
+  return { shopeeAccount: { id: shopeeAccount.id, name: shopeeAccount.name }, metaAccounts: shopeeAccount.metaAccounts, unresolvedBudgets: unresolvedBudgetCampaigns.length, unresolvedBudgetCampaigns, pagination, campaigns: rows.map((row) => ({
     id: row.id, name: row.name, wlName: row.wlName, startTime: row.startTime ? dateString(row.startTime) : null, budget: Number(row.budget), days: Number(row.days), totalSpend: Number(row.totalSpend),
     costWithFee: Number(row.costWithFee), totalCommission: numberValue(row.totalCommission), profit: numberValue(row.profit), profitPercent: numberValue(row.profitPercent), hasPendingNote: Boolean(row.hasPendingNote),
   })) };
