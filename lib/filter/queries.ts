@@ -43,15 +43,14 @@ function campaignModeSql(mode: CampaignMode) {
 function excludeTodayDelivery() {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   // firstDeliveryDate is a logical DATE; startTime is an instant and needs WIB boundaries.
-  const dateStart = new Date(`${today}T00:00:00.000Z`), dateEnd = new Date(+dateStart + 86_400_000);
-  const instantStart = new Date(`${today}T00:00:00.000+07:00`), instantEnd = new Date(+instantStart + 86_400_000);
+  const dateStart = new Date(`${today}T00:00:00.000Z`);
+  const instantStart = new Date(`${today}T00:00:00.000+07:00`);
   const where: Prisma.CampaignWhereInput = { OR: [
     { firstDeliveryDate: { lt: dateStart } },
-    { firstDeliveryDate: { gte: dateEnd } },
-    { firstDeliveryDate: null, OR: [{ startTime: null }, { startTime: { lt: instantStart } }, { startTime: { gte: instantEnd } }] },
+    { firstDeliveryDate: null, OR: [{ startTime: null }, { startTime: { lt: instantStart } }] },
   ] };
-  const sql = Prisma.sql`AND (c.firstDeliveryDate < ${dateStart} OR c.firstDeliveryDate >= ${dateEnd}
-    OR (c.firstDeliveryDate IS NULL AND (c.startTime IS NULL OR c.startTime < ${instantStart} OR c.startTime >= ${instantEnd})))`;
+  const sql = Prisma.sql`AND (c.firstDeliveryDate < ${dateStart}
+    OR (c.firstDeliveryDate IS NULL AND (c.startTime IS NULL OR c.startTime < ${instantStart})))`;
   return { where, sql };
 }
 
