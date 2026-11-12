@@ -40,6 +40,21 @@ function campaignModeSql(mode: CampaignMode) {
   };
 }
 
+function excludeTodayDelivery() {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  // firstDeliveryDate is a logical DATE; startTime is an instant and needs WIB boundaries.
+  const dateStart = new Date(`${today}T00:00:00.000Z`), dateEnd = new Date(+dateStart + 86_400_000);
+  const instantStart = new Date(`${today}T00:00:00.000+07:00`), instantEnd = new Date(+instantStart + 86_400_000);
+  const where: Prisma.CampaignWhereInput = { OR: [
+    { firstDeliveryDate: { lt: dateStart } },
+    { firstDeliveryDate: { gte: dateEnd } },
+    { firstDeliveryDate: null, OR: [{ startTime: null }, { startTime: { lt: instantStart } }, { startTime: { gte: instantEnd } }] },
+  ] };
+  const sql = Prisma.sql`AND (c.firstDeliveryDate < ${dateStart} OR c.firstDeliveryDate >= ${dateEnd}
+    OR (c.firstDeliveryDate IS NULL AND (c.startTime IS NULL OR c.startTime < ${instantStart} OR c.startTime >= ${instantEnd})))`;
+  return { where, sql };
+}
+
 export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: CampaignMode, params: FilterParams): Promise<FilterPageData | null> {
   if (!Number.isInteger(shopeeAccountId) || shopeeAccountId <= 0) return null;
   const shopeeAccount = await prisma.shopeeAccount.findUnique({ where: { id: shopeeAccountId }, select: { id: true, name: true, metaAccounts: { select: { id: true, name: true }, orderBy: { name: "asc" } } } });
@@ -48,11 +63,12 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
   const startFrom = params.from ? new Date(`${params.from}T00:00:00.000Z`) : null;
   const startBefore = startFrom ? new Date(startFrom) : null;
   if (startBefore) startBefore.setUTCDate(startBefore.getUTCDate() + 1);
+  const delivery = excludeTodayDelivery();
   const baseWhere = { ...scope, ...campaignModeWhere(mode), ...(params.wl ? { metaAccountId: params.wl } : {}), ...(params.q ? { name: { contains: params.q } } : {}) };
-  const where = startFrom && startBefore ? { AND: [baseWhere, { OR: [
+  const where = { AND: [baseWhere, delivery.where, ...(startFrom && startBefore ? [{ OR: [
     { firstDeliveryDate: { gte: startFrom, lt: startBefore } },
     { firstDeliveryDate: null, startTime: { gte: startFrom, lt: startBefore } },
-  ] }] } : baseWhere;
+  ] }] : [])] };
   const [unresolvedBudgets, total] = await Promise.all([
     prisma.campaign.count({ where: { ...scope, effectiveDailyBudget: null } }),
     prisma.campaign.count({ where }),
@@ -78,6 +94,7 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
         AND (${params.wl} IS NULL OR ma.id = ${params.wl})
         AND (${params.q} = '' OR LOCATE(${params.q}, c.name) > 0)
         ${startFrom && startBefore ? Prisma.sql`AND COALESCE(c.firstDeliveryDate, c.startTime) >= ${startFrom} AND COALESCE(c.firstDeliveryDate, c.startTime) < ${startBefore}` : Prisma.empty}
+        ${delivery.sql}
       GROUP BY c.id, c.name, ma.name, c.firstDeliveryDate, c.startTime, c.effectiveDailyBudget
     ) summary
     ORDER BY ${orderColumn} IS NULL ASC, ${orderColumn} ${orderDirection}, summary.id ASC
