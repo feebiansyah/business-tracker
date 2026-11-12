@@ -9,7 +9,8 @@ import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-mod
 export type FilterCampaignRow = { id: number; name: string; wlName: string; startTime: string | null; budget: number; days: number; totalSpend: number; costWithFee: number; totalCommission: number | null; profit: number | null; profitPercent: number | null; hasPendingNote: boolean };
 export type PageInfo = { page: number; pageSize: 25 | 50 | 100; total: number; pageCount: number };
 export type UnresolvedBudgetCampaign = { id: number; name: string; metaCampaignId: string; wlName: string; status: string | null };
-export type FilterPageData = { shopeeAccount: { id: number; name: string }; metaAccounts: { id: number; name: string }[]; unresolvedBudgets: number; unresolvedBudgetCampaigns: UnresolvedBudgetCampaign[]; campaigns: FilterCampaignRow[]; pagination: PageInfo };
+export type DuplicateCampaignName = { name: string; campaigns: (UnresolvedBudgetCampaign & { startDate: string | null })[] };
+export type FilterPageData = { shopeeAccount: { id: number; name: string }; metaAccounts: { id: number; name: string }[]; unresolvedBudgets: number; unresolvedBudgetCampaigns: UnresolvedBudgetCampaign[]; duplicateCampaignNames: DuplicateCampaignName[]; campaigns: FilterCampaignRow[]; pagination: PageInfo };
 
 function dateString(date: Date) { return date.toISOString().slice(0, 10); }
 function numberValue(value: Prisma.Decimal | bigint | number | null) { return value === null ? null : Number(value); }
@@ -57,12 +58,23 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
   const unresolvedStatus: Prisma.CampaignWhereInput = campaignModeConfig[mode].active
     ? { metaStatus: "ACTIVE", metaAccount: { status: "ACTIVE" } }
     : { OR: [{ metaStatus: { not: "ACTIVE" } }, { metaStatus: null }, { metaAccount: { status: { not: "ACTIVE" } } }] };
-  const [unresolved, total] = await Promise.all([
+  const [unresolved, total, nameCandidates] = await Promise.all([
     prisma.campaign.findMany({ where: { AND: [scope, unresolvedStatus], effectiveDailyBudget: null }, select: { id: true, name: true, metaCampaignId: true, metaStatus: true, metaAccountId: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
     prisma.campaign.count({ where }),
+    prisma.campaign.findMany({ where: scope, select: { id: true, name: true, metaCampaignId: true, metaStatus: true, metaAccountId: true, firstDeliveryDate: true, startTime: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
   ]);
   const wlNames = new Map(shopeeAccount.metaAccounts.map(wl => [wl.id, wl.name]));
   const unresolvedBudgetCampaigns = unresolved.map(c => ({ id: c.id, name: c.name, metaCampaignId: c.metaCampaignId, wlName: wlNames.get(c.metaAccountId) ?? `WL ${c.metaAccountId}`, status: c.metaStatus }));
+  const names = new Map<string, Map<string, DuplicateCampaignName["campaigns"][number]>>();
+  for (const campaign of nameCandidates) {
+    // Match commission/click import exactly; SQL collation is not equivalent.
+    const name = campaign.name.trim().toUpperCase();
+    const group = names.get(name) ?? new Map<string, DuplicateCampaignName["campaigns"][number]>();
+    const deliveryDate = campaign.firstDeliveryDate ?? campaign.startTime;
+    group.set(campaign.metaCampaignId, { id: campaign.id, name: campaign.name, metaCampaignId: campaign.metaCampaignId, wlName: wlNames.get(campaign.metaAccountId) ?? `WL ${campaign.metaAccountId}`, status: campaign.metaStatus, startDate: deliveryDate ? dateString(deliveryDate) : null });
+    names.set(name, group);
+  }
+  const duplicateCampaignNames = Array.from(names, ([name, campaigns]) => ({ name, campaigns: Array.from(campaigns.values()) })).filter(group => group.campaigns.length > 1);
   const pagination = pageInfo(total, params.page, params.pageSize);
   const orderColumn = Prisma.raw(filterOrderColumns[params.sort]);
   const orderDirection = Prisma.raw(params.dir === "asc" ? "ASC" : "DESC");
@@ -89,7 +101,7 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
     ORDER BY ${orderColumn} IS NULL ASC, ${orderColumn} ${orderDirection}, summary.id ASC
     LIMIT ${pagination.pageSize} OFFSET ${(pagination.page - 1) * pagination.pageSize}
   `);
-  return { shopeeAccount: { id: shopeeAccount.id, name: shopeeAccount.name }, metaAccounts: shopeeAccount.metaAccounts, unresolvedBudgets: unresolvedBudgetCampaigns.length, unresolvedBudgetCampaigns, pagination, campaigns: rows.map((row) => ({
+  return { shopeeAccount: { id: shopeeAccount.id, name: shopeeAccount.name }, metaAccounts: shopeeAccount.metaAccounts, unresolvedBudgets: unresolvedBudgetCampaigns.length, unresolvedBudgetCampaigns, duplicateCampaignNames, pagination, campaigns: rows.map((row) => ({
     id: row.id, name: row.name, wlName: row.wlName, startTime: row.startTime ? dateString(row.startTime) : null, budget: Number(row.budget), days: Number(row.days), totalSpend: Number(row.totalSpend),
     costWithFee: Number(row.costWithFee), totalCommission: numberValue(row.totalCommission), profit: numberValue(row.profit), profitPercent: numberValue(row.profitPercent), hasPendingNote: Boolean(row.hasPendingNote),
   })) };
