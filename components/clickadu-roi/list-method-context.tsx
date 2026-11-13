@@ -3,8 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { getClickaduListAction } from "@/app/shopee/[id]/clickadu-roi/list-actions";
 import type { ClickaduListMethod, ClickaduListState } from "@/lib/clickadu-roi/list-method";
+import type { CampaignDisplay } from "@/lib/traffic-roi/campaign-display";
 
-type Read = { actual?: ClickaduListState; error?: string; loading: boolean };
+type Read = { actual?: ClickaduListState; display?: CampaignDisplay; error?: string; loading: boolean };
 type State = { reads: Record<number, Read>; plans: Record<number, ClickaduListMethod>; busy: boolean;
   plan(id: number, method: ClickaduListMethod): void; refresh(id: number): Promise<void>;
   verified(id: number, actual: ClickaduListState): void; begin(): boolean; end(): void };
@@ -25,7 +26,7 @@ export function ClickaduListMethodProvider({ accountId, configIds, connected, ch
     try {
       const result = await getClickaduListAction(accountId, id);
       if (sequence.current.get(id) !== request) return;
-      setReads((old) => ({ ...old, [id]: result.success ? { actual: result.actual, loading: false } : { error: result.message, loading: false } }));
+      setReads((old) => ({ ...old, [id]: result.success ? { actual: result.actual, display: result.display, loading: false } : { error: result.message, loading: false } }));
     } catch {
       if (sequence.current.get(id) === request) setReads((old) => ({ ...old, [id]: { error: "Metode Clickadu gagal dibaca. Refresh untuk mencoba lagi.", loading: false } }));
     }
@@ -41,7 +42,7 @@ export function ClickaduListMethodProvider({ accountId, configIds, connected, ch
   }, [ids, connected, refresh]);
   return <Context.Provider value={{ reads, plans, busy,
     plan(id, method) { if (!lock.current) setPlans((old) => ({ ...old, [id]: method })); }, refresh,
-    verified(id, actual) { sequence.current.set(id, (sequence.current.get(id) ?? 0) + 1); setReads((old) => ({ ...old, [id]: { actual, loading: false } })); },
+    verified(id, actual) { sequence.current.set(id, (sequence.current.get(id) ?? 0) + 1); setReads((old) => ({ ...old, [id]: { actual, display: old[id]?.display, loading: false } })); },
     begin() { if (lock.current) return false; lock.current = true; setBusy(true); return true; },
     end() { lock.current = false; setBusy(false); },
   }}>{children}</Context.Provider>;

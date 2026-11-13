@@ -12,6 +12,7 @@ import { clickaduListCandidates, parseListMethod, type ClickaduListPreview } fro
 import { buildClickaduRoiAnalysis, publicClickaduAnalysisMessage } from "@/lib/clickadu-roi/analyze";
 import { BlacklistReplacementError } from "@/lib/clickadu-roi/blacklist";
 import { readCsvUpload } from "@/lib/shopee-import/upload";
+import { parseClickaduCampaignDisplay } from "@/lib/traffic-roi/campaign-display";
 
 async function scoped(accountId: number, configId: unknown) {
   const config = await getClickaduConfigById(prisma, accountId, configId);
@@ -26,8 +27,9 @@ export async function getClickaduListAction(accountId: number, configId: number)
   await requireUser();
   try {
     const { config, client } = await scoped(accountId, configId);
-    const actual = readClickaduList(await client.getCampaign(config.campaignId), config.campaignId);
-    return { success: true as const, actual, readAt: new Date().toISOString() };
+    const campaign = await client.getCampaign(config.campaignId);
+    const actual = readClickaduList(campaign, config.campaignId);
+    return { success: true as const, actual, display: parseClickaduCampaignDisplay(campaign), readAt: new Date().toISOString() };
   } catch (error) { return { success: false as const, message: message(error) }; }
 }
 
