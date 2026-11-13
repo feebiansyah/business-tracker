@@ -1,3 +1,5 @@
+import type { ManualPostType } from "@/lib/campaign-post-type/model";
+
 export type PrefilterSlot = "AWAL" | "AKHIR";
 export type PrefilterProgress = {
   runId: string; slot: PrefilterSlot; businessDate: string; requestedAt: string;
@@ -10,5 +12,5 @@ export type PrefilterRow = {
 };
 export type PrefilterSnapshot = { runId: string; requestedAt: string; finishedAt: string; skipped: string[]; rows: PrefilterRow[] };
 export type PrefilterNote = { metaCampaignId: string; note: string; completed: boolean };
-export type PrefilterData = { account: { id: number; name: string }; businessDate: string; snapshots: Record<PrefilterSlot, PrefilterSnapshot | null>; progress: PrefilterProgress | null; notes: PrefilterNote[] };
+export type PrefilterData = { account: { id: number; name: string }; businessDate: string; snapshots: Record<PrefilterSlot, PrefilterSnapshot | null>; progress: PrefilterProgress | null; notes: PrefilterNote[]; postTypes: Record<string, ManualPostType> };
 export type PrefilterBatch = { progress: PrefilterProgress; shouldContinue: boolean; blocked: boolean };

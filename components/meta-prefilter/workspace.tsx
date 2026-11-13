@@ -1,7 +1,9 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
-import { readPrefilterAction, savePrefilterNoteAction, snapshotPrefilterAction } from "@/app/shopee/[id]/prefilter/actions";
+import { readPrefilterAction, savePrefilterNoteAction, savePrefilterPostTypeAction, snapshotPrefilterAction } from "@/app/shopee/[id]/prefilter/actions";
+import { PostTypeSelect } from "@/components/filter/post-type-select";
+import type { ManualPostType, PostTypeInput } from "@/lib/campaign-post-type/model";
 import type { PrefilterData, PrefilterProgress, PrefilterRow, PrefilterSlot } from "@/lib/meta-prefilter/types";
 
 const slots = ["AWAL","AKHIR"] as const;
@@ -20,6 +22,8 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
   const [drafts,setDrafts] = useState<Record<string,string>>({});
   const [noteFeedback,setNoteFeedback] = useState<Record<string,{pending?: boolean; ok?: boolean; text: string}>>({});
   const noteSaves = useRef(new Set<string>());
+  const postTypeVersion = useRef(0);
+  const postTypeWrites = useRef(new Map<string, { version: number; manualType: ManualPostType | null }>());
   const inFlight = useRef(false), epoch = useRef(0);
   useEffect(()=>()=>{ epoch.current++; },[initial.account.id]);
   useEffect(()=>{
@@ -52,6 +56,20 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
       if (ticket === epoch.current) setNoteFeedback(current=>({...current,[metaCampaignId]:{text:"Note belum tersimpan. Coba lagi."}}));
     } finally { if (ticket === epoch.current) noteSaves.current.delete(metaCampaignId); }
   }
+  async function savePostType(input: PostTypeInput) {
+    const ticket = epoch.current;
+    const result = await savePrefilterPostTypeAction({ ...input, businessDate: data.businessDate });
+    if (result.success && ticket === epoch.current) {
+      postTypeWrites.current.set(input.metaCampaignId, { version: ++postTypeVersion.current, manualType: result.manualType });
+      setData(current => {
+        const postTypes = { ...current.postTypes };
+        if (result.manualType === null) delete postTypes[input.metaCampaignId];
+        else postTypes[input.metaCampaignId] = result.manualType;
+        return { ...current, postTypes };
+      });
+    }
+    return result;
+  }
   async function capture(slot: PrefilterSlot) {
     if (inFlight.current || noteSaves.current.size) return;
     inFlight.current = true; const ticket = epoch.current;
@@ -71,9 +89,18 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
           break;
         }
       }
+      const readTypeVersion = postTypeVersion.current;
       const read = await readPrefilterAction(initial.account.id);
       if (ticket !== epoch.current) return;
-      if (read.success) setData(read.data);
+      if (read.success) {
+        const postTypes = { ...read.data.postTypes };
+        // Keep confirmed edits that finished after this snapshot read began.
+        for (const [id, write] of postTypeWrites.current) if (write.version > readTypeVersion) {
+          if (write.manualType === null) delete postTypes[id];
+          else postTypes[id] = write.manualType;
+        }
+        setData({ ...read.data, postTypes });
+      }
       else setNotice({ text: read.message });
     } catch {
       if (ticket === epoch.current) setNotice({ text: "Koneksi terputus. Snapshot COMPLETE sebelumnya tetap tampil; klik slot yang sama untuk melanjutkan progres tersimpan." });
@@ -119,7 +146,7 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
       const last = (row.AKHIR ?? row.AWAL)!;
       const saved = notes.get(last.metaCampaignId), draft = drafts[last.metaCampaignId] ?? saved?.note ?? "", feedback = noteFeedback[last.metaCampaignId];
       const delta = row.AWAL && row.AKHIR ? {cpc: row.AWAL.cpc === null || row.AKHIR.cpc === null ? null : Number(row.AKHIR.cpc)-Number(row.AWAL.cpc),fee:Number(row.AKHIR.withFee)-Number(row.AWAL.withFee),clicks:row.AWAL.clicks === null || row.AKHIR.clicks === null ? null : BigInt(row.AKHIR.clicks)-BigInt(row.AWAL.clicks)} : null;
-      return <tr key={last.metaCampaignId} className="align-top"><td className="sticky left-0 z-10 w-52 min-w-40 max-w-56 break-words border-r border-slate-200 bg-white px-2 py-2 shadow-[2px_0_4px_-2px_rgba(15,23,42,0.25)]"><span className="font-medium">{last.campaignName}</span>{saved?.note.trim() && !saved.completed && <span title="Ada catatan belum selesai" aria-label="Ada catatan belum selesai" className="ml-1 inline-block size-2 rounded-full bg-red-500"/>}<span className="mt-0.5 block break-all text-[10px] text-slate-500">{last.metaCampaignId}</span></td><td className="max-w-32 break-words px-2 py-2">{last.wlName}</td><td className="px-2 py-2 text-slate-400">—</td>
+      return <tr key={last.metaCampaignId} className="align-top"><td className="sticky left-0 z-10 w-52 min-w-40 max-w-56 break-words border-r border-slate-200 bg-white px-2 py-2 shadow-[2px_0_4px_-2px_rgba(15,23,42,0.25)]"><span className="font-medium">{last.campaignName}</span>{saved?.note.trim() && !saved.completed && <span title="Ada catatan belum selesai" aria-label="Ada catatan belum selesai" className="ml-1 inline-block size-2 rounded-full bg-red-500"/>}<span className="mt-0.5 block break-all text-[10px] text-slate-500">{last.metaCampaignId}</span></td><td className="max-w-32 break-words px-2 py-2">{last.wlName}</td><td className="px-2 py-2"><PostTypeSelect key={`${initial.account.id}:${data.businessDate}:${last.metaCampaignId}`} shopeeAccountId={initial.account.id} metaCampaignId={last.metaCampaignId} campaignName={last.campaignName} manualType={data.postTypes?.[last.metaCampaignId] ?? null} saveAction={savePostType} /></td>
         {slots.map(slot=><Fragment key={slot}><td className={`${numericCell} border-l-2 border-slate-300`}>{money(row[slot]?.cpc ?? null)}</td><td className={numericCell}>{money(row[slot]?.withFee ?? null)}</td><td className={numericCell}>{clicks(row[slot]?.clicks)}</td></Fragment>)}
         <td className={`${numericCell} border-l-2 border-slate-300`}>{money(delta?.cpc ?? null)}</td><td className={numericCell}>{money(delta?.fee ?? null)}</td><td className={numericCell}>{clicks(delta?.clicks)}</td>
         <td className="w-44 border-l-2 border-slate-300 px-2 py-2"><input aria-label={`Note ${last.campaignName}`} value={draft} maxLength={2000} disabled={!!busy || !!feedback?.pending} placeholder="Tambahkan note" onChange={event=>{

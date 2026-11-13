@@ -3,12 +3,13 @@ import test from "node:test";
 import {createRequire} from "node:module";
 import {loadTs} from "../../lib/filter/sync-baseline.test.mjs";
 const require=createRequire(import.meta.url),React=require("react"),{renderToStaticMarkup}=require("react-dom/server");
+const postTypeSelect=loadTs("components/filter/post-type-select.tsx",{"@/app/shopee/[id]/filter/post-type-actions":{}});
 const initial={account:{id:7,name:"Shop"},businessDate:"2026-11-07",snapshots:{AWAL:null,AKHIR:null},progress:null,notes:[]};
-function harness(action, data=initial, save=async()=>({success:false,message:"Gagal menyimpan"})){
+function harness(action, data=initial, save=async()=>({success:false,message:"Gagal menyimpan"}), options={}){
   const hooks=[],effects=[];let cursor=0,readCalls=0;
   const hook=make=>{const i=cursor++;if(!(i in hooks))hooks[i]=make();return[hooks[i],i];};
   const fakeReact={...React,useRef:v=>hook(()=>({current:v}))[0],useState:v=>{const[value,i]=hook(()=>v);return[value,v=>{hooks[i]=typeof v==="function"?v(hooks[i]):v;}];},useEffect:fn=>{hook(()=>{effects.push(fn());return true;});}};
-  const api=loadTs("components/meta-prefilter/workspace.tsx",{__date:Date,react:fakeReact,"@/app/shopee/[id]/prefilter/actions":{savePrefilterNoteAction:save,snapshotPrefilterAction:action,readPrefilterAction:async()=>{readCalls++;return{success:true,data};}}});
+  const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/components/filter/post-type-select":postTypeSelect,__date:Date,react:fakeReact,"@/app/shopee/[id]/prefilter/actions":{savePrefilterPostTypeAction:options.typeSave,savePrefilterNoteAction:save,snapshotPrefilterAction:action,readPrefilterAction:async()=>{readCalls++;return{success:true,data:options.read?await options.read():data};}}});
   const render=()=>{cursor=0;return api.PrefilterWorkspace({initial:data});};
   const inputs=tree=>{const found=[];function visit(n){if(!n||typeof n!=="object")return;if(n.type==="input")found.push(n);for(const c of React.Children.toArray(n.props?.children))visit(c);}visit(tree);return found;};
   const buttons=tree=>{const result=[];function visit(n){if(!n||typeof n!=="object")return;if(n.type==="button")result.push(n);for(const child of React.Children.toArray(n.props?.children))visit(child);}visit(tree);return result;};
@@ -21,15 +22,39 @@ test("manual snapshot locks duplicate clicks, stops on unmount, and never polls"
   h.unmount();resolve();await pending;assert.equal(h.readCalls(),0);assert.equal(calls,1);
 });
 test("two slots and zero-click CPC are visible with internal table scrolling",()=>{
-  const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/app/shopee/[id]/prefilter/actions":{}});
+  const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/components/filter/post-type-select":postTypeSelect,"@/app/shopee/[id]/prefilter/actions":{}});
   const data={...initial,snapshots:{AWAL:{runId:"r",requestedAt:"2026-11-07T03:17:42Z",finishedAt:"2026-11-07T03:18:00Z",skipped:[],rows:[{metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",configuredStatus:"ACTIVE",effectiveStatus:"ACTIVE",spend:"100",withFee:"105",clicks:"0",cpc:null}]},AKHIR:null}};
   const html=renderToStaticMarkup(React.createElement(api.PrefilterWorkspace,{initial:data}));
   assert.match(html,/Snapshot Awal/);assert.match(html,/Snapshot Akhir/);assert.match(html,/10\.17\.42/);assert.match(html,/>CPC<\/th>/);assert.match(html,/overflow-auto/);assert.doesNotMatch(html,/<details/);
   assert.equal((html.match(/<td /g)||[]).length,14);assert.match(html,/Note Campaign/);assert.match(html,/Selesai Campaign/);
 });
 
+test("PraFilter Jenis uses shared override selector, without guessing automatic content",()=>{
+  const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"100",withFee:"105",clicks:"1",cpc:"100"};
+  const snapshot={runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]};
+  for(const [postTypes,want]of [[{},">—</p>"],[{"123":"GAMBAR_PRODUK"},">GAMBAR PRODUK</p>"]]){
+    const h=harness(async()=>{}, {...initial,snapshots:{AWAL:snapshot,AKHIR:null},postTypes});
+    const html=renderToStaticMarkup(h.render());assert.match(html,/aria-label="Jenis Campaign"/);assert(html.includes(want));h.unmount();
+  }
+});
+
+test("saved manual type survives search remount and a concurrent stale snapshot read",async()=>{
+  const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"100",withFee:"105",clicks:"1",cpc:"100"};
+  const data={...initial,postTypes:{},snapshots:{AWAL:{runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]},AKHIR:null}};
+  let releaseRead;const readGate=new Promise(r=>{releaseRead=r;});
+  const h=harness(async()=>({success:true,batch:{progress:{runId:"r",slot:"AWAL",status:"COMPLETE",skipped:[]},shouldContinue:false}}),data,undefined,{typeSave:async input=>({success:true,manualType:input.manualType}),read:()=>readGate});
+  function selector(tree){if(tree?.type===postTypeSelect.PostTypeSelect)return tree;for(const child of React.Children.toArray(tree?.props?.children)){const found=selector(child);if(found)return found;}}
+  const capture=h.buttons(h.render())[0].props.onClick();while(!h.readCalls())await Promise.resolve();
+  await selector(h.render()).props.saveAction({shopeeAccountId:7,metaCampaignId:"123",manualType:"VIDEO"});
+  releaseRead(data);await capture;
+  assert.equal(selector(h.render()).props.manualType,"VIDEO");
+  h.inputs(h.render())[0].props.onChange({target:{value:"absent"}});assert.equal(selector(h.render()),undefined);
+  h.inputs(h.render())[0].props.onChange({target:{value:""}});assert.equal(selector(h.render()).props.manualType,"VIDEO");
+  await selector(h.render()).props.saveAction({shopeeAccountId:7,metaCampaignId:"123",manualType:null});assert.equal(selector(h.render()).props.manualType,null);h.unmount();
+});
+
 test("table freezes both header levels and Campaign; money uses rounded Indonesian numbers only",()=>{
-  const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/app/shopee/[id]/prefilter/actions":{}});
+  const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/components/filter/post-type-select":postTypeSelect,"@/app/shopee/[id]/prefilter/actions":{}});
   const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"10000",withFee:"11062.8",clicks:"1",cpc:"2500.5"};
   const snapshot=rows=>({runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows});
   const data={...initial,snapshots:{AWAL:snapshot([row]),AKHIR:snapshot([{...row,withFee:"9812.4",cpc:null}])}};

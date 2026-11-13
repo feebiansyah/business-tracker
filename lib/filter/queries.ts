@@ -2,11 +2,13 @@ import "server-only";
 
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { readPostTypeOverrides } from "@/lib/campaign-post-type/repository";
+import type { ManualPostType } from "@/lib/campaign-post-type/model";
 import { buildDailyMetricView, isCommissionImportDateCovered, type DailyMetricSource } from "@/lib/filter/view-model";
 import type { FilterParams, FilterSortKey, HistoryParams, HistorySortKey } from "@/lib/filter/server-pagination";
 import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-modes";
 
-export type FilterCampaignRow = { id: number; name: string; wlName: string; startTime: string | null; budget: number; days: number; totalSpend: number; costWithFee: number; totalCommission: number | null; profit: number | null; profitPercent: number | null; hasPendingNote: boolean };
+export type FilterCampaignRow = { id: number; metaCampaignId: string; manualPostType: ManualPostType | null; name: string; wlName: string; startTime: string | null; budget: number; days: number; totalSpend: number; costWithFee: number; totalCommission: number | null; profit: number | null; profitPercent: number | null; hasPendingNote: boolean };
 export type PageInfo = { page: number; pageSize: 25 | 50 | 100; total: number; pageCount: number };
 export type UnresolvedBudgetCampaign = { id: number; name: string; metaCampaignId: string; wlName: string; status: string | null };
 export type DuplicateCampaignName = { name: string; campaigns: (UnresolvedBudgetCampaign & { startDate: string | null })[] };
@@ -117,7 +119,10 @@ export async function getCampaignWorkspaceData(shopeeAccountId: number, mode: Ca
     ORDER BY ${orderColumn} IS NULL ASC, ${orderColumn} ${orderDirection}, summary.id ASC
     LIMIT ${pagination.pageSize} OFFSET ${(pagination.page - 1) * pagination.pageSize}
   `);
+  const metaIds = new Map(nameCandidates.map(campaign => [campaign.id, campaign.metaCampaignId]));
+  const overrides = await readPostTypeOverrides(shopeeAccountId, rows.flatMap(row => metaIds.get(row.id) ? [metaIds.get(row.id)!] : []));
   return { shopeeAccount: { id: shopeeAccount.id, name: shopeeAccount.name }, metaAccounts: shopeeAccount.metaAccounts, unresolvedBudgets: unresolvedBudgetCampaigns.length, unresolvedBudgetCampaigns, duplicateCampaignNames, pagination, campaigns: rows.map((row) => ({
+    metaCampaignId: metaIds.get(row.id)!, manualPostType: overrides[metaIds.get(row.id)!] ?? null,
     id: row.id, name: row.name, wlName: row.wlName, startTime: row.startTime ? dateString(row.startTime) : null, budget: Number(row.budget), days: Number(row.days), totalSpend: Number(row.totalSpend),
     costWithFee: Number(row.costWithFee), totalCommission: numberValue(row.totalCommission), profit: numberValue(row.profit), profitPercent: numberValue(row.profitPercent), hasPendingNote: Boolean(row.hasPendingNote),
   })) };

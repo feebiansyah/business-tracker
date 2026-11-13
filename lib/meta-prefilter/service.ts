@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma, type PrismaClient, type MetaPrefilterRun } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { readPostTypeOverrides } from "@/lib/campaign-post-type/repository";
 import { MetaGraphClient, MetaApiError, MetaSyncPauseError } from "@/lib/meta/client";
 import type { MetaCampaign, MetaCampaignInsight } from "@/lib/meta/types";
 import { META_SYNC_HTTP_MS, META_SYNC_LEASE_MS, META_SYNC_UNIT_MS } from "@/lib/filter/meta-sync-state";
@@ -54,8 +55,9 @@ export async function readPrefilterData(shopeeAccountId: number, db: Db = prisma
   // Also filter snapshots published before first-day classification was introduced.
   const eligible = await firstDayIds(tx,[...new Set(rows.map(r=>r.metaCampaignId))],date);
   const notes = eligible.size ? await tx.metaPrefilterNote.findMany({ where: { shopeeAccountId, businessDate: dateValue(date), metaCampaignId: { in: [...eligible] } }, select: { metaCampaignId: true, note: true, completed: true } }) : [];
+  const postTypes = await readPostTypeOverrides(shopeeAccountId, [...eligible], tx);
   const snapshot = (run: MetaPrefilterRun | null) => run ? { runId: run.id, requestedAt: run.requestedAt.toISOString(), finishedAt: run.finishedAt!.toISOString(), skipped: skippedNames(run), rows: rows.filter(r=>r.runId === run.id && eligible.has(r.metaCampaignId)).map(r=>({ metaCampaignId: r.metaCampaignId, campaignName: r.campaignName, metaAccountId: r.metaAccountId, wlName: r.wlName, configuredStatus: r.configuredStatus, effectiveStatus: r.effectiveStatus, spend: r.spend!.toString(), withFee: new Prisma.Decimal(r.spend!.toString()).mul("1.05").toString(), clicks: r.clicks?.toString() ?? null, cpc: cpc(r.spend!.toString(),r.clicks) })) } : null;
-  return { account: { id: account.id, name: account.name }, businessDate: date, snapshots: { AWAL: snapshot(awal), AKHIR: snapshot(akhir) }, progress: active && logicalDate(active) === date ? progress(active) : null, notes };
+  return { account: { id: account.id, name: account.name }, businessDate: date, snapshots: { AWAL: snapshot(awal), AKHIR: snapshot(akhir) }, progress: active && logicalDate(active) === date ? progress(active) : null, notes, postTypes };
   },{ isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 10_000 });
 }
 

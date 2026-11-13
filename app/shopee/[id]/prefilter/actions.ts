@@ -2,9 +2,21 @@
 
 import { randomUUID } from "node:crypto";
 import { requireUser } from "@/lib/auth/session";
+import { revalidatePath } from "next/cache";
+import { savePrefilterPostType, type PrefilterPostTypeInput } from "@/lib/meta-prefilter/post-type";
+import type { PostTypeResult } from "@/lib/campaign-post-type/model";
 import { readPrefilterData, runPrefilterBatch } from "@/lib/meta-prefilter/service";
 import type { PrefilterBatch, PrefilterData, PrefilterSlot } from "@/lib/meta-prefilter/types";
 import { savePrefilterNote, type NoteInput } from "@/lib/meta-prefilter/notes";
+
+export async function savePrefilterPostTypeAction(input: PrefilterPostTypeInput): Promise<PostTypeResult> {
+  await requireUser({ readOnly: true });
+  try {
+    const saved = await savePrefilterPostType(input);
+    for (const mode of ["filter", "fix", "off-filter", "off-fix", "prefilter"]) revalidatePath(`/shopee/${input.shopeeAccountId}/${mode}`);
+    return { success: true, ...saved };
+  } catch { return { success: false, message: "Jenis belum tersimpan. Pastikan snapshot dan tanggal masih sesuai, lalu coba lagi." }; }
+}
 
 export async function savePrefilterNoteAction(input: NoteInput) {
   await requireUser({ readOnly: true });

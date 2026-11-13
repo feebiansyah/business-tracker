@@ -1,3 +1,5 @@
+import type { ManualPostType } from "@/lib/campaign-post-type/model";
+
 export type MetaAdSetSettings = {
   id: string;
   name: string;
@@ -30,5 +32,5 @@ export type MetaCampaignSettingsTarget = {
 };
 
 export type MetaCampaignSettingsActionResult =
-  | { success: true; target: MetaCampaignSettingsTarget; data: MetaCampaignSettingsView; readAt: string }
+  | { success: true; target: MetaCampaignSettingsTarget; data: MetaCampaignSettingsView; manualPostType: ManualPostType | null; readAt: string }
   | { success: false; message: string };

@@ -7,6 +7,7 @@ import { MetaCampaignReadClient } from "@/lib/meta-campaign-controls/read-client
 import { readMetaCampaignSettings } from "@/lib/meta-campaign-settings/reader";
 import type { MetaCampaignSettingsActionResult, MetaCampaignSettingsTarget } from "@/lib/meta-campaign-settings/types";
 import { prisma } from "@/lib/prisma";
+import { readPostTypeOverrides } from "@/lib/campaign-post-type/repository";
 
 function parseInput(value: unknown): { shopeeAccountId: number; campaignId: number; mode: CampaignMode } | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -37,7 +38,8 @@ export async function getMetaCampaignSettingsAction(input: unknown): Promise<Met
     };
     const client = new MetaCampaignReadClient();
     const data = await readMetaCampaignSettings(campaign.metaCampaignId, client);
-    return { success: true, target, data, readAt: new Date().toISOString() };
+    const overrides = await readPostTypeOverrides(parsed.shopeeAccountId, [campaign.metaCampaignId]);
+    return { success: true, target, data, manualPostType: overrides[campaign.metaCampaignId] ?? null, readAt: new Date().toISOString() };
   } catch {
     return { success: false, message: "Pengaturan Meta belum dapat dibaca. Tidak ada data yang diubah. Coba Baca ulang." };
   }
