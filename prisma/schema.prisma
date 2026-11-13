@@ -19,6 +19,12 @@ enum TrafficProvider {
   ADSTERRA
 }
 
+enum ManualPostType {
+  VIDEO
+  GAMBAR_FEWFEED
+  GAMBAR_PRODUK
+}
+
 enum AdsterraScheduleAction {
   ON
   OFF
@@ -80,6 +86,18 @@ model ShopeeAccount {
   trafficCredentials      TrafficCredential[]
   metaSyncRuns            MetaSyncRun[]
   metaPrefilterRuns       MetaPrefilterRun[]
+  campaignPostTypeOverrides CampaignPostTypeOverride[]
+}
+
+model CampaignPostTypeOverride {
+  shopeeAccountId Int
+  metaCampaignId String @db.VarChar(100)
+  manualType ManualPostType
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  shopeeAccount ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Cascade)
+
+  @@id([shopeeAccountId, metaCampaignId])
 }
 
 model MetaPrefilterRun {
