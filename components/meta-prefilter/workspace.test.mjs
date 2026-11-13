@@ -24,8 +24,25 @@ test("two slots and zero-click CPC are visible with internal table scrolling",()
   const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/app/shopee/[id]/prefilter/actions":{}});
   const data={...initial,snapshots:{AWAL:{runId:"r",requestedAt:"2026-11-07T03:17:42Z",finishedAt:"2026-11-07T03:18:00Z",skipped:[],rows:[{metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",configuredStatus:"ACTIVE",effectiveStatus:"ACTIVE",spend:"100",withFee:"105",clicks:"0",cpc:null}]},AKHIR:null}};
   const html=renderToStaticMarkup(React.createElement(api.PrefilterWorkspace,{initial:data}));
-  assert.match(html,/Snapshot Awal/);assert.match(html,/Snapshot Akhir/);assert.match(html,/10\.17\.42/);assert.match(html,/>CPC<\/th>/);assert.match(html,/overflow-x-auto/);assert.doesNotMatch(html,/<details/);
+  assert.match(html,/Snapshot Awal/);assert.match(html,/Snapshot Akhir/);assert.match(html,/10\.17\.42/);assert.match(html,/>CPC<\/th>/);assert.match(html,/overflow-auto/);assert.doesNotMatch(html,/<details/);
   assert.equal((html.match(/<td /g)||[]).length,14);assert.match(html,/Note Campaign/);assert.match(html,/Selesai Campaign/);
+});
+
+test("table freezes both header levels and Campaign; money uses rounded Indonesian numbers only",()=>{
+  const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/app/shopee/[id]/prefilter/actions":{}});
+  const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"10000",withFee:"11062.8",clicks:"1",cpc:"2500.5"};
+  const snapshot=rows=>({runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows});
+  const data={...initial,snapshots:{AWAL:snapshot([row]),AKHIR:snapshot([{...row,withFee:"9812.4",cpc:null}])}};
+  const html=renderToStaticMarkup(React.createElement(api.PrefilterWorkspace,{initial:data}));
+  assert.match(html,/<thead class="[^"]*sticky top-0 z-20/);
+  assert.match(html,/<th[^>]*class="[^"]*sticky left-0 z-30/);
+  assert.match(html,/<td class="[^"]*sticky left-0 z-10/);
+  assert.match(html,/max-h-\[70dvh\].*overflow-auto/);
+  assert.equal((html.match(/<tr/g)||[]).length,3);
+  assert.equal((html.match(/border-l-2 border-slate-300/g)||[]).length,11);
+  assert.match(html,/>11\.063<\/td>/);assert.match(html,/>2\.501<\/td>/);
+  assert.match(html,/>-1\.250<\/td>/);assert.match(html,/>—<\/td>/);assert.doesNotMatch(html,/Rp/);
+  assert.equal(data.snapshots.AWAL.rows[0].withFee,"11062.8");
 });
 
 test("note badge and checkbox change only after confirmed save; failure and double click preserve state",async()=>{
