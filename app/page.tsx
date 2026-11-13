@@ -30,8 +30,6 @@ export default async function DashboardPage() {
               const reminders = [
                 account.pendingNoteCount > 0 ? `${account.pendingNoteCount} catatan belum selesai` : null,
                 account.emptyActiveWlCount > 0 ? `${account.emptyActiveWlCount} WL aktif tanpa campaign aktif` : null,
-                !account.clickadu.complete ? `Clickadu: ${account.clickadu.coveredConfigCount}/${account.clickadu.totalConfigCount} campaign ter-cover D-1` : null,
-                !account.adsterra.complete ? `Adsterra: ${account.adsterra.coveredConfigCount}/${account.adsterra.totalConfigCount} campaign ter-cover D-1` : null,
                 account.clickaduNeverReplacedCount > 0 ? `Clickadu: ${account.clickaduNeverReplacedCount} campaign belum Replace Zone` : null,
                 account.adsterraNeverReplacedCount > 0 ? `Adsterra: ${account.adsterraNeverReplacedCount} campaign belum Replace Placement` : null,
               ].filter((message) => message !== null);

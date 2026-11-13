@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { syncFilterAction, type FilterSyncActionState } from "@/app/shopee/[id]/filter/actions";
-import { syncClickaduDailyAction } from "@/app/shopee/[id]/clickadu-roi/actions";
-import { syncAdsterraDailyAction } from "@/app/shopee/[id]/adsterra-roi/actions";
 import { Button } from "@/components/ui/button";
-import { shopeeOverviewTabs, type ShopeeOverviewTab } from "@/lib/dashboard/shopee-overview-params";
 import type { MetaSyncProgress } from "@/lib/filter/meta-sync-state";
 
-const labels = { meta: "Meta", clickadu: "Clickadu", adsterra: "Adsterra" };
+const shopeeOverviewTabs = ["meta"] as const;
+type ShopeeOverviewTab = typeof shopeeOverviewTabs[number];
+const labels = { meta: "Meta" };
 const phaseLabels = { STATUS: "Status WL", METADATA: "Campaign dan budget", ACCOUNT_SPEND: "Spend WL", CAMPAIGN_INSIGHTS: "Histori campaign", DONE: "Selesai" };
 
 export function ShopeeOverviewSync({ accountId, disabledReasons, initialMetaProgress }: {
@@ -36,7 +35,6 @@ export function ShopeeOverviewSync({ accountId, disabledReasons, initialMetaProg
     setResults((current) => ({ ...current, [provider]: undefined }));
     startTransition(async () => {
       try {
-        if (provider === "meta") {
           let result: FilterSyncActionState;
           do {
             result = await syncFilterAction(accountId, { success: false, message: "" });
@@ -44,11 +42,6 @@ export function ShopeeOverviewSync({ accountId, disabledReasons, initialMetaProg
             if (result.metaBatch) setMetaProgress(result.metaBatch.progress);
             setResults((current) => ({ ...current, meta: result }));
           } while (result.metaBatch?.shouldContinue);
-        } else {
-          const result = provider === "clickadu" ? await syncClickaduDailyAction(accountId) : await syncAdsterraDailyAction(accountId);
-          if (scope !== generation.current) return;
-          setResults((current) => ({ ...current, [provider]: result }));
-        }
       } catch {
         if (scope !== generation.current) return;
         setResults((current) => ({ ...current, [provider]: {

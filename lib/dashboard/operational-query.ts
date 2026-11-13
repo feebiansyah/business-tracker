@@ -29,10 +29,10 @@ export async function getOperationalDashboard(now: Date, db: OperationalDb) {
         take: 1,
       },
       clickaduCampaignConfigs: {
-        select: { historySyncedThrough: true, lastBlacklistReplacedAt: true },
+        select: { lastBlacklistReplacedAt: true },
       },
       adsterraCampaignConfigs: {
-        select: { id: true, campaignId: true, label: true, historySyncedThrough: true, lastBlacklistReplacedAt: true },
+        select: { id: true, campaignId: true, label: true, lastBlacklistReplacedAt: true },
       },
     },
   }), db.$queryRaw<{ shopeeAccountId: number; count: bigint | number }[]>`

@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { getAdsterraCampaignStatusesAction, setAdsterraAutoScheduleEnabledAction, setAdsterraCampaignActiveAction, syncAdsterraDailyAction } from "@/app/shopee/[id]/adsterra-roi/actions";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { getAdsterraCampaignStatusesAction, setAdsterraAutoScheduleEnabledAction, setAdsterraCampaignActiveAction } from "@/app/shopee/[id]/adsterra-roi/actions";
 import { Button } from "@/components/ui/button";
 import type { AdsterraCampaignStatusResult } from "@/lib/adsterra-roi/client";
-import { AdsterraCampaignHistoryModal } from "./campaign-history-modal";
 import { useAdsterraPlacementLists } from "./campaign-placement-lists";
 import { useAdsterraOperation } from "./operation-context";
 import { CampaignMethodControls } from "./campaign-method-controls";
@@ -19,8 +18,6 @@ const statusLabels = { ACTIVE: "Active", INACTIVE: "Inactive", LIMITED: "Limit",
 export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connected, campaignDisplay = {} }: { shopeeAccountId: number; campaigns: Campaign[]; connected: boolean; campaignDisplay?: Record<number, CampaignDisplay> }) {
   const operation = useAdsterraOperation();
   const { revision, readRevision } = operation;
-  const [selected, setSelected] = useState<Campaign | null>(null);
-  const [busy, setBusy] = useState(false);
   const [statusesBusy, setStatusesBusy] = useState(false);
   const [statusByConfig, setStatusByConfig] = useState<Record<number, StatusState>>({});
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
@@ -32,7 +29,6 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
   const [autoScheduleBusyIds, setAutoScheduleBusyIds] = useState<Set<number>>(new Set());
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const lock = useRef(false);
   const statusSequence = useRef(0);
   const toggleLocks = useRef(new Set<string>());
   const autoScheduleLocks = useRef(new Set<number>());
@@ -59,14 +55,6 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
     queueMicrotask(() => { if (!disposed) void refreshStatuses(); });
     return () => { disposed = true; sequence.current++; };
   }, [refreshStatuses, revision, connected]);
-
-  async function sync(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (lock.current) return;
-    if (!operation.begin("daily-sync")) return;
-    lock.current = true; setBusy(true); setMessage(""); setError("");
-    try { const result = await syncAdsterraDailyAction(shopeeAccountId); if (result.success) setMessage(result.message); else setError(result.message); }
-    finally { lock.current = false; setBusy(false); operation.end("daily-sync"); }
-  }
 
   async function toggleCampaign(campaign: Campaign, desiredActive: boolean) {
     const toggleKey = `${campaign.id}:${desiredActive}`;
@@ -117,7 +105,7 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
 
 
   return <section className="min-w-0 space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4"><div className="min-w-0 space-y-3">
-    <div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0"><h3 className="font-semibold text-slate-950">Campaign Adsterra</h3><p className="text-xs text-slate-500">Klik nama untuk laporan harian.</p></div><div className="flex w-full flex-wrap gap-1 sm:w-auto"><Button type="button" variant="ghost" className="h-8 px-2 text-xs" disabled={operation.busy || statusesBusy || placementLists.busy || !connected || campaigns.length === 0} onClick={() => { void refreshStatuses(); void placementLists.refresh(); }}>{statusesBusy || placementLists.busy ? "Memuat..." : "Refresh Status"}</Button><form onSubmit={sync}><Button className="h-8 px-2 text-xs" disabled={operation.busy || busy || !connected || campaigns.length === 0}>{busy ? "Menyinkronkan..." : "Sync Adsterra"}</Button></form></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0"><h3 className="font-semibold text-slate-950">Campaign Adsterra</h3></div><div className="flex w-full flex-wrap gap-1 sm:w-auto"><Button type="button" variant="ghost" className="h-8 px-2 text-xs" disabled={operation.busy || statusesBusy || placementLists.busy || !connected || campaigns.length === 0} onClick={() => { void refreshStatuses(); void placementLists.refresh(); }}>{statusesBusy || placementLists.busy ? "Memuat..." : "Refresh Status"}</Button></div></div>
     {!connected && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Koneksi Adsterra belum dikonfigurasi.</p>}{message && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}<OperationNotice message={error}/>
     {placementLists.error && <p role="alert" className="text-xs text-amber-800">Pembacaan metode belum lengkap. Gunakan Refresh Status.</p>}
     <div className="overflow-hidden rounded-lg border border-slate-200"><div className="overflow-x-auto"><table className="w-full min-w-170 text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">Campaign</th><th className="px-3 py-2">Status</th><th className="whitespace-nowrap px-3 py-2 text-right">Budget Harian</th><th className="whitespace-nowrap px-3 py-2">CPM Negara</th><th className="px-3 py-2">Metode</th><th className="px-3 py-2">Auto</th><th className="px-3 py-2">Aksi</th></tr></thead><tbody className="divide-y divide-slate-200">{campaigns.map((campaign) => {
@@ -129,13 +117,13 @@ export function AdsterraCampaignReportList({ shopeeAccountId, campaigns, connect
       const offerOff = status === "ACTIVE" || status === "LIMITED" || operation.changing || safetyOffIds.has(campaign.id) || (!status && !!(state?.error || error));
       const reason = activationBlocked ? lists?.application.method?.placementMethod === "WHITELIST" && lists.application.readiness === "NOT_APPLIED"
         ? "Whitelist belum diisi. Terapkan hasil analisis sebelum ON." : lists?.application.message : null;
-      return <tr key={campaign.id} className="align-top"><td className="max-w-64 px-3 py-3"><button type="button" className="break-words text-left font-medium text-slate-950 hover:underline" onClick={() => setSelected(campaign)}>{campaign.label || campaign.campaignId}</button><p className="mt-1 text-xs text-slate-500">ID {campaign.campaignId}</p><p className="break-all text-xs text-slate-500">Tag_link1: {campaign.sourceTag}</p></td><td className="px-3 py-3"><span className={status === "ACTIVE" ? "text-emerald-700" : status === "INACTIVE" ? "text-slate-700" : status ? "text-amber-700" : "text-slate-500"}>{status ? statusLabels[status] : state?.error ? "Tidak diketahui" : statusesBusy ? "Memuat..." : "Belum dimuat"}</span>{state?.error && <details className="mt-1 max-w-48 text-xs text-red-700"><summary className="cursor-pointer">Detail error</summary><p className="mt-1 break-words">{state.error}</p></details>}</td>
+      return <tr key={campaign.id} className="align-top"><td className="max-w-64 px-3 py-3"><span className="break-words font-medium text-slate-950">{campaign.label || campaign.campaignId}</span><p className="mt-1 text-xs text-slate-500">ID {campaign.campaignId}</p><p className="break-all text-xs text-slate-500">Tag_link1: {campaign.sourceTag}</p></td><td className="px-3 py-3"><span className={status === "ACTIVE" ? "text-emerald-700" : status === "INACTIVE" ? "text-slate-700" : status ? "text-amber-700" : "text-slate-500"}>{status ? statusLabels[status] : state?.error ? "Tidak diketahui" : statusesBusy ? "Memuat..." : "Belum dimuat"}</span>{state?.error && <details className="mt-1 max-w-48 text-xs text-red-700"><summary className="cursor-pointer">Detail error</summary><p className="mt-1 break-words">{state.error}</p></details>}</td>
         <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums text-slate-600">{displayBudgetUsd(campaignDisplay[campaign.id])}</td><td className="min-w-40 max-w-72 px-3 py-3 text-xs leading-5 text-slate-600">{displayCountryCpm(campaignDisplay[campaign.id])}</td>
         <td className="px-3 py-3"><CampaignMethodControls accountId={shopeeAccountId} configId={campaign.id} info={lists?.application} busy={placementLists.busy}/>{reason && <p className="mt-1 max-w-64 text-xs text-amber-800">{reason}</p>}</td>
         <td className="px-3 py-3"><input type="checkbox" checked={autoEnabled} disabled={autoScheduleBusy || ((operation.busy || activationBlocked) && !autoEnabled)} title={autoScheduleBusy ? "Menyimpan Auto…" : reason ?? "Auto ON/OFF"} onChange={(event) => void toggleAutoSchedule(campaign, event.target.checked)} className="size-4 accent-blue-600" aria-label={`Auto ON/OFF ${campaign.label || campaign.campaignId}`}/></td>
         <td className="px-3 py-3">{offerOff ? <Button type="button" variant="destructive" className="h-8 px-2 text-xs" disabled={offTogglingIds.has(campaign.id) || !connected} aria-label={`Matikan ${campaign.label || campaign.campaignId}`} onClick={() => void confirmToggle(campaign, false)}>{offTogglingIds.has(campaign.id) ? "OFF…" : "OFF"}</Button>
           : status === "INACTIVE" ? <Button type="button" className="h-8 px-2 text-xs" disabled={operation.busy || toggling || offTogglingIds.has(campaign.id) || statusesBusy || activationBlocked} title={reason ?? "Aktifkan campaign"} onClick={() => void confirmToggle(campaign, true)}>ON</Button> : <span className="text-xs text-slate-500">—</span>}</td></tr>;
     })}{campaigns.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Belum ada campaign Adsterra.</td></tr>}</tbody></table></div></div>
-    </div>{selected && <AdsterraCampaignHistoryModal shopeeAccountId={shopeeAccountId} configId={selected.id} campaignName={selected.label || selected.campaignId} onClose={() => setSelected(null)} />}
+    </div>
   </section>;
 }

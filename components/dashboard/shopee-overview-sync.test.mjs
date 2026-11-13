@@ -56,10 +56,12 @@ test("unmount after a response loss stops scheduling; action errors never auto-r
   h.button("Sync Meta").props.onClick(); await new Promise(resolve => setImmediate(resolve)); h.unmount(); release(); await h.settle(); assert.equal(calls,1);
   const failed = uiHarness(async () => { throw new Error("network"); }); failed.button("Sync Meta").props.onClick(); await failed.settle(); assert.match(failed.html(),/Sebagian data mungkin sudah tersimpan/);
 });
-test("Clickadu/Adsterra disabled rules and handlers stay unchanged", async () => {
+test("Dedetstudio Overview offers only Sync Meta and cannot invoke Traffic sync", async () => {
   const h = uiHarness(async () => result("COMPLETE"));
-  assert.equal(h.button("Sync Adsterra").props.disabled,true);
-  h.button("Sync Clickadu").props.onClick(); await h.settle(); assert.equal(h.trafficCalls(),1); assert.match(h.html(),/Clickadu: traffic/);
+  assert.equal(h.button("Sync Adsterra"), undefined);
+  assert.equal(h.button("Sync Clickadu"), undefined);
+  assert.doesNotMatch(h.html(), /Clickadu|Adsterra/);
+  h.button("Sync Meta").props.onClick(); await h.settle(); assert.equal(h.trafficCalls(),0); assert.match(h.html(),/Meta: COMPLETE/);
 });
 
 test("Meta action authenticates, runs exactly one bounded batch and preserves revalidation targets", async () => {

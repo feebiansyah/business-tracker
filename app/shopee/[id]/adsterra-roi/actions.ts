@@ -11,10 +11,6 @@ import { buildAdsterraRoiAnalysis, AdsterraAnalysisError, publicAdsterraAnalysis
 import { getAdsterraConfigById } from "../../../../lib/adsterra-roi/config-repository";
 import { publicAdsterraConfigMessage } from "../../../../lib/adsterra-roi/config-input";
 import { readCsvUpload } from "../../../../lib/shopee-import/upload";
-import { AdsterraDailySyncError, indonesiaToday, syncAdsterraDailyMetrics } from "../../../../lib/adsterra-history/daily-sync";
-import { persistAdsterraDailyMetricAndCheckpoint } from "../../../../lib/adsterra-history/persistence";
-import { getAdsterraDailyHistory, getAdsterraDailySyncConfigs } from "../../../../lib/adsterra-history/queries";
-import { parseAdsterraHistoryParams, type AdsterraHistoryParams } from "../../../../lib/adsterra-history/server-pagination";
 import { AdsterraApiError, type AdsterraCampaignStatusResult } from "../../../../lib/adsterra-roi/client";
 import { OperationBudget } from "@/lib/adsterra-operations/budget";
 import { requireOperationUser } from "@/lib/adsterra-operations/runtime";
@@ -156,9 +152,6 @@ function campaignStatusLabel(status: AdsterraCampaignStatusResult["status"]) {
   return status === "ACTIVE" ? "Active" : status === "INACTIVE" ? "Inactive" : status === "LIMITED" ? "Limit" : "Not in use";
 }
 
-export async function syncAdsterraDailyAction(shopeeAccountId: number) { await requireUser(); try { const credential = await getEncryptedTrafficCredential(prisma, shopeeAccountId, TrafficProvider.ADSTERRA); if (!credential) throw new AdsterraDailySyncError("Koneksi Adsterra belum dikonfigurasi."); const client = getAdsterraClient(decryptTrafficSecret(credential.encryptedSecret)); const result = await syncAdsterraDailyMetrics({ shopeeAccountId, today: indonesiaToday() }, { loadConfigs: (id) => getAdsterraDailySyncConfigs(prisma, id), getStatistics: (input) => client.getPlacementStatistics(input), persistDay: (input) => persistAdsterraDailyMetricAndCheckpoint(prisma, input) }); revalidatePath(`/shopee/${shopeeAccountId}/adsterra-roi`); const coverage = result.from && result.through ? ` (${result.from}–${result.through})` : ""; return { success: true as const, message: `${result.configCount} campaign, ${result.dateCount} tanggal berhasil disinkronkan${coverage}.` }; } catch (error) { return { success: false as const, message: error instanceof AdsterraDailySyncError || error instanceof AdsterraApiError ? error.message : "Sync laporan harian Adsterra gagal." }; } }
-
-export async function getAdsterraDailyHistoryAction(shopeeAccountId: number, configId: number, params: AdsterraHistoryParams) { await requireUser(); try { const data = await getAdsterraDailyHistory(prisma, shopeeAccountId, configId, parseAdsterraHistoryParams(params)); return data ? { success: true as const, data } : { success: false as const, message: "Histori campaign Adsterra tidak ditemukan." }; } catch { return { success: false as const, message: "Histori harian Adsterra gagal dimuat." }; } }
 
 export async function analyzeAdsterraRoiAction(shopeeAccountId: number, formData: FormData) { await requireUser(); try { const upload = await readCsvUpload(shopeeAccountId, formData); const result = await buildAdsterraRoiAnalysis({ shopeeAccountId, configId: formData.get("configId"), dateFrom: formData.get("dateFrom"), dateTill: formData.get("dateTill"), fxRate: formData.get("fxRate"), ...upload }, { loadConfig: (accountId, configId) => getAdsterraConfigById(prisma, accountId, configId), getStatistics: async (input) => { const credential = await getEncryptedTrafficCredential(prisma, shopeeAccountId, TrafficProvider.ADSTERRA); if (!credential) throw new AdsterraAnalysisError("Koneksi Adsterra belum dikonfigurasi."); return getAdsterraClient(decryptTrafficSecret(credential.encryptedSecret)).getPlacementStatistics(input); } }); return { success: true as const, result }; } catch (error) { return { success: false as const, message: publicAdsterraAnalysisMessage(error) }; } }
 export async function replaceAdsterraBlacklistAction(shopeeAccountId: number, formData: FormData) {

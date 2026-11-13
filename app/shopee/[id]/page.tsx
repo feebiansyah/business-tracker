@@ -2,26 +2,18 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { StatusBadge } from "@/components/shopee/status-badge";
 import { ShopeeOverviewSync } from "@/components/dashboard/shopee-overview-sync";
-import { ShopeeOverviewTabs } from "@/components/dashboard/shopee-overview-tabs";
 import { ShopeePerformanceCard } from "@/components/dashboard/shopee-performance-card";
 import { Button } from "@/components/ui/button";
 import { getShopeeDashboardData } from "@/lib/dashboard/queries";
 import { prisma } from "@/lib/prisma";
 import { formatShopeeActivityTime } from "@/lib/shopee/activity-time";
 import { ShopeeAccountManagement } from "@/components/shopee/account-management";
-import { ShopeeAdsterraOverview } from "@/components/dashboard/shopee-adsterra-overview";
-import { getShopeeAdsterraOverview } from "@/lib/dashboard/adsterra-overview";
-import { adsterraOverviewParamsToSearch, parseAdsterraOverviewParams } from "@/lib/dashboard/adsterra-overview-params";
-import { ShopeeClickaduOverview } from "@/components/dashboard/shopee-clickadu-overview";
-import { getShopeeClickaduOverview } from "@/lib/dashboard/clickadu-overview";
-import { clickaduOverviewParamsToSearch, parseClickaduOverviewParams } from "@/lib/dashboard/clickadu-overview-params";
 import { TrafficBalances } from "@/components/traffic-balances/traffic-balances";
 import { getMetaConfig } from "@/lib/meta/config";
-import { parseShopeeOverviewTab, shopeeOverviewTabs, withShopeeOverviewTab } from "@/lib/dashboard/shopee-overview-params";
+import { dashboardParamsToSearch } from "@/lib/dashboard/params";
 import { getMetaSyncProgress } from "@/lib/filter/meta-sync-state";
 
 export const dynamic = "force-dynamic";
-const trafficDate = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeZone: "UTC" });
 
 export default async function ShopeeAccountDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
@@ -33,10 +25,8 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
       metaAccounts: { include: { businessManager: true, _count: { select: { campaigns: { where: { metaStatus: "ACTIVE" } } } } }, orderBy: { name: "asc" } },
       commissionImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
       clickImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
-      trafficCredentials: { select: { provider: true } },
-      clickaduCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true, historySyncedThrough: true } },
-      adsterraCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true, historySyncedThrough: true } },
-      _count: { select: { clickaduCampaignConfigs: true, adsterraCampaignConfigs: true } },
+      clickaduCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true } },
+      adsterraCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true } },
     },
   });
   if (!account) notFound();
@@ -54,21 +44,14 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
   const dashboard = await getShopeeDashboardData(shopeeAccountId, rawSearchParams, prisma);
   if (!dashboard) notFound();
   const performance = dashboard.accounts[0];
-  const adsterraOverview = await getShopeeAdsterraOverview(prisma, shopeeAccountId, dashboard.state.from, dashboard.state.to, parseAdsterraOverviewParams(rawSearchParams));
-  const clickaduOverview = await getShopeeClickaduOverview(prisma, shopeeAccountId, dashboard.state.from, dashboard.state.to, parseClickaduOverviewParams(rawSearchParams));
-  const overviewTab = parseShopeeOverviewTab(rawSearchParams.overviewTab);
-  const preservedSearch = withShopeeOverviewTab(clickaduOverviewParamsToSearch(dashboard.state, clickaduOverview.state, adsterraOverviewParamsToSearch(dashboard.state, adsterraOverview.state).toString()).toString(), overviewTab).toString();
-  const tabHrefs = Object.fromEntries(shopeeOverviewTabs.map((tab) => [tab, `?${withShopeeOverviewTab(preservedSearch, tab)}`])) as Record<typeof overviewTab, string>;
+  const preservedSearch = dashboardParamsToSearch(dashboard.state).toString();
   const resetSearch = new URLSearchParams(preservedSearch);
   resetSearch.delete("from"); resetSearch.delete("to");
-  resetSearch.set(`page_${account.id}`, "1"); resetSearch.set("clickaduPage", "1"); resetSearch.set("adsterraPage", "1");
+  resetSearch.set(`page_${account.id}`, "1");
   let metaConfigured = false;
   try { getMetaConfig(); metaConfigured = true; } catch { metaConfigured = false; }
-  const connected = new Set(account.trafficCredentials.map((credential) => credential.provider));
   const disabledReasons = {
     meta: account.metaAccounts.length === 0 ? "Belum ada WL terhubung." : !metaConfigured ? "Koneksi Meta belum dikonfigurasi." : null,
-    clickadu: !connected.has("CLICKADU") ? "Koneksi belum dikonfigurasi." : account._count.clickaduCampaignConfigs === 0 ? "Belum ada campaign." : null,
-    adsterra: !connected.has("ADSTERRA") ? "Koneksi belum dikonfigurasi." : account._count.adsterraCampaignConfigs === 0 ? "Belum ada campaign." : null,
   };
 
   return (
@@ -92,14 +75,11 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
             </dl>
           </section>
           {[{ name: "Clickadu", configs: account.clickaduCampaignConfigs }, { name: "Adsterra", configs: account.adsterraCampaignConfigs }].map(({ name, configs }) => {
-            const unsynced = configs.filter((config) => config.historySyncedThrough === null).length;
-            const earliest = configs.reduce<Date | null>((value, config) => config.historySyncedThrough && (!value || config.historySyncedThrough < value) ? config.historySyncedThrough : value, null);
             const missing = configs.filter((config) => config.lastBlacklistReplacedAt === null);
             const latest = configs.reduce<Date | null>((value, config) => config.lastBlacklistReplacedAt && (!value || config.lastBlacklistReplacedAt > value) ? config.lastBlacklistReplacedAt : value, null);
             return <section key={name} aria-label={name} className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
               <h4 className="text-sm font-semibold text-slate-950">{name}</h4>
               <dl className="mt-2 divide-y divide-slate-100">
-                <div className="pb-2"><dt className="text-xs text-slate-500">Cakupan Sync</dt><dd className={`mt-0.5 break-words ${configs.length === 0 ? "text-slate-700" : unsynced > 0 ? "text-red-900" : "text-emerald-900"}`}>{configs.length === 0 ? "Belum ada campaign" : unsynced === configs.length ? `${unsynced} campaign belum pernah Sync` : unsynced > 0 ? `${unsynced} campaign belum pernah Sync · lainnya data sampai ${trafficDate.format(earliest!)}` : `Data seluruh campaign sampai ${trafficDate.format(earliest!)}`}</dd></div>
                 <div className="pt-2"><dt className="text-xs text-slate-500">Riwayat Replace Blacklist</dt><dd className="mt-0.5 space-y-1 break-words text-slate-700">
               <p>{configs.length === 0 ? "Belum ada campaign" : missing.length === configs.length ? "Belum ada riwayat Replace Blacklist" : missing.length > 0 ? `${missing.length} campaign belum memiliki riwayat Replace Blacklist` : `Riwayat Replace Blacklist terakhir ${formatShopeeActivityTime(latest!)}`}</p>
               {missing.length > 0 && <ul className="space-y-0.5 text-xs">{missing.map((config, index) => <li key={`${config.campaignId}:${index}`} className="break-words [overflow-wrap:anywhere]">{config.label?.trim() || config.campaignId}</li>)}</ul>}
@@ -121,26 +101,15 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
       </section>
       <div className="space-y-4">
         <form method="get" className="grid gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex sm:flex-wrap sm:items-end">
-          <input type="hidden" name="overviewTab" value={overviewTab} />
           <label className="grid gap-1 text-xs font-medium text-slate-600">Tanggal Mulai<input type="date" name="from" defaultValue={dashboard.state.from} className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal" /></label>
           <label className="grid gap-1 text-xs font-medium text-slate-600">Tanggal Akhir<input type="date" name="to" defaultValue={dashboard.state.to} className="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal" /></label>
           <input type="hidden" name={`sort_${account.id}`} value={performance.state.sort} />
           <input type="hidden" name={`dir_${account.id}`} value={performance.state.dir} />
           <input type="hidden" name={`pageSize_${account.id}`} value={performance.state.pageSize} />
-          <input type="hidden" name="adsterraSort" value={adsterraOverview.state.sort} />
-          <input type="hidden" name="adsterraDir" value={adsterraOverview.state.dir} />
-          <input type="hidden" name="adsterraPageSize" value={adsterraOverview.state.pageSize} />
-          <input type="hidden" name="clickaduSort" value={clickaduOverview.state.sort} />
-          <input type="hidden" name="clickaduDir" value={clickaduOverview.state.dir} />
-          <input type="hidden" name="clickaduPageSize" value={clickaduOverview.state.pageSize} />
           <button className="h-10 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700">Terapkan</button>
           <Link href={`/shopee/${account.id}?${resetSearch}`} className="inline-flex h-10 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</Link>
         </form>
-        <ShopeeOverviewTabs accountId={account.id} activeTab={overviewTab} hrefs={tabHrefs} panels={{
-          meta: <ShopeePerformanceCard account={performance} dashboardState={dashboard.state} preservedSearch={preservedSearch} />,
-          clickadu: <ShopeeClickaduOverview overview={clickaduOverview} dashboardState={dashboard.state} preservedSearch={preservedSearch} />,
-          adsterra: <ShopeeAdsterraOverview overview={adsterraOverview} dashboardState={dashboard.state} preservedSearch={preservedSearch} />,
-        }} />
+        <ShopeePerformanceCard account={performance} dashboardState={dashboard.state} preservedSearch={preservedSearch} />
       </div>
       <details className="group min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm">
         <summary className="cursor-pointer rounded-xl px-4 py-3 text-sm font-semibold text-slate-950 focus-visible:outline-2 focus-visible:outline-blue-500">WL terhubung ({account.metaAccounts.length})</summary>
