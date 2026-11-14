@@ -20,7 +20,7 @@ test("modal keeps the existing detail route and existing Note/Selesai table flow
   assert.match(modal, /Pengaturan Meta/);
   assert.match(modal, /MetaCampaignSettings/);
   assert.match(modal, /stopPropagation/);
-  assert.match(modal, /campaignModeConfig\[mode\]\.route/);
+  assert.doesNotMatch(modal, /Buka halaman penuh/);
   assert.match(filterTable, /setSelectedCampaign/);
   assert.match(filterTable, /CampaignHistoryModal/);
   assert.match(detailRoute, /CampaignWorkspaceDetailPage/);
