@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import { checkTrafficPlatform } from "../traffic-roi/platform-check.ts";
 
 import { ShopeeImportError } from "../shopee-import/errors.ts";
 import { decodeClickaduShopeeCsv } from "./csv.ts";
@@ -44,7 +45,8 @@ export async function buildClickaduRoiAnalysis(input: BuildClickaduAnalysisInput
   if (!config || config.shopeeAccountId !== shopeeAccountId) {
     throw new ClickaduAnalysisError("Konfigurasi Clickadu tidak ditemukan.");
   }
-  const csv = aggregateZoneCommissions(decodeClickaduShopeeCsv(input.bytes), config.sourceTag, dateFrom, dateTill);
+  const parsedRows = decodeClickaduShopeeCsv(input.bytes);
+  const csv = aggregateZoneCommissions(parsedRows, config.sourceTag, dateFrom, dateTill);
   const statistics = await deps.getStatistics({ campaignIds: [config.campaignId], dateFrom, dateTill });
   return {
     originalFilename: input.originalFilename,
@@ -53,6 +55,7 @@ export async function buildClickaduRoiAnalysis(input: BuildClickaduAnalysisInput
     fxRate,
     config,
     csv,
+    platformCheck: checkTrafficPlatform(parsedRows, config.sourceTag),
     analysis: analyzeClickaduRoi(statistics, csv.zones, fxRate),
   };
 }

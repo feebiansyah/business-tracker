@@ -24,5 +24,6 @@ export function decodeAdsterraShopeeCsv(bytes: Uint8Array): AdsterraShopeeCsvRow
   if (!selected.rows.length) throw new ShopeeImportError("CSV_EMPTY", "CSV tidak memiliki data.");
   if (selected.rows.length > MAX_CSV_ROWS) throw new ShopeeImportError("CSV_TOO_MANY_ROWS", "CSV melebihi batas 100.000 baris data.");
   const indexes = HEADERS.map((header) => selected.headers.indexOf(header));
-  return selected.rows.map(({ record, info }, index) => ({ logicalRow: info.lines || index + 2, date: parseShopeeDate(record[indexes[0]] ?? "", info.lines || index + 2), tagLink1: record[indexes[1]] ?? "", tagLink3: record[indexes[2]] ?? "", commission: record[indexes[3]] ?? "" }));
+  const platformIndex = selected.headers.indexOf("Platform");
+  return selected.rows.map(({ record, info }, index) => ({ logicalRow: info.lines || index + 2, date: parseShopeeDate(record[indexes[0]] ?? "", info.lines || index + 2), tagLink1: record[indexes[1]] ?? "", tagLink3: record[indexes[2]] ?? "", commission: record[indexes[3]] ?? "", ...(platformIndex < 0 ? {} : { platform: record[platformIndex] ?? "" }) }));
 }

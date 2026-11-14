@@ -77,11 +77,13 @@ export function decodeClickaduShopeeCsv(bytes: Uint8Array): ClickaduShopeeCsvRow
   }
 
   const indexes = REQUIRED_HEADERS.map((header) => candidate.headers.indexOf(header));
+  const platformIndex = candidate.headers.indexOf("Platform");
   return candidate.records.map(({ record, info }, index) => ({
     logicalRow: info.lines || index + 2,
     date: parseShopeeDate(record[indexes[0]] ?? "", info.lines || index + 2),
     tagLink1: record[indexes[1]] ?? "",
     tagLink3: record[indexes[2]] ?? "",
     commission: record[indexes[3]] ?? "",
+    ...(platformIndex < 0 ? {} : { platform: record[platformIndex] ?? "" }),
   }));
 }

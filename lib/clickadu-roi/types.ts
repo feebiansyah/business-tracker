@@ -21,6 +21,7 @@ export type ClickaduShopeeCsvRow = {
   logicalRow: number;
   date: string;
   tagLink1: string;
+  platform?: string;
   tagLink3: string;
   commission: string;
 };
