@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { analyzeAdsterraRoiAction, deleteAdsterraCustomBidAction, getAdsterraCustomBidsAction, saveAdsterraCustomBidAction } from "@/app/shopee/[id]/adsterra-roi/actions";
 import { TrafficRoiCandidateList } from "@/components/traffic-roi/candidate-list";
+import { TrafficPlatformNotice } from "@/components/traffic-roi/platform-notice";
+import type { TrafficPlatformCheck } from "@/lib/traffic-roi/platform-check";
 import { PlacementTable } from "@/components/adsterra-roi/placement-table";
 import type { CustomBidEditorProps } from "@/components/adsterra-roi/custom-bid-editor";
 import type { AdsterraAnalysisConfig } from "@/lib/adsterra-roi/analyze";
@@ -18,7 +20,7 @@ import type { MethodState } from "@/lib/adsterra-operations/types";
 import { MethodBadge } from "./operation-dialog";
 import { AdsterraOperationRecovery } from "./operation-recovery";
 
-type Result = { dateFrom: string; dateTill: string; fxRate: string; config: AdsterraAnalysisConfig; analysis: AdsterraRoiAnalysis };
+type Result = { dateFrom: string; dateTill: string; fxRate: string; config: AdsterraAnalysisConfig; analysis: AdsterraRoiAnalysis; platformCheck?: TrafficPlatformCheck };
 
 export function AdsterraAnalysisWorkflow({ shopeeAccountId, shopeeAccountName, configs, connected }: { shopeeAccountId: number; shopeeAccountName: string; configs: AdsterraAnalysisConfig[]; connected: boolean }) {
   const operation = useAdsterraOperation();
@@ -190,6 +192,7 @@ function AnalysisResult({ result, listKind, shopeeName, lastBlacklistReplacedAt,
   const clicks = analysis.rows.reduce((sum, row) => sum + row.clicks, 0);
   const stats = [["Biaya Iklan", formatIdr(analysis.totalCostIdr), formatUsd(analysis.totalSpentUsd)], ["Komisi Bersih Shopee", formatIdr(analysis.totalCommission), ""], ["Profit", formatIdr(analysis.totalProfit), ""], ["ROI", formatPercent(analysis.roi), ""], ["Klik Iklan", new Intl.NumberFormat("id-ID").format(clicks), ""], [listKind === "BLACKLIST" ? "Kandidat Blacklist" : "Kandidat Whitelist", String(candidateIds.length), ""]];
   return <div className="min-w-0 space-y-3">
+    <TrafficPlatformNotice check={result.platformCheck} />
     <div className="grid gap-1 rounded-lg bg-slate-50 p-3 text-xs sm:grid-cols-2">
       <p className="break-words">Shopee: <b>{shopeeName}</b></p><p className="break-words">Campaign: <b>{result.config.label || result.config.campaignId}</b></p><p className="break-all">Tag Link 1: <b>{result.config.sourceTag}</b></p><p>Periode: <b>{result.dateFrom} – {result.dateTill}</b></p><p>Kurs: <b>{formatIdr(result.fxRate)} / USD</b></p><p>Terakhir Replace Blacklist: <b>{formatBlacklistReplacementTime(lastBlacklistReplacedAt)}</b></p>
     </div>
