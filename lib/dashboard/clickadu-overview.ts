@@ -52,6 +52,13 @@ function dailyCte(shopeeAccountId: number, from: string, to: string) {
       WHERE (${from} = '' OR metric.date >= ${from})
         AND (${to} = '' OR metric.date <= ${to})
       GROUP BY metric.date
+    ), summary_base AS (
+      SELECT SUM(metric.spendUsd) AS spendUsd,
+        SUM(metric.commissionIdr) AS commissionIdr
+      FROM ClickaduCampaignDailyMetric metric
+      INNER JOIN scoped_configs config ON config.id = metric.clickaduCampaignConfigId
+      WHERE (${from} = '' OR metric.date >= ${from})
+        AND (${to} = '' OR metric.date <= ${to})
     ), daily_metrics AS (
       SELECT date, spendUsd, spendUsd * ${CLICKADU_USD_IDR_RATE} AS spendIdr, commissionIdr,
         commissionIdr - spendUsd * ${CLICKADU_USD_IDR_RATE} AS profitIdr,
@@ -72,13 +79,13 @@ export async function getShopeeClickaduOverview(
     clickaduPage: String(requestedState.page), clickaduPageSize: String(requestedState.pageSize),
   });
   const cte = dailyCte(shopeeAccountId, range.from, range.to);
-  // NULL or a missing campaign/day is unknown, never an implicit zero. Summary
-  // fields also stay unknown if any day in the entire filtered range is incomplete.
+  // NULL or a missing campaign/day stays unknown in daily rows. Summary totals
+  // add only values that are actually stored; missing values are never coerced to zero.
   const summaries = await db.$queryRaw<SummaryRow[]>(Prisma.sql`${cte}
     SELECT COUNT(*) AS total,
       COUNT(*) - COUNT(profitIdr) AS incompleteDays,
-      CASE WHEN COUNT(spendUsd) = COUNT(*) THEN SUM(spendUsd) ELSE NULL END AS spendUsd,
-      CASE WHEN COUNT(commissionIdr) = COUNT(*) THEN SUM(commissionIdr) ELSE NULL END AS commissionIdr
+      (SELECT spendUsd FROM summary_base) AS spendUsd,
+      (SELECT commissionIdr FROM summary_base) AS commissionIdr
     FROM daily_metrics`);
   const totals = summaries[0];
   const total = Number(totals?.total ?? 0);

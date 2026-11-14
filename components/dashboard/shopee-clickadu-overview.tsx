@@ -48,7 +48,7 @@ export function ShopeeClickaduOverview({ overview, dashboardState, preservedSear
             <dd className={`mt-1 break-words text-base font-semibold ${stat.tone ?? "text-slate-950"}`}>{stat.value}</dd>
           </div>)}
         </dl>
-        {overview.incompleteDays > 0 && <p className="mt-3 text-xs text-slate-500">— berarti data belum lengkap: setiap campaign terdaftar perlu memiliki spend dan komisi pada tanggal tersebut. Total terkait dan profit tidak ditampilkan sampai lengkap.</p>}
+        {overview.incompleteDays > 0 && <p className="mt-3 text-xs text-slate-500">— berarti data harian belum lengkap: setiap campaign terdaftar perlu memiliki spend dan komisi pada tanggal tersebut. Total memakai data yang tersedia; nilai kosong tidak dianggap nol.</p>}
       </header>
       <div className="max-w-full overflow-x-auto overscroll-x-contain">
         <table className="w-full min-w-175 text-left text-sm">
