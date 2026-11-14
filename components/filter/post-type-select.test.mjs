@@ -17,6 +17,7 @@ test("manual select has exact labels and restores automatic only after successfu
   const inputs=[];const h=harness(async input=>{inputs.push(input);return{success:true,manualType:input.manualType};},"GAMBAR_PRODUK");
   assert.match(renderToStaticMarkup(h.render()),/GAMBAR PRODUK/);
   assert.match(renderToStaticMarkup(h.render()),/GAMBAR FEWFEED/);
+  assert.equal(React.Children.toArray(h.render().props.children).some(child=>child.type==="p"),false);
   await h.select().props.onChange({target:{value:""}});
   assert.equal(inputs[0].manualType,null);assert.equal(inputs[0].shopeeAccountId,7);
   assert.equal(h.select().props.value,"");assert.match(renderToStaticMarkup(h.render()),/VIDEO/);assert.match(renderToStaticMarkup(h.render()),/Tersimpan/);h.unmount();
@@ -34,7 +35,8 @@ test("duplicate submit blocked; failure preserves saved type; unmounted response
 test("subsequent server reads update a mounted selector without changing automatic data",()=>{
   const h=harness(async()=>{});
   h.render();h.updateManual("GAMBAR_PRODUK");h.render();assert.equal(h.select().props.value,"GAMBAR_PRODUK");
-  h.updateManual(null);h.render();assert.equal(h.select().props.value,"");assert.match(renderToStaticMarkup(h.render()),/>VIDEO<\/p>/);h.unmount();
+  h.updateManual(null);h.render();assert.equal(h.select().props.value,"");
+  assert.equal(React.Children.toArray(h.select().props.children)[0].props.children,"Otomatis / VIDEO");h.unmount();
 });
 test("action authenticates before save and rejects persistence errors without claiming success",async()=>{
   const events=[];
