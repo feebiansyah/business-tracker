@@ -50,7 +50,7 @@ export async function runScheduledPrefilter({
         // RUNNING may return shouldContinue=false on a unit deadline. Resume the
         // same persisted cursor/run, never create a replacement or retry a write.
       } catch {
-        finish("FAILED", "Unit snapshot gagal. Snapshot COMPLETE sebelumnya tetap tersedia."); break;
+        finish("FAILED", "Unit snapshot gagal. Periksa progres dan snapshot yang tersedia."); break;
       }
     }
     if (stopped) break;

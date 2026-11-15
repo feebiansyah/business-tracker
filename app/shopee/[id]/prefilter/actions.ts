@@ -30,7 +30,7 @@ export async function snapshotPrefilterAction(shopeeAccountId: number, slot: Pre
   try {
     const batch = await runPrefilterBatch({ shopeeAccountId,slot,runId,owner: randomUUID(),receivedAt,startedAt });
     return { success: true, batch };
-  } catch { return { success: false, message: "Snapshot belum dapat diproses. Data COMPLETE sebelumnya tetap tersedia; coba lanjutkan melalui slot yang sama." }; }
+  } catch { return { success: false, message: "Snapshot belum dapat diproses. Baca ulang untuk memeriksa data yang tersedia; coba lanjutkan melalui slot yang sama." }; }
 }
 
 export async function readPrefilterAction(shopeeAccountId: number): Promise<{ success: true; data: PrefilterData } | { success: false; message: string }> {

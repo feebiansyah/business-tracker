@@ -41,13 +41,21 @@ async function firstDayIds(db: Tx, ids: string[], date: string): Promise<Set<str
   return new Set(ids.filter(id=>!excluded.has(id)));
 }
 
+// A completed PARTIAL is displayable only while this slot has no COMPLETE.
+// Reuse this selection during cleanup so the other slot's fallback survives.
+async function displayedSnapshot(db: Tx, shopeeAccountId: number, date: Date, slot: PrefilterSlot) {
+  const where = { shopeeAccountId, businessDate: date, slot, finishedAt: { not: null } };
+  return await db.metaPrefilterRun.findFirst({ where: { ...where, status: "COMPLETE" }, orderBy: { revision: "desc" } })
+    ?? await db.metaPrefilterRun.findFirst({ where: { ...where, status: "PARTIAL" }, orderBy: { revision: "desc" } });
+}
+
 export async function readPrefilterData(shopeeAccountId: number, db: Db = prisma, now = new Date()): Promise<PrefilterData> {
   if (!Number.isSafeInteger(shopeeAccountId) || shopeeAccountId <= 0) throw new SafeError("Akun Shopee tidak valid.");
   return db.$transaction(async tx => {
   const account = await accountScope(tx,shopeeAccountId), date = businessDate(now);
   const [awal,akhir,active] = await Promise.all([
-    tx.metaPrefilterRun.findFirst({ where: { shopeeAccountId, businessDate: dateValue(date), slot: "AWAL", status: "COMPLETE" }, orderBy: { revision: "desc" } }),
-    tx.metaPrefilterRun.findFirst({ where: { shopeeAccountId, businessDate: dateValue(date), slot: "AKHIR", status: "COMPLETE" }, orderBy: { revision: "desc" } }),
+    displayedSnapshot(tx,shopeeAccountId,dateValue(date),"AWAL"),
+    displayedSnapshot(tx,shopeeAccountId,dateValue(date),"AKHIR"),
     tx.metaPrefilterRun.findUnique({ where: { activeShopeeAccountId: shopeeAccountId } }),
   ]);
   const ids = [awal?.id,akhir?.id].filter((id): id is string => !!id);
@@ -56,7 +64,7 @@ export async function readPrefilterData(shopeeAccountId: number, db: Db = prisma
   const eligible = await firstDayIds(tx,[...new Set(rows.map(r=>r.metaCampaignId))],date);
   const notes = eligible.size ? await tx.metaPrefilterNote.findMany({ where: { shopeeAccountId, businessDate: dateValue(date), metaCampaignId: { in: [...eligible] } }, select: { metaCampaignId: true, note: true, completed: true } }) : [];
   const postTypes = await readPostTypeOverrides(shopeeAccountId, [...eligible], tx);
-  const snapshot = (run: MetaPrefilterRun | null) => run ? { runId: run.id, requestedAt: run.requestedAt.toISOString(), finishedAt: run.finishedAt!.toISOString(), skipped: skippedNames(run), rows: rows.filter(r=>r.runId === run.id && eligible.has(r.metaCampaignId)).map(r=>({ metaCampaignId: r.metaCampaignId, campaignName: r.campaignName, metaAccountId: r.metaAccountId, wlName: r.wlName, configuredStatus: r.configuredStatus, effectiveStatus: r.effectiveStatus, spend: r.spend!.toString(), withFee: new Prisma.Decimal(r.spend!.toString()).mul("1.05").toString(), clicks: r.clicks?.toString() ?? null, cpc: cpc(r.spend!.toString(),r.clicks) })) } : null;
+  const snapshot = (run: MetaPrefilterRun | null) => run ? { runId: run.id, status: run.status === "COMPLETE" ? "COMPLETE" as const : "PARTIAL" as const, requestedAt: run.requestedAt.toISOString(), finishedAt: run.finishedAt!.toISOString(), skipped: skippedNames(run), rows: rows.filter(r=>r.runId === run.id && eligible.has(r.metaCampaignId)).map(r=>({ metaCampaignId: r.metaCampaignId, campaignName: r.campaignName, metaAccountId: r.metaAccountId, wlName: r.wlName, configuredStatus: r.configuredStatus, effectiveStatus: r.effectiveStatus, spend: r.spend!.toString(), withFee: new Prisma.Decimal(r.spend!.toString()).mul("1.05").toString(), clicks: r.clicks?.toString() ?? null, cpc: cpc(r.spend!.toString(),r.clicks) })) } : null;
   return { account: { id: account.id, name: account.name }, businessDate: date, snapshots: { AWAL: snapshot(awal), AKHIR: snapshot(akhir) }, progress: active && logicalDate(active) === date ? progress(active) : null, notes, postTypes };
   },{ isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 10_000 });
 }
@@ -151,11 +159,12 @@ export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: 
         check(); const fresh = validScope((await accountScope(tx,id)).metaAccounts);
         if (!sameScope(scope,fresh)) throw new SafeError("Daftar WL berubah. Ambil snapshot baru.");
         if (skippedNames(lease).length) {
-          await tx.metaPrefilterRun.updateMany({ where: { id: lease.id, generation: lease.generation, leaseOwner: input.owner }, data: { status: "PARTIAL", finishedAt: now(), activeShopeeAccountId: null, error: "Sebagian WL tidak dapat dibaca. Snapshot COMPLETE sebelumnya tetap ditampilkan." } });
+          const complete = await tx.metaPrefilterRun.findFirst({ where: { shopeeAccountId: id, businessDate: lease.businessDate, slot, status: "COMPLETE", finishedAt: { not: null } }, orderBy: { revision: "desc" }, select: { id: true } });
+          await tx.metaPrefilterRun.updateMany({ where: { id: lease.id, generation: lease.generation, leaseOwner: input.owner }, data: { status: "PARTIAL", finishedAt: now(), activeShopeeAccountId: null, error: complete ? "Data belum lengkap. Snapshot COMPLETE sebelumnya tetap ditampilkan." : "Data belum lengkap. Snapshot PARTIAL ditampilkan; WL yang tidak terbaca tidak termasuk." } });
           return;
         }
         await tx.metaPrefilterRun.updateMany({ where: { id: lease.id, generation: lease.generation, leaseOwner: input.owner }, data: { status: "COMPLETE", finishedAt: now(), activeShopeeAccountId: null, error: null } });
-        const other = await tx.metaPrefilterRun.findFirst({ where: { shopeeAccountId: id, businessDate: lease.businessDate, slot: slot === "AWAL" ? "AKHIR" : "AWAL", status: "COMPLETE" }, orderBy: { revision: "desc" }, select: { id: true } });
+        const other = await displayedSnapshot(tx,id,lease.businessDate,slot === "AWAL" ? "AKHIR" : "AWAL");
         await cleanup(tx,id,lease.businessDate,[lease.id,...(other?[other.id]:[])]); check();
       });
       return result();
@@ -197,14 +206,14 @@ export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: 
     return result(true);
   } catch (error) {
     if (controller.signal.aborted || error instanceof MetaSyncPauseError || transient(error)) {
-      await transaction(tx=>tx.metaPrefilterRun.updateMany({ where: { id: lease.id,generation: lease.generation,leaseOwner: input.owner }, data: { status: transient(error) || error instanceof MetaSyncPauseError && error.rateLimited ? "PAUSED_RATE_LIMIT" : "RUNNING",usagePercent: client?.getSyncUsagePercent() ?? lease.usagePercent,error: "Pengambilan dijeda. Snapshot lama tetap tampil; klik slot untuk melanjutkan." } })).catch(()=>{});
+      await transaction(tx=>tx.metaPrefilterRun.updateMany({ where: { id: lease.id,generation: lease.generation,leaseOwner: input.owner }, data: { status: transient(error) || error instanceof MetaSyncPauseError && error.rateLimited ? "PAUSED_RATE_LIMIT" : "RUNNING",usagePercent: client?.getSyncUsagePercent() ?? lease.usagePercent,error: "Pengambilan dijeda. Klik slot yang sama untuk melanjutkan progres tersimpan." } })).catch(()=>{});
       return result();
     }
     if (error instanceof MetaApiError && [10,100,200].includes(error.code ?? -1) && scope[cursor.index]) {
       await transaction(tx=>save(tx,{ index: cursor.index,phase: "SKIP",skipReason: `${scope[cursor.index].name}: tidak dapat dibaca (kode ${error.code})` }));
       return result(true);
     }
-    await transaction(tx=>tx.metaPrefilterRun.updateMany({ where: { id: lease.id,generation: lease.generation,leaseOwner: input.owner }, data: { status: error instanceof DayChanged ? "EXPIRED" : "FAILED",activeShopeeAccountId: null,error: error instanceof DayChanged ? "Tanggal berganti. Ambil snapshot hari ini." : error instanceof SafeError ? error.message : "Pengambilan snapshot gagal. Snapshot COMPLETE sebelumnya tetap ditampilkan." } })).catch(()=>{});
+    await transaction(tx=>tx.metaPrefilterRun.updateMany({ where: { id: lease.id,generation: lease.generation,leaseOwner: input.owner }, data: { status: error instanceof DayChanged ? "EXPIRED" : "FAILED",activeShopeeAccountId: null,error: error instanceof DayChanged ? "Tanggal berganti. Ambil snapshot hari ini." : error instanceof SafeError ? error.message : "Pengambilan snapshot gagal. Baca ulang untuk memeriksa snapshot yang tersedia." } })).catch(()=>{});
     return result();
   } finally {
     clearTimeout(timer);

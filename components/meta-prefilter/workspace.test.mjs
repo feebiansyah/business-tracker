@@ -23,7 +23,7 @@ test("manual snapshot locks duplicate clicks, stops on unmount, and never polls"
 });
 test("two slots and zero-click CPC are visible with internal table scrolling",()=>{
   const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/components/filter/post-type-select":postTypeSelect,"@/app/shopee/[id]/prefilter/actions":{}});
-  const data={...initial,snapshots:{AWAL:{runId:"r",requestedAt:"2026-11-07T03:17:42Z",finishedAt:"2026-11-07T03:18:00Z",skipped:[],rows:[{metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",configuredStatus:"ACTIVE",effectiveStatus:"ACTIVE",spend:"100",withFee:"105",clicks:"0",cpc:null}]},AKHIR:null}};
+  const data={...initial,snapshots:{AWAL:{status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:17:42Z",finishedAt:"2026-11-07T03:18:00Z",skipped:[],rows:[{metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",configuredStatus:"ACTIVE",effectiveStatus:"ACTIVE",spend:"100",withFee:"105",clicks:"0",cpc:null}]},AKHIR:null}};
   const html=renderToStaticMarkup(React.createElement(api.PrefilterWorkspace,{initial:data}));
   assert.match(html,/Snapshot Awal/);assert.match(html,/Snapshot Akhir/);assert.match(html,/10\.17\.42/);assert.match(html,/>CPC<\/th>/);assert.match(html,/overflow-auto/);assert.doesNotMatch(html,/<details/);
   assert.equal((html.match(/<td /g)||[]).length,14);assert.match(html,/Note Campaign/);assert.match(html,/Selesai Campaign/);
@@ -31,8 +31,8 @@ test("two slots and zero-click CPC are visible with internal table scrolling",()
 
 test("PraFilter Jenis uses shared override selector, without guessing automatic content",()=>{
   const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"100",withFee:"105",clicks:"1",cpc:"100"};
-  const snapshot={runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]};
-  for(const [postTypes,want]of [[{},">—</p>"],[{"123":"GAMBAR_PRODUK"},">GAMBAR PRODUK</p>"]]){
+  const snapshot={status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]};
+  for(const [postTypes,want]of [[{},'<option value="" selected="">Otomatis / tanpa override</option>'],[{"123":"GAMBAR_PRODUK"},'<option value="GAMBAR_PRODUK" selected="">GAMBAR PRODUK</option>']]){
     const h=harness(async()=>{}, {...initial,snapshots:{AWAL:snapshot,AKHIR:null},postTypes});
     const html=renderToStaticMarkup(h.render());assert.match(html,/aria-label="Jenis Campaign"/);assert(html.includes(want));h.unmount();
   }
@@ -40,7 +40,7 @@ test("PraFilter Jenis uses shared override selector, without guessing automatic 
 
 test("saved manual type survives search remount and a concurrent stale snapshot read",async()=>{
   const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"100",withFee:"105",clicks:"1",cpc:"100"};
-  const data={...initial,postTypes:{},snapshots:{AWAL:{runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]},AKHIR:null}};
+  const data={...initial,postTypes:{},snapshots:{AWAL:{status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]},AKHIR:null}};
   let releaseRead;const readGate=new Promise(r=>{releaseRead=r;});
   const h=harness(async()=>({success:true,batch:{progress:{runId:"r",slot:"AWAL",status:"COMPLETE",skipped:[]},shouldContinue:false}}),data,undefined,{typeSave:async input=>({success:true,manualType:input.manualType}),read:()=>readGate});
   function selector(tree){if(tree?.type===postTypeSelect.PostTypeSelect)return tree;for(const child of React.Children.toArray(tree?.props?.children)){const found=selector(child);if(found)return found;}}
@@ -56,7 +56,7 @@ test("saved manual type survives search remount and a concurrent stale snapshot 
 test("table freezes both header levels and Campaign; money uses rounded Indonesian numbers only",()=>{
   const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/components/filter/post-type-select":postTypeSelect,"@/app/shopee/[id]/prefilter/actions":{}});
   const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"10000",withFee:"11062.8",clicks:"1",cpc:"2500.5"};
-  const snapshot=rows=>({runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows});
+  const snapshot=rows=>({status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows});
   const data={...initial,snapshots:{AWAL:snapshot([row]),AKHIR:snapshot([{...row,withFee:"9812.4",cpc:null}])}};
   const html=renderToStaticMarkup(React.createElement(api.PrefilterWorkspace,{initial:data}));
   assert.match(html,/<thead class="[^"]*sticky top-0 z-20/);
@@ -72,7 +72,7 @@ test("table freezes both header levels and Campaign; money uses rounded Indonesi
 
 test("note badge and checkbox change only after confirmed save; failure and double click preserve state",async()=>{
   const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"100",withFee:"105",clicks:"1",cpc:"100"};
-  const data={...initial,snapshots:{AWAL:{runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]},AKHIR:null},notes:[{metaCampaignId:"123",note:"Periksa",completed:false}]};
+  const data={...initial,snapshots:{AWAL:{status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]},AKHIR:null},notes:[{metaCampaignId:"123",note:"Periksa",completed:false}]};
   let calls=0,resolve;const gate=new Promise(r=>{resolve=r;});
   const h=harness(async()=>{throw new Error("No snapshot allowed");},data,async input=>{calls++;await gate;return{success:true,note:{metaCampaignId:input.metaCampaignId,note:input.note,completed:input.completed}};});
   const checkbox=h.inputs(h.render()).find(n=>n.props.type==="checkbox");
@@ -86,7 +86,7 @@ test("note badge and checkbox change only after confirmed save; failure and doub
 
 test("blank notes do not warn; edits save on blur without snapshot or read request",async()=>{
   const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"100",withFee:"105",clicks:"1",cpc:"100"};
-  const data={...initial,snapshots:{AWAL:{runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]},AKHIR:null},notes:[{metaCampaignId:"123",note:"   ",completed:false}]};
+  const data={...initial,snapshots:{AWAL:{status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]},AKHIR:null},notes:[{metaCampaignId:"123",note:"   ",completed:false}]};
   const requests=[];const h=harness(async()=>{throw new Error("No Meta");},data,async input=>{requests.push(input);return{success:true,note:{metaCampaignId:input.metaCampaignId,note:input.note.trim(),completed:input.completed}};});
   assert.doesNotMatch(renderToStaticMarkup(h.render()),/note belum selesai/);
   const input=h.inputs(h.render()).find(n=>n.props["aria-label"]==="Note Campaign");
@@ -96,7 +96,7 @@ test("blank notes do not warn; edits save on blur without snapshot or read reque
 
 test("editing clears old saved feedback; moving focus to Selesai saves draft and completion once",async()=>{
   const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"100",withFee:"105",clicks:"1",cpc:"100"};
-  const data={...initial,snapshots:{AWAL:{runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]},AKHIR:null}};
+  const data={...initial,snapshots:{AWAL:{status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]},AKHIR:null}};
   const calls=[];const h=harness(async()=>{},data,async input=>{calls.push(input);return{success:true,note:{metaCampaignId:input.metaCampaignId,note:input.note,completed:input.completed}};});
   const note=()=>h.inputs(h.render()).find(n=>n.props["aria-label"]==="Note Campaign"), checkbox=()=>h.inputs(h.render()).find(n=>n.props.type==="checkbox");
   note().props.onChange({target:{value:"A"}});await note().props.onBlur({currentTarget:{value:"A"}});
@@ -120,5 +120,40 @@ test("partial notice retains skipped WL names after rereading the previous snaps
   const h=harness(async()=>({success:true,batch:{progress:{runId:"partial",slot:"AWAL",status:"PARTIAL",current:2,total:2,pages:3,skipped:["WL Dua: tidak dapat dibaca (kode 200)"],message:"Snapshot COMPLETE sebelumnya tetap ditampilkan."},shouldContinue:false,blocked:false}}));
   await h.buttons(h.render())[0].props.onClick();
   const html=renderToStaticMarkup(h.render());
-  assert.match(html,/WL Dua: tidak dapat dibaca/);assert.match(html,/Snapshot COMPLETE sebelumnya tetap ditampilkan/);assert.equal(h.readCalls(),1);h.unmount();
+  assert.match(html,/WL Dua: tidak dapat dibaca/);assert.match(html,/Data belum lengkap/);assert.doesNotMatch(html,/Snapshot COMPLETE sebelumnya tetap ditampilkan/);assert.equal(h.readCalls(),1);h.unmount();
+});
+
+test("fallback PARTIAL is visibly incomplete and partial-only Note/type/checklist cannot write",async()=>{
+  let writes=0;
+  const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"100",withFee:"105",clicks:"1",cpc:"100"};
+  const snapshot={status:"PARTIAL",runId:"partial",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:["WL Dua: tidak dapat dibaca"],rows:[row]};
+  const data={...initial,postTypes:{"123":"VIDEO"},snapshots:{AWAL:snapshot,AKHIR:null}};
+  const h=harness(async()=>{},data,async()=>{writes++;},{typeSave:async()=>{writes++;}});
+  const html=renderToStaticMarkup(h.render());
+  assert.match(html,/Data belum lengkap/);assert.match(html,/WL Dua: tidak dapat dibaca/);
+  assert.doesNotMatch(html,/aria-label="Jenis Campaign"/);assert.match(html,/>VIDEO</);
+  const note=h.inputs(h.render()).find(n=>n.props["aria-label"]==="Note Campaign");
+  const checkbox=h.inputs(h.render()).find(n=>n.props.type==="checkbox");
+  assert.equal(note.props.disabled,true);assert.equal(checkbox.props.disabled,true);
+  await note.props.onBlur({currentTarget:{value:"Catatan"}});
+  await checkbox.props.onChange({target:{checked:true}});
+  assert.equal(writes,0);h.unmount();
+});
+
+test("missing slot coverage shows dashes rather than zero-based changes; COMPLETE membership keeps editor valid",()=>{
+  const row=id=>({metaCampaignId:id,campaignName:"Campaign "+id,metaAccountId:Number(id),wlName:"WL "+id,spend:"100",withFee:"105",clicks:"1",cpc:"100"});
+  const snapshot=(status,rows)=>({status,runId:status,requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:status==="PARTIAL"?["WL 456: tidak dapat dibaca"]:[],rows});
+  const h=harness(async()=>{}, {...initial,snapshots:{AWAL:snapshot("PARTIAL",[row("123")]),AKHIR:snapshot("COMPLETE",[{...row("123"),withFee:"210",clicks:"2"},row("456")])}});
+  const html=renderToStaticMarkup(h.render());
+  const missing=html.match(/<tr[^>]*>.*?Campaign 456.*?<\/tr>/)?.[0];
+  assert(missing);assert.equal((missing.match(/>—<\/td>/g)??[]).length,6);
+  assert(h.inputs(h.render()).filter(n=>n.props.type==="checkbox").every(n=>n.props.disabled===false));
+  h.unmount();
+});
+
+test("all unread WL empty fallback warns instead of claiming no campaign or spend",()=>{
+  const h=harness(async()=>{}, {...initial,snapshots:{AWAL:{status:"PARTIAL",runId:"p",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:["WL Satu: tidak dapat dibaca"],rows:[]},AKHIR:null}});
+  const html=renderToStaticMarkup(h.render());
+  assert.match(html,/Data belum lengkap/);assert.match(html,/WL Satu: tidak dapat dibaca/);
+  assert.doesNotMatch(html,/Belum ada campaign dengan spend/);h.unmount();
 });

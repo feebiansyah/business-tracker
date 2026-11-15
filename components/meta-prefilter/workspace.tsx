@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { readPrefilterAction, savePrefilterNoteAction, savePrefilterPostTypeAction, snapshotPrefilterAction } from "@/app/shopee/[id]/prefilter/actions";
 import { PostTypeSelect } from "@/components/filter/post-type-select";
-import type { ManualPostType, PostTypeInput } from "@/lib/campaign-post-type/model";
+import { postTypeLabels, type ManualPostType, type PostTypeInput } from "@/lib/campaign-post-type/model";
 import type { PrefilterData, PrefilterProgress, PrefilterRow, PrefilterSlot } from "@/lib/meta-prefilter/types";
 
 const slots = ["AWAL","AKHIR"] as const;
@@ -25,6 +25,9 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
   const postTypeVersion = useRef(0);
   const postTypeWrites = useRef(new Map<string, { version: number; manualType: ManualPostType | null }>());
   const inFlight = useRef(false), epoch = useRef(0);
+  // Editors retain the server's COMPLETE-only membership rule.
+  const editableIds = new Set(slots.flatMap(slot=>data.snapshots[slot]?.status === "COMPLETE" ? data.snapshots[slot]!.rows.map(row=>row.metaCampaignId) : []));
+  const hasPartial = slots.some(slot=>data.snapshots[slot]?.status === "PARTIAL");
   useEffect(()=>()=>{ epoch.current++; },[initial.account.id]);
   useEffect(()=>{
     // Local expiry only: no polling, provider request, or automatic snapshot.
@@ -40,7 +43,7 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
   },[data.businessDate]);
   async function saveNote(metaCampaignId: string, note: string, completed: boolean) {
     const saved = data.notes.find(n=>n.metaCampaignId === metaCampaignId);
-    if (inFlight.current || noteSaves.current.has(metaCampaignId) || (note.trim() === (saved?.note ?? "") && completed === (saved?.completed ?? false))) return;
+    if (!editableIds.has(metaCampaignId) || inFlight.current || noteSaves.current.has(metaCampaignId) || (note.trim() === (saved?.note ?? "") && completed === (saved?.completed ?? false))) return;
     noteSaves.current.add(metaCampaignId);
     const ticket = epoch.current;
     setNoteFeedback(current=>({...current,[metaCampaignId]:{pending:true,text:"Menyimpan…"}}));
@@ -57,6 +60,7 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
     } finally { if (ticket === epoch.current) noteSaves.current.delete(metaCampaignId); }
   }
   async function savePostType(input: PostTypeInput) {
+    if (!editableIds.has(input.metaCampaignId)) return { success: false as const, message: "Jenis hanya dapat diubah untuk campaign pada snapshot COMPLETE." };
     const ticket = epoch.current;
     const result = await savePrefilterPostTypeAction({ ...input, businessDate: data.businessDate });
     if (result.success && ticket === epoch.current) {
@@ -84,7 +88,7 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
         setData(current=>({ ...current,progress: batch.progress }));
         if (!batch.shouldContinue) {
           const p = batch.progress;
-          const message = batch.blocked ? "Snapshot sedang diproses permintaan lain. Klik slot yang sama untuk melanjutkan setelah unit selesai." : p.status === "COMPLETE" ? `${label[p.slot]} selesai.` : p.message ?? "Pengambilan dijeda. Snapshot COMPLETE sebelumnya tetap tampil; klik slot untuk melanjutkan.";
+          const message = batch.blocked ? "Snapshot sedang diproses permintaan lain. Klik slot yang sama untuk melanjutkan setelah unit selesai." : p.status === "COMPLETE" ? `${label[p.slot]} selesai.` : p.status === "PARTIAL" ? "Data belum lengkap. WL yang tidak terbaca tidak termasuk pengambilan ini." : p.message ?? "Pengambilan dijeda. Klik slot yang sama untuk melanjutkan progres tersimpan.";
           setNotice({ ok: p.status === "COMPLETE", text: message+(p.skipped.length ? ` WL dilewati: ${p.skipped.join("; ")}.` : "") });
           break;
         }
@@ -103,7 +107,7 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
       }
       else setNotice({ text: read.message });
     } catch {
-      if (ticket === epoch.current) setNotice({ text: "Koneksi terputus. Snapshot COMPLETE sebelumnya tetap tampil; klik slot yang sama untuk melanjutkan progres tersimpan." });
+      if (ticket === epoch.current) setNotice({ text: "Koneksi terputus. Baca ulang untuk memeriksa snapshot yang tersedia; klik slot yang sama untuk melanjutkan progres tersimpan." });
     } finally {
       if (ticket === epoch.current) { inFlight.current=false; setBusy(null); }
     }
@@ -131,11 +135,12 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
       const resume = progress?.slot === slot && ["RUNNING","PAUSED_RATE_LIMIT"].includes(progress.status);
       return <section key={slot} className="min-w-0 space-y-2 rounded-xl border border-slate-200 bg-white p-3">
         <h3 className="font-semibold">{label[slot]}</h3>
-        {snapshot ? <p className="text-xs leading-relaxed text-slate-600">Klik: {time(snapshot.requestedAt)}<br/>Selesai: {time(snapshot.finishedAt)} · {snapshot.rows.length} campaign dengan spend &gt; 0</p> : <p className="text-xs text-slate-500">Belum ada snapshot COMPLETE hari ini.</p>}
+        {snapshot ? <><p className="text-xs leading-relaxed text-slate-600">Klik: {time(snapshot.requestedAt)}<br/>Selesai: {time(snapshot.finishedAt)} · {snapshot.rows.length} campaign teramati dengan spend &gt; 0</p>{snapshot.status === "PARTIAL" && <p role="alert" className="text-xs font-medium text-amber-800">Data belum lengkap (PARTIAL).</p>}</> : <p className="text-xs text-slate-500">Belum ada snapshot selesai yang tersedia hari ini.</p>}
         {snapshot?.skipped.length ? <p className="break-words text-xs text-amber-800">WL dilewati: {snapshot.skipped.join("; ")}. Data WL tersebut tidak termasuk snapshot.</p> : null}
         <button type="button" disabled={!!busy || savingNote || !!(progress && progress.slot !== slot && ["RUNNING","PAUSED_RATE_LIMIT"].includes(progress.status))} onClick={()=>capture(slot)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy === slot ? "Mengambil…" : `${resume ? "Lanjutkan" : snapshot ? "Perbarui" : "Ambil"} ${label[slot]}`}</button>
       </section>;
     })}</div>
+    {hasPartial && <p className="text-xs text-slate-600">Data PARTIAL hanya untuk dibaca. Note, Jenis, dan Selesai dapat diubah jika campaign tersedia pada snapshot COMPLETE.</p>}
     <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
       <label className="grid min-w-0 gap-1 text-xs sm:flex-1">Cari campaign<input value={query} onChange={event=>setQuery(event.target.value)} disabled={!!busy} className="h-9 min-w-0 rounded-md border border-slate-300 px-3 text-sm"/></label>
       <label className="grid min-w-0 gap-1 text-xs">WL<select value={wl} onChange={event=>setWl(event.target.value)} disabled={!!busy} className="h-9 min-w-0 max-w-full rounded-md border border-slate-300 px-2 text-sm"><option value="">Semua WL</option>{wlOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
@@ -145,18 +150,19 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
     <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="max-h-[70dvh] max-w-full overflow-auto overscroll-contain" tabIndex={0} role="region" aria-label="Tabel PraFilter"><table className="w-full min-w-[1440px] border-separate border-spacing-0 text-left text-xs"><thead className="sticky top-0 z-20 bg-slate-50 text-slate-600 shadow-sm [&_th]:border-b [&_th]:border-slate-200 [&_th]:bg-slate-50 [&_th]:px-2 [&_th]:py-2"><tr className="border-b border-slate-200"><th rowSpan={2} className="sticky left-0 z-30 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(15,23,42,0.25)]">Campaign</th><th rowSpan={2}>WL</th><th rowSpan={2}>Jenis</th><th colSpan={3} className="border-l-2 border-slate-300 text-center">Snapshot Awal</th><th colSpan={3} className="border-l-2 border-slate-300 text-center">Snapshot Akhir</th><th colSpan={3} className="border-l-2 border-slate-300 text-center">Perubahan Akhir − Awal</th><th rowSpan={2} className="border-l-2 border-slate-300">Note</th><th rowSpan={2} className="text-center">Selesai</th></tr><tr>{["awal","akhir","perubahan"].map(group=><Fragment key={group}><th className="border-l-2 border-slate-300 text-right">CPC</th><th className="text-right">Spend +5%</th><th className="text-right">{group === "perubahan" ? "Klik" : "Klik Meta"}</th></Fragment>)}</tr></thead><tbody className="[&_td]:border-b [&_td]:border-slate-200">{rows.map(row=>{
       const last = (row.AKHIR ?? row.AWAL)!;
       const saved = notes.get(last.metaCampaignId), draft = drafts[last.metaCampaignId] ?? saved?.note ?? "", feedback = noteFeedback[last.metaCampaignId];
+      const editable = editableIds.has(last.metaCampaignId);
       const delta = row.AWAL && row.AKHIR ? {cpc: row.AWAL.cpc === null || row.AKHIR.cpc === null ? null : Number(row.AKHIR.cpc)-Number(row.AWAL.cpc),fee:Number(row.AKHIR.withFee)-Number(row.AWAL.withFee),clicks:row.AWAL.clicks === null || row.AKHIR.clicks === null ? null : BigInt(row.AKHIR.clicks)-BigInt(row.AWAL.clicks)} : null;
-      return <tr key={last.metaCampaignId} className="align-top"><td className="sticky left-0 z-10 w-52 min-w-40 max-w-56 break-words border-r border-slate-200 bg-white px-2 py-2 shadow-[2px_0_4px_-2px_rgba(15,23,42,0.25)]"><span className="font-medium">{last.campaignName}</span>{saved?.note.trim() && !saved.completed && <span title="Ada catatan belum selesai" aria-label="Ada catatan belum selesai" className="ml-1 inline-block size-2 rounded-full bg-red-500"/>}<span className="mt-0.5 block break-all text-[10px] text-slate-500">{last.metaCampaignId}</span></td><td className="max-w-32 break-words px-2 py-2">{last.wlName}</td><td className="px-2 py-2"><PostTypeSelect key={`${initial.account.id}:${data.businessDate}:${last.metaCampaignId}`} shopeeAccountId={initial.account.id} metaCampaignId={last.metaCampaignId} campaignName={last.campaignName} manualType={data.postTypes?.[last.metaCampaignId] ?? null} saveAction={savePostType} /></td>
+      return <tr key={last.metaCampaignId} className="align-top"><td className="sticky left-0 z-10 w-52 min-w-40 max-w-56 break-words border-r border-slate-200 bg-white px-2 py-2 shadow-[2px_0_4px_-2px_rgba(15,23,42,0.25)]"><span className="font-medium">{last.campaignName}</span>{saved?.note.trim() && !saved.completed && <span title="Ada catatan belum selesai" aria-label="Ada catatan belum selesai" className="ml-1 inline-block size-2 rounded-full bg-red-500"/>}<span className="mt-0.5 block break-all text-[10px] text-slate-500">{last.metaCampaignId}</span></td><td className="max-w-32 break-words px-2 py-2">{last.wlName}</td><td className="px-2 py-2">{editable ? <PostTypeSelect key={`${initial.account.id}:${data.businessDate}:${last.metaCampaignId}`} shopeeAccountId={initial.account.id} metaCampaignId={last.metaCampaignId} campaignName={last.campaignName} manualType={data.postTypes?.[last.metaCampaignId] ?? null} saveAction={savePostType} /> : <span>{data.postTypes?.[last.metaCampaignId] ? postTypeLabels[data.postTypes[last.metaCampaignId]] : "—"}</span>}</td>
         {slots.map(slot=><Fragment key={slot}><td className={`${numericCell} border-l-2 border-slate-300`}>{money(row[slot]?.cpc ?? null)}</td><td className={numericCell}>{money(row[slot]?.withFee ?? null)}</td><td className={numericCell}>{clicks(row[slot]?.clicks)}</td></Fragment>)}
         <td className={`${numericCell} border-l-2 border-slate-300`}>{money(delta?.cpc ?? null)}</td><td className={numericCell}>{money(delta?.fee ?? null)}</td><td className={numericCell}>{clicks(delta?.clicks)}</td>
-        <td className="w-44 border-l-2 border-slate-300 px-2 py-2"><input aria-label={`Note ${last.campaignName}`} value={draft} maxLength={2000} disabled={!!busy || !!feedback?.pending} placeholder="Tambahkan note" onChange={event=>{
+        <td className="w-44 border-l-2 border-slate-300 px-2 py-2"><input aria-label={`Note ${last.campaignName}`} value={draft} maxLength={2000} disabled={!editable || !!busy || !!feedback?.pending} placeholder="Tambahkan note" onChange={event=>{
           setDrafts(current=>({...current,[last.metaCampaignId]:event.target.value}));
           setNoteFeedback(current=>{const next={...current};delete next[last.metaCampaignId];return next;});
         }} onBlur={event=>{
           // Let the same row's checkbox save draft + completion together, without swallowing its click.
           if (event.relatedTarget?.getAttribute("data-note-campaign") !== last.metaCampaignId) return saveNote(last.metaCampaignId,event.currentTarget.value,saved?.completed ?? false);
         }} className="w-40 rounded-md border border-slate-300 px-2 py-1 text-xs disabled:bg-slate-50"/>{feedback && <span role="status" className={`mt-1 block text-[10px] ${feedback.ok || feedback.pending ? "text-slate-500" : "text-red-600"}`}>{feedback.text}</span>}</td>
-        <td className="px-2 py-2 text-center"><input type="checkbox" data-note-campaign={last.metaCampaignId} aria-label={`Selesai ${last.campaignName}`} checked={saved?.completed ?? false} disabled={!!busy || !!feedback?.pending} onChange={event=>saveNote(last.metaCampaignId,draft,event.target.checked)} onBlur={()=>saveNote(last.metaCampaignId,draft,saved?.completed ?? false)} className="size-4 accent-slate-900"/></td></tr>;
-    })}{!rows.length && <tr><td colSpan={14} className="p-6 text-center text-slate-500">Belum ada campaign dengan spend &gt; 0 pada snapshot COMPLETE yang sesuai filter.</td></tr>}</tbody></table></div></div>
+        <td className="px-2 py-2 text-center"><input type="checkbox" data-note-campaign={last.metaCampaignId} aria-label={`Selesai ${last.campaignName}`} checked={saved?.completed ?? false} disabled={!editable || !!busy || !!feedback?.pending} onChange={event=>saveNote(last.metaCampaignId,draft,event.target.checked)} onBlur={()=>saveNote(last.metaCampaignId,draft,saved?.completed ?? false)} className="size-4 accent-slate-900"/></td></tr>;
+    })}{!rows.length && <tr><td colSpan={14} className="p-6 text-center text-slate-500">{hasPartial ? "Data belum lengkap. Tidak ada baris yang dapat ditampilkan sesuai filter; WL yang tidak terbaca tidak dianggap memiliki spend/klik nol." : "Belum ada campaign dengan spend > 0 pada snapshot yang sesuai filter."}</td></tr>}</tbody></table></div></div>
   </div>;
 }
