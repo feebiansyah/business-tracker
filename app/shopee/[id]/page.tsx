@@ -12,6 +12,7 @@ import { TrafficBalances } from "@/components/traffic-balances/traffic-balances"
 import { getMetaConfig } from "@/lib/meta/config";
 import { dashboardParamsToSearch } from "@/lib/dashboard/params";
 import { getMetaSyncProgress } from "@/lib/filter/meta-sync-state";
+import { getWlCampaignReminders } from "@/lib/shopee/wl-campaign-reminders";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
   const account = await prisma.shopeeAccount.findUnique({
     where: { id: shopeeAccountId },
     include: {
-      metaAccounts: { include: { businessManager: true, _count: { select: { campaigns: { where: { metaStatus: "ACTIVE" } } } } }, orderBy: { name: "asc" } },
+      metaAccounts: { include: { businessManager: true }, orderBy: { name: "asc" } },
       commissionImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
       clickImports: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
       clickaduCampaignConfigs: { select: { label: true, campaignId: true, lastBlacklistReplacedAt: true } },
@@ -31,7 +32,8 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
   });
   if (!account) notFound();
   const metaSyncProgress = await getMetaSyncProgress(prisma,shopeeAccountId);
-  const emptyWls = account.metaAccounts.filter((wl) => wl._count.campaigns === 0);
+  const wlReminders = await getWlCampaignReminders(prisma, shopeeAccountId);
+  const emptyWls = account.metaAccounts.filter((wl) => wlReminders.has(wl.id));
   const [noteSummary] = await prisma.$queryRaw<{ count: bigint | number }[]>`
     SELECT COUNT(*) AS count FROM CampaignDailyMetric dm
     INNER JOIN Campaign c ON c.id = dm.campaignId
@@ -92,9 +94,13 @@ export default async function ShopeeAccountDetailPage({ params, searchParams }: 
         <h4 className="mt-3 text-xs font-semibold text-slate-600">Perlu diperiksa</h4>
         <div className="mt-2 grid min-w-0 gap-2 md:grid-cols-2">
           <div className={`min-w-0 rounded-lg p-2 ${pendingNotes > 0 ? "bg-red-50 text-red-900" : "bg-emerald-50 text-emerald-900"}`}><p>Catatan: {pendingNotes > 0 ? `${pendingNotes} belum selesai` : "Tidak ada catatan belum selesai"}</p></div>
-          <div className={`min-w-0 rounded-lg p-2 ${account.metaAccounts.length === 0 ? "bg-slate-50 text-slate-700" : emptyWls.length > 0 ? "bg-red-50 text-red-900" : "bg-emerald-50 text-emerald-900"}`}>
-            <p>WL: {account.metaAccounts.length === 0 ? "Belum ada WL terhubung" : emptyWls.length === 0 ? "Semua memiliki campaign aktif" : `${emptyWls.length} tanpa campaign aktif`}</p>
-            {emptyWls.length > 0 && <ul className="mt-1 space-y-1">{emptyWls.map((wl) => <li key={wl.id} className="flex min-w-0 items-center gap-2"><span className="min-w-0 break-words [overflow-wrap:anywhere]">{wl.name}</span><span className="shrink-0"><StatusBadge status={wl.status} /></span></li>)}</ul>}
+          <div className={`min-w-0 rounded-lg p-2 ${account.metaAccounts.length > 0 && emptyWls.length === 0 ? "bg-emerald-50 text-emerald-900" : "bg-slate-50 text-slate-700"}`}>
+            <p>WL: {account.metaAccounts.length === 0 ? "Belum ada WL terhubung" : emptyWls.length === 0 ? "Semua memiliki campaign aktif pada data tersimpan" : `${emptyWls.length} perlu diperiksa pada data tersimpan`}</p>
+            {emptyWls.length > 0 && <ul className="mt-1 space-y-2">{emptyWls.map((wl) => <li key={wl.id} className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-2"><span className="min-w-0 break-words [overflow-wrap:anywhere]">{wl.name}</span><span className="shrink-0"><StatusBadge status={wl.status} /></span></div>
+              <p className="mt-0.5 text-xs">{wlReminders.get(wl.id)!.message}</p>
+              {wlReminders.get(wl.id)!.hint && <p className="text-xs">{wlReminders.get(wl.id)!.hint}</p>}
+            </li>)}</ul>}
           </div>
         </div>
         <p className="mt-2 text-xs text-slate-500">Berdasarkan data tersimpan terakhir.</p>
