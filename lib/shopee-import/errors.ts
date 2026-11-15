@@ -8,6 +8,8 @@ export class ShopeeImportError extends Error {
   }
 }
 
-export function publicImportMessage(error: unknown) {
-  return error instanceof ShopeeImportError ? error.message : "Gagal memproses file CSV.";
+export const IMPORT_UNCERTAIN_MESSAGE = "Hasil import belum dapat dipastikan. Periksa riwayat import sebelum mencoba ulang.";
+
+export function publicImportMessage(error: unknown, phase: "preview" | "import" = "preview") {
+  return error instanceof ShopeeImportError ? error.message : phase === "import" ? IMPORT_UNCERTAIN_MESSAGE : "Gagal memproses file CSV.";
 }

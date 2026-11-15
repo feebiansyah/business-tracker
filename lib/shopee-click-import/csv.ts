@@ -1,5 +1,5 @@
 import { parse } from "csv-parse/sync";
-import { MAX_CSV_BYTES, MAX_CSV_ROWS } from "../shopee-import/constants.ts";
+import { MAX_CSV_BYTES, MAX_CLICK_CSV_ROWS } from "../shopee-import/constants.ts";
 import { parseShopeeDate } from "../shopee-import/date.ts";
 import { ShopeeImportError } from "../shopee-import/errors.ts";
 import type { ParsedClickCsv } from "./types.ts";
@@ -31,7 +31,7 @@ export function parseShopeeClickCsv(bytes: Uint8Array): ParsedClickCsv {
   if (valid.length !== 1) throw new ShopeeImportError("CSV_INVALID_HEADERS", "Header CSV Klik Shopee tidak valid.");
   const selected = valid[0];
   if (!selected.records.length) throw new ShopeeImportError("CSV_EMPTY", "CSV tidak memiliki data.");
-  if (selected.records.length > MAX_CSV_ROWS) throw new ShopeeImportError("CSV_TOO_MANY_ROWS", "CSV melebihi batas 100.000 baris data.");
+  if (selected.records.length > MAX_CLICK_CSV_ROWS) throw new ShopeeImportError("CSV_TOO_MANY_ROWS", "CSV melebihi batas 200.000 baris data.");
   const timeIndex = selected.headers.indexOf("Waktu Klik");
   const tagIndex = selected.headers.indexOf("Tag_link");
   const rows = [];

@@ -1,11 +1,13 @@
 "use client";
 
-import { useReducer } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { importShopeeCommissionAction, previewShopeeCommissionAction } from "@/app/shopee/[id]/import/actions";
 import { Button } from "@/components/ui/button";
 import type { HistoryPageInfo, ImportHistoryParams } from "@/lib/shopee-import/history-pagination";
 import type { ImportHistoryRow } from "@/lib/shopee-import/types";
+import { csvSizeError, MAX_COMMISSION_CSV_BYTES } from "@/lib/shopee-import/constants";
+import { IMPORT_UNCERTAIN_MESSAGE } from "@/lib/shopee-import/errors";
 import { ImportHistoryPagination } from "./history-pagination";
 import { ImportHistoryTable } from "./import-history-table";
 import { PreviewSummary } from "./preview-summary";
@@ -23,41 +25,56 @@ export function ImportWorkflow({ shopeeAccountId, history, historyPagination, hi
   const [state, dispatch] = useReducer(reduceImportState, initial);
   const router = useRouter();
   const busy = state.phase === "previewing" || state.phase === "importing";
+  const errorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (state.error) errorRef.current?.focus(); }, [state.error]);
 
   async function preview() {
     if (!state.file) {
       dispatch({ type: "FAILED", message: "Pilih file CSV terlebih dahulu." });
       return;
     }
+    const sizeError = csvSizeError(state.file.size, MAX_COMMISSION_CSV_BYTES);
+    if (sizeError) { dispatch({ type: "FAILED", message: sizeError }); return; }
     dispatch({ type: "PREVIEWING" });
-    const form = new FormData();
-    form.set("file", state.file);
-    const result = await previewShopeeCommissionAction(shopeeAccountId, form);
-    dispatch(result.success ? { type: "PREVIEWED", preview: result.preview } : { type: "FAILED", message: result.message });
+    try {
+      const form = new FormData();
+      form.set("file", state.file);
+      const result = await previewShopeeCommissionAction(shopeeAccountId, form);
+      dispatch(result.success ? { type: "PREVIEWED", preview: result.preview } : { type: "FAILED", message: result.message });
+    } catch {
+      dispatch({ type: "FAILED", message: "Preview gagal dimuat. Periksa koneksi lalu coba lagi." });
+    }
   }
 
   async function runImport() {
     if (!state.file || !state.preview) return;
+    const sizeError = csvSizeError(state.file.size, MAX_COMMISSION_CSV_BYTES);
+    if (sizeError) { dispatch({ type: "FAILED", message: sizeError }); return; }
     dispatch({ type: "IMPORTING" });
-    const form = new FormData();
-    form.set("file", state.file);
-    const result = await importShopeeCommissionAction(shopeeAccountId, state.preview.confirmation, form);
-    if (!result.success) {
-      dispatch({ type: "FAILED", message: result.message });
-      return;
+    try {
+      const form = new FormData();
+      form.set("file", state.file);
+      const result = await importShopeeCommissionAction(shopeeAccountId, state.preview.confirmation, form);
+      if (!result.success) {
+        dispatch({ type: "FAILED", message: result.message });
+        return;
+      }
+      dispatch({ type: "IMPORT_SUCCEEDED", receipt: result.receipt });
+      router.refresh();
+    } catch {
+      dispatch({ type: "FAILED", message: IMPORT_UNCERTAIN_MESSAGE });
     }
-    dispatch({ type: "IMPORT_SUCCEEDED", receipt: result.receipt });
-    router.refresh();
   }
 
   return <div className="min-w-0 space-y-6">
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h3 className="font-semibold text-slate-950">Upload CSV Komisi</h3>
+      <p className="mt-1 text-sm text-slate-500">Maksimal 15 MiB dan 100.000 baris data, tidak termasuk header.</p>
       <div className="mt-4 flex min-w-0 flex-wrap items-stretch gap-3 sm:items-center">
         <input aria-label="File CSV" type="file" accept=".csv,text/csv,application/vnd.ms-excel" disabled={busy} onChange={(event) => dispatch({ type: "FILE_CHANGED", file: event.target.files?.[0] ?? null })} className="block w-full min-w-0 max-w-full text-sm sm:w-auto"/>
         <Button className="w-full sm:w-auto" disabled={busy || !state.file} onClick={preview}>{state.phase === "previewing" ? "Memproses…" : "Preview"}</Button>
       </div>
-      {state.error && <div role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{state.error}</div>}
+      {state.error && <div ref={errorRef} tabIndex={-1} role="alert" className="mt-4 break-words rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{state.error}</div>}
     </div>
     {state.preview && <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h3 className="font-semibold">Preview</h3>

@@ -1,5 +1,5 @@
 import { ShopeeImportError } from "./errors.ts";
-import { MAX_CSV_BYTES } from "./constants.ts";
+import { csvSizeError, MAX_CSV_BYTES } from "./constants.ts";
 import type { CsvUpload } from "./types.ts";
 
 const ACCEPTED_CSV_MIME_TYPES = new Set(["", "text/csv", "application/vnd.ms-excel"]);
@@ -24,6 +24,7 @@ export function sanitizeFilename(value: string) {
 export async function readCsvUpload(
   shopeeAccountId: unknown,
   formData: FormData,
+  maxBytes = MAX_CSV_BYTES,
 ): Promise<CsvUpload> {
   validateShopeeAccountId(shopeeAccountId);
   const file = formData.get("file");
@@ -38,8 +39,9 @@ export async function readCsvUpload(
   if (!ACCEPTED_CSV_MIME_TYPES.has(file.type.toLowerCase())) {
     throw new ShopeeImportError("CSV_INVALID_MIME", "Tipe file CSV tidak didukung.");
   }
-  if (file.size > MAX_CSV_BYTES) {
-    throw new ShopeeImportError("CSV_TOO_LARGE", "File melebihi batas 10 MiB.");
+  const sizeError = csvSizeError(file.size, maxBytes);
+  if (sizeError) {
+    throw new ShopeeImportError("CSV_TOO_LARGE", sizeError);
   }
 
   return { originalFilename, bytes: new Uint8Array(await file.arrayBuffer()) };
