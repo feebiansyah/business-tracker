@@ -6,11 +6,12 @@ import { MetaGraphClient, MetaApiError, MetaSyncPauseError } from "@/lib/meta/cl
 import type { MetaCampaign, MetaCampaignInsight } from "@/lib/meta/types";
 import { META_SYNC_HTTP_MS, META_SYNC_LEASE_MS, META_SYNC_UNIT_MS } from "@/lib/filter/meta-sync-state";
 import { retryMetaSyncTransaction } from "@/lib/filter/persistence";
+import { lockShopeeAccounts } from "@/lib/shopee/account-lock";
 import { accountId, businessDate, cpc, dateValue, metaId, nameValue, readInsight, slotValue, statusValue } from "./model";
 import type { PrefilterBatch, PrefilterData, PrefilterProgress, PrefilterSlot } from "./types";
 
-type Db = Pick<PrismaClient, "shopeeAccount" | "campaign" | "metaPrefilterRun" | "metaPrefilterRow" | "metaPrefilterNote" | "$transaction">;
-type Tx = Pick<Prisma.TransactionClient, "shopeeAccount" | "campaign" | "metaPrefilterRun" | "metaPrefilterRow" | "metaPrefilterNote">;
+type Db = Pick<PrismaClient, "shopeeAccount" | "campaign" | "metaPrefilterRun" | "metaPrefilterRow" | "metaPrefilterNote" | "$transaction" | "$queryRaw">;
+type Tx = Pick<Prisma.TransactionClient, "shopeeAccount" | "campaign" | "metaPrefilterRun" | "metaPrefilterRow" | "metaPrefilterNote" | "$queryRaw">;
 type Scope = { id: number; name: string; accountId: string }[];
 type Cursor = { index: number; phase: "CAMPAIGNS" | "INSIGHTS" | "SKIP" | "PRUNE" | "PUBLISH"; after?: string; seen?: string[]; skipReason?: string };
 type Client = Pick<MetaGraphClient, "getSyncPage" | "restoreSyncUsagePercent" | "getSyncUsagePercent">;
@@ -87,7 +88,8 @@ export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: 
     const complete = await db.metaPrefilterRun.findFirst({ where: { shopeeAccountId: id, businessDate: dateValue(today), slot, status: "COMPLETE" }, orderBy: { revision: "desc" } });
     if (complete) return { progress: progress(complete), shouldContinue: false, blocked: false };
   }
-  const account = await accountScope(db,id), liveScope = validScope(account.metaAccounts);
+  const account = await accountScope(db,id);
+  let liveScope = validScope(account.metaAccounts);
   let run: MetaPrefilterRun | null;
   if (input.runId) {
     run = await db.metaPrefilterRun.findFirst({ where: { id: input.runId, shopeeAccountId: id, slot } });
@@ -105,11 +107,13 @@ export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: 
       if (businessDate(input.receivedAt) !== today) throw new SafeError("Tanggal berganti. Klik snapshot lagi untuk hari ini.");
       try {
         run = await db.$transaction(async tx => {
+          await lockShopeeAccounts(tx,[id]);
           if (input.skipCompleted) {
             const complete = await tx.metaPrefilterRun.findFirst({ where: { shopeeAccountId: id, businessDate: dateValue(today), slot, status: "COMPLETE" }, orderBy: { revision: "desc" } });
             if (complete) return complete;
           }
           const latest = await tx.metaPrefilterRun.findFirst({ where: { shopeeAccountId: id, businessDate: dateValue(today), slot }, orderBy: { revision: "desc" }, select: { revision: true } });
+          liveScope = validScope((await accountScope(tx,id)).metaAccounts);
           return tx.metaPrefilterRun.create({ data: { shopeeAccountId: id, activeShopeeAccountId: id, businessDate: dateValue(today), slot, revision: (latest?.revision ?? 0)+1, requestedAt: input.receivedAt, scope: liveScope, cursor: initialCursor, skipped: [] } });
         },{ maxWait: 5_000, timeout: 10_000, ...(input.skipCompleted ? { isolationLevel: "Serializable" as const } : {}) });
       } catch (e) {

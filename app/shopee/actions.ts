@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
+import { moveWlConnection, WlConnectionError } from "@/lib/shopee/wl-connection";
 import {
   deleteShopeeAccount,
   renameShopeeAccount,
@@ -41,19 +42,22 @@ export async function createMetaAccount(formData: FormData) {
   redirect(shopeeAccountId ? `/shopee/${shopeeAccountId}` : "/wl");
 }
 
-export async function updateMetaAccountShopeeConnection(formData: FormData) {
+export async function updateMetaAccountShopeeConnection(_previous: { message: string } | null, formData: FormData) {
   await requireUser();
   const metaAccountId = Number(formData.get("metaAccountId"));
   const value = formData.get("shopeeAccountId");
   const shopeeAccountId = typeof value === "string" && value ? Number(value) : null;
-  if (!Number.isInteger(metaAccountId) || (shopeeAccountId !== null && !Number.isInteger(shopeeAccountId))) throw new Error("Data WL atau Akun Shopee tidak valid.");
-  if (shopeeAccountId !== null) {
-    const shopeeAccount = await prisma.shopeeAccount.findUnique({ where: { id: shopeeAccountId }, select: { id: true } });
-    if (!shopeeAccount) throw new Error("Akun Shopee yang dipilih tidak ditemukan.");
+  const original = formData.get("originalShopeeAccountId");
+  const source = typeof original === "string" && original ? Number(original) : null;
+  try {
+    await moveWlConnection(prisma,metaAccountId,source,shopeeAccountId);
+  } catch (error) {
+    return { message: error instanceof WlConnectionError ? error.message : "Pemindahan belum dapat dipastikan. Muat ulang untuk memeriksa koneksi WL sebelum mencoba lagi." };
   }
-  await prisma.metaAccount.update({ where: { id: metaAccountId }, data: { shopeeAccountId } });
   revalidatePath("/wl");
   revalidatePath("/shopee");
+  revalidatePath("/");
+  for (const accountId of new Set([source,shopeeAccountId])) if (accountId !== null) revalidatePath(`/shopee/${accountId}`,"layout");
   redirect("/wl");
 }
 
