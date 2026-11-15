@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 import type { FilterSyncSummary } from "@/lib/filter/sync";
+import { lockShopeeAccounts } from "@/lib/shopee/account-lock";
 
 export type MetaSyncRunStatus = "RUNNING" | "PAUSED_RATE_LIMIT" | "PARTIAL" | "COMPLETE" | "FAILED";
 export type MetaSyncWlStatus = "PENDING" | "RUNNING" | "SUCCEEDED" | "SKIPPED" | "FAILED";
@@ -21,6 +22,9 @@ export async function startOrResumeMetaSyncRun(db: SyncStateDb, shopeeAccountId:
   if (active) return active;
   try {
     return await db.$transaction(async tx => {
+      await lockShopeeAccounts(tx,[shopeeAccountId]);
+      const existing = await tx.metaSyncRun.findUnique({ where: { activeShopeeAccountId: shopeeAccountId } });
+      if (existing) return existing;
       const account = await tx.shopeeAccount.findUnique({ where: { id: shopeeAccountId }, select: { id: true, metaAccounts: { select: { id: true, name: true, accountId: true }, orderBy: [{ name: "asc" }, { id: "asc" }] } } });
       if (!account) throw new Error("Akun Shopee tidak ditemukan.");
       const run = await tx.metaSyncRun.create({ data: { shopeeAccountId, activeShopeeAccountId: shopeeAccountId, targetDate: new Date(targetDate + "T00:00:00Z"), summary: emptySyncSummary(account.metaAccounts.length), createdAt: now } });

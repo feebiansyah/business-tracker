@@ -2,6 +2,7 @@ import "server-only";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parsePostTypeInput, type ManualPostType, type PostTypeInput } from "./model";
+import { lockShopeeAccounts } from "@/lib/shopee/account-lock";
 
 type OverrideDb = Pick<PrismaClient, "campaignPostTypeOverride">;
 
@@ -25,11 +26,14 @@ export async function writePostTypeOverride(value: PostTypeInput, db: OverrideDb
   return { manualType };
 }
 
-export async function saveCampaignPostType(value: unknown, db: OverrideDb & Pick<PrismaClient, "campaign"> = prisma) {
+export async function saveCampaignPostType(value: unknown, db: Pick<PrismaClient, "$transaction"> = prisma) {
   const input = parsePostTypeInput(value);
-  const campaign = await db.campaign.findFirst({
+  return db.$transaction(async tx=>{
+  await lockShopeeAccounts(tx,[input.shopeeAccountId]);
+  const campaign = await tx.campaign.findFirst({
     where: { metaCampaignId: input.metaCampaignId, metaAccount: { shopeeAccountId: input.shopeeAccountId } }, select: { id: true },
   });
   if (!campaign) throw new Error("Campaign tidak ditemukan dalam akun Shopee ini.");
-  return writePostTypeOverride(input, db);
+  return writePostTypeOverride(input, tx);
+  },{isolationLevel:"ReadCommitted",maxWait:5_000,timeout:10_000});
 }
