@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { importShopeeClickAction, previewShopeeClickAction } from "@/app/shopee/[id]/import/actions";
 import { Button } from "@/components/ui/button";
 import type { ClickHistoryRow, ClickImportReceipt, ClickPreview } from "@/lib/shopee-click-import/types";
 import type { HistoryPageInfo, ImportHistoryParams } from "@/lib/shopee-import/history-pagination";
+import { csvSizeError, MAX_CSV_BYTES } from "@/lib/shopee-import/constants";
+import { IMPORT_UNCERTAIN_MESSAGE } from "@/lib/shopee-import/errors";
 import { ImportHistoryPagination } from "./history-pagination";
 import { importReasonLabel } from "./view-model";
 
@@ -29,30 +31,42 @@ export function ClickImportWorkflow({ shopeeAccountId, history, historyPaginatio
   const [error, setError] = useState("");
   const [phase, setPhase] = useState<"idle" | "preview" | "import">("idle");
   const busy = phase !== "idle";
+  const errorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (error) errorRef.current?.focus(); }, [error]);
 
   async function runPreview() {
     if (!file) return;
+    const sizeError = csvSizeError(file.size, MAX_CSV_BYTES);
+    if (sizeError) { setError(sizeError); setPreview(null); return; }
     setPhase("preview"); setError(""); setReceipt(null);
-    const form = new FormData(); form.set("file", file);
-    const result = await previewShopeeClickAction(shopeeAccountId, form);
-    if (result.success) setPreview(result.preview); else { setPreview(null); setError(result.message); }
-    setPhase("idle");
+    try {
+      const form = new FormData(); form.set("file", file);
+      const result = await previewShopeeClickAction(shopeeAccountId, form);
+      if (result.success) setPreview(result.preview); else { setPreview(null); setError(result.message); }
+    } catch {
+      setPreview(null); setError("Preview gagal dimuat. Periksa koneksi lalu coba lagi.");
+    } finally { setPhase("idle"); }
   }
 
   async function runImport() {
     if (!file || !preview) return;
+    const sizeError = csvSizeError(file.size, MAX_CSV_BYTES);
+    if (sizeError) { setError(sizeError); return; }
     setPhase("import"); setError("");
-    const form = new FormData(); form.set("file", file);
-    const result = await importShopeeClickAction(shopeeAccountId, preview.confirmation, form);
-    if (result.success) { setReceipt(result.receipt); setPreview(null); router.refresh(); }
-    else setError(result.message.includes("Preview") || result.message.includes("File berubah") ? `${result.message} Silakan Preview ulang.` : result.message);
-    setPhase("idle");
+    try {
+      const form = new FormData(); form.set("file", file);
+      const result = await importShopeeClickAction(shopeeAccountId, preview.confirmation, form);
+      if (result.success) { setReceipt(result.receipt); setPreview(null); router.refresh(); }
+      else setError(result.message.includes("Preview") || result.message.includes("File berubah") ? `${result.message} Silakan Preview ulang.` : result.message);
+    } catch {
+      setError(IMPORT_UNCERTAIN_MESSAGE);
+    } finally { setPhase("idle"); }
   }
 
   return <section className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-    <div><h3 className="font-semibold text-slate-950">Import Klik Shopee</h3><p className="mt-1 text-sm text-slate-500">Impor klik harian berdasarkan Tag Link 2.</p></div>
+    <div><h3 className="font-semibold text-slate-950">Import Klik Shopee</h3><p className="mt-1 text-sm text-slate-500">Impor klik harian berdasarkan Tag Link 2. Maksimal 10 MiB dan 200.000 baris data, tidak termasuk header.</p></div>
     <div className="flex min-w-0 flex-wrap items-stretch gap-3 sm:items-center"><input aria-label="File CSV Klik Shopee" type="file" accept=".csv,text/csv,application/vnd.ms-excel" disabled={busy} onChange={(event) => { setFile(event.target.files?.[0] ?? null); setPreview(null); setReceipt(null); setError(""); }} className="block w-full min-w-0 max-w-full text-sm sm:w-auto"/><Button className="w-full sm:w-auto" disabled={busy || !file} onClick={runPreview}>{phase === "preview" ? "Memproses…" : "Preview Klik"}</Button></div>
-    {error && <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+    {error && <div ref={errorRef} tabIndex={-1} role="alert" className="break-words rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
     {preview && <div className="min-w-0 space-y-4"><ClickPreviewSummary preview={preview}/><div><h4 className="mb-2 font-medium">Unmatched</h4>{preview.unmatched.length ? <div className="max-w-full overflow-x-auto overscroll-x-contain"><table className="w-full min-w-140 text-left text-sm"><thead><tr>{["Tanggal", "Tag Link 2", "Reason", "Click count"].map((label) => <th key={label} className="px-3 py-2">{label}</th>)}</tr></thead><tbody>{preview.unmatched.map((row) => <tr key={`${row.date}-${row.tagLink2}`}><td className="px-3 py-2">{row.date}</td><td className="px-3 py-2">{row.tagLink2}</td><td className="px-3 py-2">{importReasonLabel(row.reason)}</td><td className="px-3 py-2">{row.clickCount}</td></tr>)}</tbody></table></div> : <p className="text-sm text-slate-500">Semua group berhasil dicocokkan.</p>}</div><Button className="w-full sm:w-auto" disabled={busy} onClick={runImport}>{phase === "import" ? "Mengimpor…" : "Import Klik Sekarang"}</Button></div>}
     {receipt && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">Import berhasil: {receipt.matchedClicks} klik matched, {receipt.unmatchedClicks} klik unmatched.</div>}
     <div className="-mx-4 -mb-4 mt-6 min-w-0 border-t sm:-mx-6 sm:-mb-6"><h4 className="px-4 py-4 font-semibold sm:px-6">Riwayat Import Klik</h4><ClickHistory rows={history}/><ImportHistoryPagination kind="click" pagination={historyPagination} state={historyState}/></div>

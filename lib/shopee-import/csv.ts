@@ -1,5 +1,5 @@
 import { parse } from "csv-parse/sync";
-import { MAX_CSV_BYTES, MAX_CSV_ROWS, REQUIRED_HEADERS } from "./constants.ts";
+import { MAX_COMMISSION_CSV_BYTES, MAX_CSV_ROWS, REQUIRED_HEADERS } from "./constants.ts";
 import { ShopeeImportError } from "./errors.ts";
 import type { CsvRecord } from "./types.ts";
 
@@ -46,8 +46,8 @@ function validateHeaders(candidate: Candidate) {
 }
 
 export function decodeAndParseCsv(bytes: Uint8Array): CsvRecord[] {
-  if (bytes.byteLength > MAX_CSV_BYTES) {
-    throw new ShopeeImportError("CSV_TOO_LARGE", "Ukuran CSV melebihi batas 10 MiB.");
+  if (bytes.byteLength > MAX_COMMISSION_CSV_BYTES) {
+    throw new ShopeeImportError("CSV_TOO_LARGE", "Ukuran CSV melebihi batas 15 MiB.");
   }
   if (bytes.includes(0)) {
     throw new ShopeeImportError("CSV_NUL_BYTE", "CSV tidak boleh mengandung byte NUL.");
