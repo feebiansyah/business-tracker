@@ -70,11 +70,15 @@ async function cleanup(tx: Tx, account: number, date: Date, keep: string[]) {
   if (runs.length) await tx.metaPrefilterRun.deleteMany({ where: { id: { in: runs.map(r=>r.id) } } });
 }
 
-export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: PrefilterSlot; runId?: string; owner: string; receivedAt: Date; startedAt: number }, dependencies?: Deps): Promise<PrefilterBatch> {
+export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: PrefilterSlot; runId?: string; owner: string; receivedAt: Date; startedAt: number; skipCompleted?: boolean }, dependencies?: Deps): Promise<PrefilterBatch> {
   const { db, clientFactory, now } = dependencies ?? { db: prisma, clientFactory: () => new MetaGraphClient(), now: () => new Date() };
   const slot = slotValue(input.slot), id = input.shopeeAccountId, today = businessDate(now());
   if (!Number.isSafeInteger(id) || id <= 0 || !input.owner || input.owner.length > 64 || (input.runId && !/^[\w-]{1,64}$/.test(input.runId))) throw new SafeError("Permintaan PraFilter tidak valid.");
   if (Date.now()-input.startedAt >= META_SYNC_UNIT_MS) throw new SafeError("Batas waktu habis sebelum pembacaan. Coba lanjutkan snapshot.");
+  if (input.skipCompleted && !input.runId) {
+    const complete = await db.metaPrefilterRun.findFirst({ where: { shopeeAccountId: id, businessDate: dateValue(today), slot, status: "COMPLETE" }, orderBy: { revision: "desc" } });
+    if (complete) return { progress: progress(complete), shouldContinue: false, blocked: false };
+  }
   const account = await accountScope(db,id), liveScope = validScope(account.metaAccounts);
   let run: MetaPrefilterRun | null;
   if (input.runId) {
@@ -93,9 +97,13 @@ export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: 
       if (businessDate(input.receivedAt) !== today) throw new SafeError("Tanggal berganti. Klik snapshot lagi untuk hari ini.");
       try {
         run = await db.$transaction(async tx => {
+          if (input.skipCompleted) {
+            const complete = await tx.metaPrefilterRun.findFirst({ where: { shopeeAccountId: id, businessDate: dateValue(today), slot, status: "COMPLETE" }, orderBy: { revision: "desc" } });
+            if (complete) return complete;
+          }
           const latest = await tx.metaPrefilterRun.findFirst({ where: { shopeeAccountId: id, businessDate: dateValue(today), slot }, orderBy: { revision: "desc" }, select: { revision: true } });
           return tx.metaPrefilterRun.create({ data: { shopeeAccountId: id, activeShopeeAccountId: id, businessDate: dateValue(today), slot, revision: (latest?.revision ?? 0)+1, requestedAt: input.receivedAt, scope: liveScope, cursor: initialCursor, skipped: [] } });
-        },{ maxWait: 5_000, timeout: 10_000 });
+        },{ maxWait: 5_000, timeout: 10_000, ...(input.skipCompleted ? { isolationLevel: "Serializable" as const } : {}) });
       } catch (e) {
         if ((e as { code?: string }).code !== "P2002") throw e;
         run = await db.metaPrefilterRun.findUnique({ where: { activeShopeeAccountId: id } });
