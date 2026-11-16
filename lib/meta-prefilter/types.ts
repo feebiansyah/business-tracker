@@ -10,7 +10,7 @@ export type PrefilterRow = {
   configuredStatus: string | null; effectiveStatus: string | null;
   spend: string; withFee: string; clicks: string | null; cpc: string | null;
 };
-export type PrefilterSnapshot = { runId: string; status: "COMPLETE" | "PARTIAL"; requestedAt: string; finishedAt: string; skipped: string[]; rows: PrefilterRow[] };
+export type PrefilterSnapshot = { runId: string; status: "COMPLETE" | "PARTIAL"; requestedAt: string; finishedAt: string; skipped: string[]; message?: string | null; rows: PrefilterRow[] };
 export type PrefilterNote = { metaCampaignId: string; note: string; completed: boolean };
 export type PrefilterData = { account: { id: number; name: string }; businessDate: string; snapshots: Record<PrefilterSlot, PrefilterSnapshot | null>; progress: PrefilterProgress | null; notes: PrefilterNote[]; postTypes: Record<string, ManualPostType> };
 export type PrefilterBatch = { progress: PrefilterProgress; shouldContinue: boolean; blocked: boolean };

@@ -116,6 +116,19 @@ test("midnight hides yesterday locally without fetching or starting another snap
   assert.match(html,/8 November 2026/);assert.match(html,/Tanggal WIB berganti/);assert.equal(calls,0);assert.equal(h.readCalls(),0);h.unmount();
 });
 
+test("completed access skips remain visible on reloaded cards without a false partial warning",()=>{
+  const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"100",withFee:"105",clicks:"1",cpc:"100"};
+  const snapshot={status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:["WL Dua: tidak dapat diakses karena izin Meta (kode 200)"],message:"Selesai, 1 WL dilewati karena tidak dapat diakses.",rows:[row]};
+  const h=harness(async()=>{}, {...initial,snapshots:{AWAL:snapshot,AKHIR:null}});
+  const html=renderToStaticMarkup(h.render());assert.match(html,/Selesai, 1 WL dilewati/);assert.match(html,/WL Dua: tidak dapat diakses/);assert.doesNotMatch(html,/Data belum lengkap/);h.unmount();
+});
+
+test("all skipped message survives reload and does not claim no spend",()=>{
+  const snapshot={status:"PARTIAL",runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:["WL Dua: tidak dapat diakses karena izin Meta (kode 200)"],message:"Tidak ada WL yang berhasil dibaca.",rows:[]};
+  const h=harness(async()=>{}, {...initial,snapshots:{AWAL:snapshot,AKHIR:null}});
+  const html=renderToStaticMarkup(h.render());assert.match(html,/Tidak ada WL yang berhasil dibaca/);assert.doesNotMatch(html,/Belum ada campaign dengan spend/);h.unmount();
+});
+
 test("partial notice retains skipped WL names after rereading the previous snapshot",async()=>{
   const h=harness(async()=>({success:true,batch:{progress:{runId:"partial",slot:"AWAL",status:"PARTIAL",current:2,total:2,pages:3,skipped:["WL Dua: tidak dapat dibaca (kode 200)"],message:"Snapshot COMPLETE sebelumnya tetap ditampilkan."},shouldContinue:false,blocked:false}}));
   await h.buttons(h.render())[0].props.onClick();

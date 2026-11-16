@@ -88,7 +88,7 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
         setData(current=>({ ...current,progress: batch.progress }));
         if (!batch.shouldContinue) {
           const p = batch.progress;
-          const message = batch.blocked ? "Snapshot sedang diproses permintaan lain. Klik slot yang sama untuk melanjutkan setelah unit selesai." : p.status === "COMPLETE" ? `${label[p.slot]} selesai.` : p.status === "PARTIAL" ? "Data belum lengkap. WL yang tidak terbaca tidak termasuk pengambilan ini." : p.message ?? "Pengambilan dijeda. Klik slot yang sama untuk melanjutkan progres tersimpan.";
+          const message = batch.blocked ? "Snapshot sedang diproses permintaan lain. Klik slot yang sama untuk melanjutkan setelah unit selesai." : p.status === "COMPLETE" ? p.message ?? `${label[p.slot]} selesai.` : p.status === "PARTIAL" ? p.message?.startsWith("Tidak ada WL yang berhasil dibaca.") ? "Tidak ada WL yang berhasil dibaca." : "Data belum lengkap. WL yang tidak terbaca tidak termasuk pengambilan ini." : p.message ?? "Pengambilan dijeda. Klik slot yang sama untuk melanjutkan progres tersimpan.";
           setNotice({ ok: p.status === "COMPLETE", text: message+(p.skipped.length ? ` WL dilewati: ${p.skipped.join("; ")}.` : "") });
           break;
         }
@@ -137,6 +137,7 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
         <h3 className="font-semibold">{label[slot]}</h3>
         {snapshot ? <><p className="text-xs leading-relaxed text-slate-600">Klik: {time(snapshot.requestedAt)}<br/>Selesai: {time(snapshot.finishedAt)} · {snapshot.rows.length} campaign teramati dengan spend &gt; 0</p>{snapshot.status === "PARTIAL" && <p role="alert" className="text-xs font-medium text-amber-800">Data belum lengkap (PARTIAL).</p>}</> : <p className="text-xs text-slate-500">Belum ada snapshot selesai yang tersedia hari ini.</p>}
         {snapshot?.skipped.length ? <p className="break-words text-xs text-amber-800">WL dilewati: {snapshot.skipped.join("; ")}. Data WL tersebut tidak termasuk snapshot.</p> : null}
+        {snapshot?.message && <p className="break-words text-xs text-amber-800">{snapshot.message}</p>}
         <button type="button" disabled={!!busy || savingNote || !!(progress && progress.slot !== slot && ["RUNNING","PAUSED_RATE_LIMIT"].includes(progress.status))} onClick={()=>capture(slot)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy === slot ? "Mengambil…" : `${resume ? "Lanjutkan" : snapshot ? "Perbarui" : "Ambil"} ${label[slot]}`}</button>
       </section>;
     })}</div>

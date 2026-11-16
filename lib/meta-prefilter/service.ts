@@ -20,6 +20,12 @@ class SafeError extends Error {}
 class DayChanged extends Error {}
 const initialCursor: Cursor = { index: 0, phase: "CAMPAIGNS" };
 const transient = (e: unknown) => e instanceof MetaApiError && [4,17,32,613].includes(e.code ?? -1);
+// A code alone is not permission evidence (notably invalid parameters/code 100).
+// Keep unrecognized legacy skips PARTIAL; only these explicit access denials
+// may publish a COMPLETE snapshot of the remaining readable WLs.
+const permissionDenied = (e: MetaApiError) => [10,200].includes(e.code ?? -1)
+  && /ad account owner has not grant(?:ed)? ads_management or ads_read permission/i.test(e.message);
+const permissionSkip = (reason: string) => /: tidak dapat diakses karena izin Meta \(kode (10|200)\)$/.test(reason);
 const skippedNames = (run: MetaPrefilterRun) => run.skipped as string[];
 const scopeOf = (run: MetaPrefilterRun) => run.scope as unknown as Scope;
 const logicalDate = (run: MetaPrefilterRun) => run.businessDate.toISOString().slice(0,10);
@@ -65,7 +71,7 @@ export async function readPrefilterData(shopeeAccountId: number, db: Db = prisma
   const eligible = await firstDayIds(tx,[...new Set(rows.map(r=>r.metaCampaignId))],date);
   const notes = eligible.size ? await tx.metaPrefilterNote.findMany({ where: { shopeeAccountId, businessDate: dateValue(date), metaCampaignId: { in: [...eligible] } }, select: { metaCampaignId: true, note: true, completed: true } }) : [];
   const postTypes = await readPostTypeOverrides(shopeeAccountId, [...eligible], tx);
-  const snapshot = (run: MetaPrefilterRun | null) => run ? { runId: run.id, status: run.status === "COMPLETE" ? "COMPLETE" as const : "PARTIAL" as const, requestedAt: run.requestedAt.toISOString(), finishedAt: run.finishedAt!.toISOString(), skipped: skippedNames(run), rows: rows.filter(r=>r.runId === run.id && eligible.has(r.metaCampaignId)).map(r=>({ metaCampaignId: r.metaCampaignId, campaignName: r.campaignName, metaAccountId: r.metaAccountId, wlName: r.wlName, configuredStatus: r.configuredStatus, effectiveStatus: r.effectiveStatus, spend: r.spend!.toString(), withFee: new Prisma.Decimal(r.spend!.toString()).mul("1.05").toString(), clicks: r.clicks?.toString() ?? null, cpc: cpc(r.spend!.toString(),r.clicks) })) } : null;
+  const snapshot = (run: MetaPrefilterRun | null) => run ? { runId: run.id, status: run.status === "COMPLETE" ? "COMPLETE" as const : "PARTIAL" as const, requestedAt: run.requestedAt.toISOString(), finishedAt: run.finishedAt!.toISOString(), skipped: skippedNames(run), message: run.error, rows: rows.filter(r=>r.runId === run.id && eligible.has(r.metaCampaignId)).map(r=>({ metaCampaignId: r.metaCampaignId, campaignName: r.campaignName, metaAccountId: r.metaAccountId, wlName: r.wlName, configuredStatus: r.configuredStatus, effectiveStatus: r.effectiveStatus, spend: r.spend!.toString(), withFee: new Prisma.Decimal(r.spend!.toString()).mul("1.05").toString(), clicks: r.clicks?.toString() ?? null, cpc: cpc(r.spend!.toString(),r.clicks) })) } : null;
   return { account: { id: account.id, name: account.name }, businessDate: date, snapshots: { AWAL: snapshot(awal), AKHIR: snapshot(akhir) }, progress: active && logicalDate(active) === date ? progress(active) : null, notes, postTypes };
   },{ isolationLevel: "RepeatableRead", maxWait: 5_000, timeout: 10_000 });
 }
@@ -162,12 +168,14 @@ export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: 
       await transaction(async tx=>{
         check(); const fresh = validScope((await accountScope(tx,id)).metaAccounts);
         if (!sameScope(scope,fresh)) throw new SafeError("Daftar WL berubah. Ambil snapshot baru.");
-        if (skippedNames(lease).length) {
+        const skipped = skippedNames(lease), noneReadable = scope.length > 0 && skipped.length === scope.length;
+        if (skipped.length && (noneReadable || !skipped.every(permissionSkip))) {
           const complete = await tx.metaPrefilterRun.findFirst({ where: { shopeeAccountId: id, businessDate: lease.businessDate, slot, status: "COMPLETE", finishedAt: { not: null } }, orderBy: { revision: "desc" }, select: { id: true } });
-          await tx.metaPrefilterRun.updateMany({ where: { id: lease.id, generation: lease.generation, leaseOwner: input.owner }, data: { status: "PARTIAL", finishedAt: now(), activeShopeeAccountId: null, error: complete ? "Data belum lengkap. Snapshot COMPLETE sebelumnya tetap ditampilkan." : "Data belum lengkap. Snapshot PARTIAL ditampilkan; WL yang tidak terbaca tidak termasuk." } });
+          const message = noneReadable ? "Tidak ada WL yang berhasil dibaca." : "Data belum lengkap.";
+          await tx.metaPrefilterRun.updateMany({ where: { id: lease.id, generation: lease.generation, leaseOwner: input.owner }, data: { status: "PARTIAL", finishedAt: now(), activeShopeeAccountId: null, error: `${message} ${complete ? "Snapshot COMPLETE sebelumnya tetap ditampilkan." : "Snapshot PARTIAL ditampilkan; WL yang tidak terbaca tidak termasuk."}` } });
           return;
         }
-        await tx.metaPrefilterRun.updateMany({ where: { id: lease.id, generation: lease.generation, leaseOwner: input.owner }, data: { status: "COMPLETE", finishedAt: now(), activeShopeeAccountId: null, error: null } });
+        await tx.metaPrefilterRun.updateMany({ where: { id: lease.id, generation: lease.generation, leaseOwner: input.owner }, data: { status: "COMPLETE", finishedAt: now(), activeShopeeAccountId: null, error: skipped.length ? `Selesai, ${skipped.length} WL dilewati karena tidak dapat diakses.` : null } });
         const other = await displayedSnapshot(tx,id,lease.businessDate,slot === "AWAL" ? "AKHIR" : "AWAL");
         await cleanup(tx,id,lease.businessDate,[lease.id,...(other?[other.id]:[])]); check();
       });
@@ -214,7 +222,7 @@ export async function runPrefilterBatch(input: { shopeeAccountId: number; slot: 
       return result();
     }
     if (error instanceof MetaApiError && [10,100,200].includes(error.code ?? -1) && scope[cursor.index]) {
-      await transaction(tx=>save(tx,{ index: cursor.index,phase: "SKIP",skipReason: `${scope[cursor.index].name}: tidak dapat dibaca (kode ${error.code})` }));
+      await transaction(tx=>save(tx,{ index: cursor.index,phase: "SKIP",skipReason: permissionDenied(error) ? `${scope[cursor.index].name}: tidak dapat diakses karena izin Meta (kode ${error.code})` : `${scope[cursor.index].name}: tidak dapat dibaca (kode ${error.code})` }));
       return result(true);
     }
     await transaction(tx=>tx.metaPrefilterRun.updateMany({ where: { id: lease.id,generation: lease.generation,leaseOwner: input.owner }, data: { status: error instanceof DayChanged ? "EXPIRED" : "FAILED",activeShopeeAccountId: null,error: error instanceof DayChanged ? "Tanggal berganti. Ambil snapshot hari ini." : error instanceof SafeError ? error.message : "Pengambilan snapshot gagal. Baca ulang untuk memeriksa snapshot yang tersedia." } })).catch(()=>{});
