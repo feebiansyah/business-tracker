@@ -34,7 +34,7 @@ export function parseHistoryParams(raw: RawParams): HistoryParams {
   const sortValue = scalar(raw.sort);
   return {
     sort: historySortKeys.includes(sortValue as HistorySortKey) ? sortValue as HistorySortKey : "date",
-    dir: direction(scalar(raw.dir)),
+    dir: scalar(raw.dir) === "desc" ? "desc" : "asc",
     page: positiveInteger(scalar(raw.page), 1),
     pageSize: pageSize(scalar(raw.pageSize)),
   };

@@ -168,7 +168,6 @@ export async function getCampaignWorkspaceDetail(shopeeAccountId: number, mode: 
       FROM CampaignDailyMetric dm WHERE dm.campaignId = ${campaignId}
     ) metric
     ORDER BY ${orderColumn} IS NULL ASC, ${orderColumn} ${orderDirection}, metric.id ASC
-    LIMIT ${pagination.pageSize} OFFSET ${(pagination.page - 1) * pagination.pageSize}
   `);
   const importedRanges = commissionImports.map((item) => ({ from: dateString(item.dateFrom), to: dateString(item.dateTo) }));
   const sources: DailyMetricSource[] = rows.map((metric) => ({

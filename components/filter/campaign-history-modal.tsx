@@ -12,7 +12,7 @@ import { MetaCampaignSettings } from "./meta-campaign-settings";
 export function CampaignHistoryModal({ mode, shopeeAccountId, campaignId, campaignName, onClose }: { mode: CampaignMode; shopeeAccountId: number; campaignId: number; campaignName: string; onClose: () => void }) {
   const [detail, setDetail] = useState<FilterCampaignDetail | null>(null);
   const [error, setError] = useState("");
-  const [state, setState] = useState<HistoryParams>({ sort: "date", dir: "desc", page: 1, pageSize: 25 });
+  const [state, setState] = useState<HistoryParams>({ sort: "date", dir: "asc", page: 1, pageSize: 25 });
   useEffect(() => {
     const body = document.body, root = document.documentElement;
     const x = window.scrollX, y = window.scrollY;
