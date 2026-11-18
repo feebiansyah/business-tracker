@@ -28,8 +28,8 @@ test("only snapshot CPC cells at or above 200 are red; lower and missing values 
     const h=harness(async()=>{}, {...initial,snapshots:{AWAL:snapshot,AKHIR:{...snapshot,runId:"r2"}}});
     const html=renderToStaticMarkup(h.render()),body=html.split("<tbody")[1];
     const cells=[...body.matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/g)];
-    for(const index of [3,6])assert.equal(/text-red-600/.test(cells[index][1]),red,`CPC ${cpc}, cell ${index}`);
-    assert.equal(/text-red-600/.test(cells[9][1]),false,"CPC delta is not highlighted");
+    for(const index of [3,6])for(const style of ["bg-red-50","text-red-800","font-medium"])assert.equal(cells[index][1].includes(style),red,`CPC ${cpc}, cell ${index}, ${style}`);
+    for(const style of ["bg-red-50","text-red-800","font-medium"])assert.equal(cells[9][1].includes(style),false,"CPC delta is not highlighted");
     if(cpc===null)for(const index of [3,6])assert.equal(cells[index][2],"—");
     h.unmount();
   }
