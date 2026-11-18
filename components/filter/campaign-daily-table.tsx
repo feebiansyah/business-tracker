@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateDailyMetricManualAction } from "@/app/shopee/[id]/filter/actions";
 import { SortableHeader } from "@/components/filter/sortable-header";
-import { TablePagination } from "@/components/filter/table-pagination";
 import type { FilterCampaignDetail, PageInfo } from "@/lib/filter/queries";
 import { historyParamsToSearch, withHistoryChange, type HistoryParams, type HistorySortKey } from "@/lib/filter/server-pagination";
 import { dailyCommissionDisplay } from "@/lib/filter/view-model";
@@ -56,6 +55,5 @@ export function CampaignDailyTable({ mode, shopeeAccountId, campaignId, rows: in
         <ManualCells mode={mode} shopeeAccountId={shopeeAccountId} campaignId={campaignId} row={row} compact={compact} onChange={(patch) => updateRow(row.id, patch)} />
       </tr>)}{pagination.total === 0 && <tr><td colSpan={13} className="px-6 py-10 text-center text-slate-500">Belum ada histori harian dari Meta.</td></tr>}</tbody>
     </table></div>
-    <div className="shrink-0 bg-white"><TablePagination page={pagination.page} pageCount={pagination.pageCount} total={pagination.total} pageSize={pagination.pageSize} onPageChange={(page) => navigate({ page })} onPageSizeChange={(pageSize) => navigate({ pageSize: pageSize as 25 | 50 | 100 })} /></div>
   </div>;
 }
