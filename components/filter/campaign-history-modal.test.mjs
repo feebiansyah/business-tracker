@@ -17,7 +17,7 @@ test("modal keeps the existing detail route and existing Note/Selesai table flow
   const detailRoute = await readFile(new URL("../../app/shopee/[id]/filter/[campaignId]/page.tsx", import.meta.url), "utf8");
   const sharedDetail = await readFile(new URL("./campaign-workspace-detail-page.tsx", import.meta.url), "utf8");
   assert.match(modal, /CampaignDailyDetail/);
-  assert.match(modal, /Pengaturan Meta/);
+  assert.doesNotMatch(modal, /Pengaturan Meta|settingsDetails|beforeRows/);
   assert.match(modal, /MetaCampaignSettings/);
   assert.match(modal, /stopPropagation/);
   assert.doesNotMatch(modal, /Buka halaman penuh/);
