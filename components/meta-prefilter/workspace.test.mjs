@@ -21,6 +21,20 @@ test("manual snapshot locks duplicate clicks, stops on unmount, and never polls"
   const buttons=h.buttons(h.render());const pending=buttons[0].props.onClick();buttons[0].props.onClick();assert.equal(calls,1);
   h.unmount();resolve();await pending;assert.equal(h.readCalls(),0);assert.equal(calls,1);
 });
+test("only snapshot CPC cells at or above 200 are red; lower and missing values stay neutral",()=>{
+  for(const [cpc,red]of [["199",false],["199.9",false],["200",true],["250",true],[null,false]]){
+    const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"1000",withFee:"1050",clicks:"5",cpc};
+    const snapshot={status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows:[row]};
+    const h=harness(async()=>{}, {...initial,snapshots:{AWAL:snapshot,AKHIR:{...snapshot,runId:"r2"}}});
+    const html=renderToStaticMarkup(h.render()),body=html.split("<tbody")[1];
+    const cells=[...body.matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/g)];
+    for(const index of [3,6])assert.equal(/text-red-600/.test(cells[index][1]),red,`CPC ${cpc}, cell ${index}`);
+    assert.equal(/text-red-600/.test(cells[9][1]),false,"CPC delta is not highlighted");
+    if(cpc===null)for(const index of [3,6])assert.equal(cells[index][2],"—");
+    h.unmount();
+  }
+});
+
 test("two slots and zero-click CPC are visible with internal table scrolling",()=>{
   const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/components/filter/post-type-select":postTypeSelect,"@/app/shopee/[id]/prefilter/actions":{}});
   const data={...initial,snapshots:{AWAL:{status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:17:42Z",finishedAt:"2026-11-07T03:18:00Z",skipped:[],rows:[{metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",configuredStatus:"ACTIVE",effectiveStatus:"ACTIVE",spend:"100",withFee:"105",clicks:"0",cpc:null}]},AKHIR:null}};
