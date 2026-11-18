@@ -13,7 +13,6 @@ export function CampaignHistoryModal({ mode, shopeeAccountId, campaignId, campai
   const [detail, setDetail] = useState<FilterCampaignDetail | null>(null);
   const [error, setError] = useState("");
   const [state, setState] = useState<HistoryParams>({ sort: "date", dir: "desc", page: 1, pageSize: 25 });
-  const [activeTab, setActiveTab] = useState<"history" | "settings">("history");
   useEffect(() => {
     const body = document.body, root = document.documentElement;
     const x = window.scrollX, y = window.scrollY;
@@ -34,8 +33,12 @@ export function CampaignHistoryModal({ mode, shopeeAccountId, campaignId, campai
   return <div role="dialog" aria-modal="true" aria-label={`Histori Harian ${campaignName}`} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-0 sm:p-2 lg:p-4" onClick={() => { if (modalShouldClose("overlay")) onClose(); }}>
     <div className="flex h-dvh max-h-dvh w-full min-w-0 flex-col overflow-hidden bg-slate-50 shadow-2xl sm:h-[95dvh] sm:w-[98vw] sm:rounded-xl" onClick={(event) => event.stopPropagation()}>
       <div className="flex min-w-0 items-start justify-between gap-2 border-b border-slate-200 bg-white px-3 py-3 sm:items-center sm:gap-4 sm:px-4"><div className="min-w-0 flex-1"><p className="text-xs font-medium text-slate-500">Histori Harian</p><h2 className="truncate text-base font-semibold text-slate-950 sm:text-lg">{campaignName}</h2></div><div className="flex shrink-0 items-center gap-1 sm:gap-2"><button type="button" aria-label="Tutup modal" className="flex size-8 shrink-0 items-center justify-center rounded-md text-xl text-slate-500 hover:bg-slate-100" onClick={() => { if (modalShouldClose("close-button")) onClose(); }}>×</button></div></div>
-      <div className="border-b border-slate-200 bg-white px-2 pt-2 sm:px-3" role="tablist" aria-label="Data campaign"><button type="button" role="tab" aria-selected={activeTab === "history"} onClick={() => setActiveTab("history")} className={`border-b-2 px-3 py-2 text-sm font-medium ${activeTab === "history" ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500"}`}>Histori Harian</button><button type="button" role="tab" aria-selected={activeTab === "settings"} onClick={() => setActiveTab("settings")} className={`border-b-2 px-3 py-2 text-sm font-medium ${activeTab === "settings" ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500"}`}>Pengaturan Meta</button></div>
-      <div className={`min-h-0 flex-1 p-2 sm:p-3 ${activeTab === "history" ? "flex flex-col overflow-hidden" : "overflow-auto overscroll-contain"}`}>{activeTab === "settings" ? <MetaCampaignSettings mode={mode} shopeeAccountId={shopeeAccountId} campaignId={campaignId} /> : error ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : detail ? <CampaignDailyDetail mode={mode} shopeeAccountId={shopeeAccountId} detail={detail} compact onStateChange={setState} /> : <p className="p-6 text-center text-sm text-slate-500">Memuat histori…</p>}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:p-3">
+        <MetaCampaignSettings mode={mode} shopeeAccountId={shopeeAccountId} campaignId={campaignId} render={(settingsSummary, settingsDetails) => <>
+          <div className="shrink-0 border-b border-slate-200 bg-white px-2 py-1" aria-label="Ringkasan Pengaturan Meta">{settingsSummary}</div>
+          {error ? <div className="min-h-0 overflow-auto overscroll-contain"><p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>{settingsDetails}</div> : detail ? <CampaignDailyDetail mode={mode} shopeeAccountId={shopeeAccountId} detail={detail} compact onStateChange={setState} beforeRows={settingsDetails} /> : <div className="min-h-0 overflow-auto overscroll-contain">{settingsDetails}<p className="p-6 text-center text-sm text-slate-500">Memuat histori…</p></div>}
+        </>} />
+      </div>
     </div>
   </div>;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { getMetaCampaignSettingsAction } from "@/app/shopee/[id]/filter/meta-settings-actions";
 import type { CampaignMode } from "@/lib/filter/campaign-modes";
 import type { MetaAdSetSettings, MetaCampaignSettingsActionResult } from "@/lib/meta-campaign-settings/types";
@@ -25,7 +25,7 @@ function SettingsCard({ value, reference = false, manualType }: { value: MetaAdS
   </section>;
 }
 
-export function MetaCampaignSettings({ mode, shopeeAccountId, campaignId }: { mode: CampaignMode; shopeeAccountId: number; campaignId: number }) {
+export function MetaCampaignSettings({ mode, shopeeAccountId, campaignId, render }: { mode: CampaignMode; shopeeAccountId: number; campaignId: number; render?: (summary: ReactNode, details: ReactNode) => ReactNode }) {
   const [result, setResult] = useState<MetaCampaignSettingsActionResult | null>(null);
   const [busy, setBusy] = useState(false);
   const gateRef = useRef(createMetaSettingsRequestGate());
@@ -48,11 +48,13 @@ export function MetaCampaignSettings({ mode, shopeeAccountId, campaignId }: { mo
   const visibleWarnings = warnings.filter((warning) => !isContentTypeWarning(warning));
   const showPartialNotice = Boolean(result?.success && result.data.partial && (visibleWarnings.length > 0 || warnings.length === 0));
 
-  return <div className="min-w-0 space-y-3">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-xs text-slate-500">Pengaturan otomatis dibaca dari Meta. Jenis manual hanya untuk tampilan aplikasi; tidak mengubah iklan.</p>
+  const explanation = "Pengaturan otomatis dibaca dari Meta. Jenis manual hanya untuk tampilan aplikasi; tidak mengubah iklan.";
+  const controls = <div className="flex flex-wrap items-center justify-between gap-2">
+      <p className="min-w-0 text-xs text-slate-500">{render ? <>Pengaturan Meta{result?.success ? ` · ${result.data.adSetCount} Set Iklan${result.data.partial ? " · Data sebagian" : ""}` : ""}</> : explanation}</p>
       <button type="button" disabled={busy} onClick={() => void load()} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Membaca…" : "Baca ulang"}</button>
-    </div>
+    </div>;
+  const details = <div className="min-w-0 space-y-3">
+    {render && <p className="text-xs text-slate-500">{explanation}</p>}
     {busy && !result ? <p className="rounded-lg bg-slate-100 p-4 text-center text-sm text-slate-500">Membaca pengaturan Meta…</p> : null}
     {result && !result.success ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{result.message}</p> : null}
     {result?.success ? <>
@@ -65,4 +67,5 @@ export function MetaCampaignSettings({ mode, shopeeAccountId, campaignId }: { mo
       {result.data.differences.length ? <div className="space-y-2"><p className="rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-800">Ada {result.data.differences.length} Set Iklan dengan pengaturan berbeda dari acuan.</p>{result.data.differences.map((difference) => <SettingsCard key={difference.id} value={difference} manualType={result.manualPostType} />)}</div> : null}
     </> : null}
   </div>;
+  return render ? render(controls, details) : <div className="min-w-0 space-y-3">{controls}{details}</div>;
 }
