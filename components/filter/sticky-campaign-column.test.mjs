@@ -70,3 +70,52 @@ test("all four routes continue to use the shared campaign workspace", async () =
     assert.match(source, /CampaignWorkspacePage/);
   }
 });
+
+test("history TOTAL sums every row and recomputes weighted ratios with existing formulas", () => {
+  const require = createRequire(import.meta.url), React = require("react"), { renderToStaticMarkup } = require("react-dom/server");
+  const { CampaignDailyTable } = loadTs("components/filter/campaign-daily-table.tsx", {
+    "next/navigation": { useRouter: () => ({ push() {}, refresh() {} }) },
+    "@/app/shopee/[id]/filter/actions": {},
+    "@/components/filter/sortable-header": loadTs("components/filter/sortable-header.tsx"),
+  });
+  const { buildDailyMetricView } = loadTs("lib/filter/view-model.ts");
+  const render = rows => renderToStaticMarkup(React.createElement(CampaignDailyTable, {
+    mode: "filter", shopeeAccountId: 7, campaignId: 41, rows,
+    pagination: { total: rows.length, page: 1, pageCount: 1, pageSize: 25 },
+    state: { sort: "date", dir: "asc", page: 1, pageSize: 25 }, compact: true,
+  }));
+  const row = (id, spend, commission, clickFp, shopeeClicks) => buildDailyMetricView({
+    id, date: "2026-11-18", spend, commission, clickFp, shopeeClicks,
+    cpcFp: clickFp ? spend / clickFp : null, note: "Not a total note", completed: false, commissionImported: commission !== null,
+  });
+  const rows = [row(1, 100, 210, 10, 2), row(2, 300, 630, 90, 18)];
+  const before = JSON.stringify(rows), html = render(rows);
+  const footer = html.match(/<tfoot[^>]*>([\s\S]*?)<\/tfoot>/)?.[1];
+  assert(footer, "sticky TOTAL footer must be rendered");
+  const cells = [...footer.matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/g)];
+  assert.equal(cells.length, 13);
+  assert.deepEqual(cells.map(c => c[2].replace(/<[^>]+>/g, "").replace(/\u00a0/g, " ")),
+    ["TOTAL", "Rp 400", "Rp 420", "Rp 840", "Rp 420", "100.00%", "100", "20", "20.00%", "Rp 4", "Rp 42", "", ""]);
+  assert.match(html, /<tfoot[^>]*sticky bottom-0/);
+  assert.doesNotMatch(cells[3][1], /text-(emerald|red)/);
+  assert.match(cells[4][1], /text-emerald-700/);
+  assert.match(cells[5][1], /text-emerald-700/);
+  assert.doesNotMatch(footer, /input|Not a total note/);
+  assert.equal(JSON.stringify(rows), before);
+  for (const [commission, color] of [[0, "text-red-700"], [105, "text-slate-600"], [null, "text-slate-600"]]) {
+    const value = render([row(1, 100, commission, 0, 0)]).match(/<tfoot[^>]*>([\s\S]*?)<\/tfoot>/)[1];
+    const fields = [...value.matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/g)];
+    assert(fields[4][1].includes(color));
+    assert(fields[5][1].includes(color));
+    for (const i of [8, 9, 10]) assert.equal(fields[i][2], "—");
+    assert.doesNotMatch(value, /NaN|Infinity/);
+  }
+  const missing = render([row(1, 100, null, null, null)]).match(/<tfoot[^>]*>([\s\S]*?)<\/tfoot>/)[1];
+  assert(missing.includes("Belum Import"));
+  const values = [...missing.matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/g)];
+  for (const i of [4, 5, 6, 7, 8, 9, 10]) assert.equal(values[i][2], "—");
+  const partial = render([row(1, 100, 210, 10, 2), row(2, 300, null, null, null)]).match(/<tfoot[^>]*>([\s\S]*?)<\/tfoot>/)[1];
+  const known = [...partial.matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/g)];
+  assert.equal(known[4][2].replace(/\u00a0/g, " "), "Rp 105");
+  assert.equal(known[5][2], "25.00%");
+});

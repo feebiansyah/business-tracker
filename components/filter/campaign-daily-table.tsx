@@ -7,6 +7,7 @@ import { SortableHeader } from "@/components/filter/sortable-header";
 import type { FilterCampaignDetail, PageInfo } from "@/lib/filter/queries";
 import { historyParamsToSearch, withHistoryChange, type HistoryParams, type HistorySortKey } from "@/lib/filter/server-pagination";
 import { dailyCommissionDisplay } from "@/lib/filter/view-model";
+import { calculateFinancialMetrics } from "@/lib/filter/metrics";
 import { formatRupiah } from "@/lib/filter/table-utils";
 import type { CampaignMode } from "@/lib/filter/campaign-modes";
 
@@ -22,6 +23,11 @@ function numeric(value: number | null) { return value === null ? "—" : number.
 const profitColor = (value: number | null) => value === null || value === 0 ? "text-slate-600" : value > 0 ? "text-emerald-700" : "text-red-700";
 function percent(value: number | null) { return value === null ? "—" : `${value.toFixed(2)}%`; }
 function commission(value: number | null, imported: boolean) { const display = dailyCommissionDisplay(value, imported); return typeof display === "number" ? formatRupiah(display) : display; }
+
+function sumHistoryValue(rows: DailyRow[], key: "commission" | "profit" | "clickFp" | "shopeeClicks") {
+  const values = rows.map((row) => row[key]).filter((value): value is number => value !== null);
+  return values.length ? values.reduce((total, value) => total + value, 0) : null;
+}
 
 function ManualCells({ mode, shopeeAccountId, campaignId, row, compact, onChange }: { mode: CampaignMode; shopeeAccountId: number; campaignId: number; row: DailyRow; compact: boolean; onChange: (patch: Partial<Pick<DailyRow, "note" | "completed">>) => void }) {
   const router = useRouter();
@@ -44,6 +50,15 @@ function ManualCells({ mode, shopeeAccountId, campaignId, row, compact, onChange
 export function CampaignDailyTable({ mode, shopeeAccountId, campaignId, rows: initialRows, pagination, state, compact = false, onStateChange }: { mode: CampaignMode; shopeeAccountId: number; campaignId: number; rows: FilterCampaignDetail["dailyMetrics"]; pagination: PageInfo; state: HistoryParams; compact?: boolean; onStateChange?: (state: HistoryParams) => void }) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
+  const totalSpend = rows.reduce((total, row) => total + row.spend, 0);
+  const totalCostWithFee = rows.reduce((total, row) => total + row.costWithFee, 0);
+  const totalCommission = sumHistoryValue(rows, "commission");
+  const totalProfit = sumHistoryValue(rows, "profit");
+  const totalClickFp = sumHistoryValue(rows, "clickFp");
+  const totalShopeeClicks = sumHistoryValue(rows, "shopeeClicks");
+  const totalRatios = calculateFinancialMetrics(totalSpend, totalCommission, totalClickFp, totalShopeeClicks);
+  const totalProfitPercent = totalProfit === null || totalCostWithFee === 0 ? null : totalProfit / totalCostWithFee * 100;
+  const totalCpcFp = !totalClickFp ? null : totalSpend / totalClickFp;
   function navigate(change: Partial<HistoryParams>) { const next = withHistoryChange(state, change); if (onStateChange) onStateChange(next); else router.push(`?${historyParamsToSearch(next)}`); }
   function changeSort(sort: HistorySortKey) { navigate({ sort, dir: sort === state.sort && state.dir === "asc" ? "desc" : "asc" }); }
   function updateRow(id: number, patch: Partial<Pick<DailyRow, "note" | "completed">>) { setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row)); }
@@ -54,6 +69,9 @@ export function CampaignDailyTable({ mode, shopeeAccountId, campaignId, rows: in
         <td className="px-4 py-3 font-medium text-slate-950">{row.date}</td><td className="px-4 py-3">{formatRupiah(row.spend)}</td><td className="px-4 py-3">{formatRupiah(row.costWithFee)}</td><td className="px-4 py-3">{commission(row.commission, row.commissionImported)}</td><td className={`px-4 py-3 ${profitColor(row.profit)}`}>{formatRupiah(row.profit)}</td><td className={`px-4 py-3 ${row.profitPercent === null || row.profitPercent === 0 ? "text-slate-600" : profitColor(row.profit)}`}>{percent(row.profitPercent)}</td><td className="px-4 py-3">{numeric(row.clickFp)}</td><td className="px-4 py-3">{numeric(row.shopeeClicks)}</td><td className="px-4 py-3">{percent(row.clickPercent)}</td><td className="px-4 py-3">{formatRupiah(row.cpcFp)}</td><td className="px-4 py-3">{formatRupiah(row.cpcShopee)}</td>
         <ManualCells mode={mode} shopeeAccountId={shopeeAccountId} campaignId={campaignId} row={row} compact={compact} onChange={(patch) => updateRow(row.id, patch)} />
       </tr>)}{pagination.total === 0 && <tr><td colSpan={13} className="px-6 py-10 text-center text-slate-500">Belum ada histori harian dari Meta.</td></tr>}</tbody>
+      <tfoot className="sticky bottom-0 z-10 bg-slate-100 font-semibold text-slate-800 shadow-[0_-1px_0_0_#cbd5e1]"><tr className="border-t-2 border-slate-300">
+        <td className="px-4 py-3">TOTAL</td><td className="px-4 py-3">{formatRupiah(totalSpend)}</td><td className="px-4 py-3">{formatRupiah(totalCostWithFee)}</td><td className="px-4 py-3">{commission(totalCommission, rows.length > 0 && rows.every((row) => row.commissionImported))}</td><td className={`px-4 py-3 ${profitColor(totalProfit)}`}>{formatRupiah(totalProfit)}</td><td className={`px-4 py-3 ${totalProfitPercent === null || totalProfitPercent === 0 ? "text-slate-600" : profitColor(totalProfit)}`}>{percent(totalProfitPercent)}</td><td className="px-4 py-3">{numeric(totalClickFp)}</td><td className="px-4 py-3">{numeric(totalShopeeClicks)}</td><td className="px-4 py-3">{percent(totalRatios.clickPercent)}</td><td className="px-4 py-3">{formatRupiah(totalCpcFp)}</td><td className="px-4 py-3">{formatRupiah(totalRatios.cpcShopee)}</td><td className="px-4 py-3" /><td className="px-4 py-3" />
+      </tr></tfoot>
     </table></div>
   </div>;
 }
