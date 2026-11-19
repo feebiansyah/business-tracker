@@ -62,6 +62,7 @@ export function isNavigationItemActive(pathname: string, href: string) {
 
 export function getNavigationTitle(pathname: string) {
   if (pathname === "/") return dashboardNavigation.label;
+  if (isNavigationItemActive(pathname, "/overview-gabungan")) return "Overview Gabungan";
   if (isNavigationItemActive(pathname, "/wl")) return metaAdsNavigation.items[0].label;
   if (isNavigationItemActive(pathname, "/shopee")) return shopeeNavigation.label;
   if (isNavigationItemActive(pathname, "/settings")) return settingsNavigation.label;

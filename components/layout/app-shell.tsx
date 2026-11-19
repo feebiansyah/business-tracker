@@ -12,5 +12,7 @@ export async function AppShell({ children }: { children: ReactNode }) {
     orderBy: { name: "asc" },
   });
 
-  return <div className="flex min-h-screen w-full min-w-0 bg-[#f6f8fb]"><Sidebar shopeeAccounts={shopeeAccounts} /><div className="min-w-0 flex-1 overflow-x-clip"><Topbar shopeeAccounts={shopeeAccounts} /><main className="mx-auto w-full min-w-0 max-w-7xl p-4 sm:p-6 lg:p-8">{children}</main></div></div>;
+  const overviewGroups = await prisma.shopeeOverviewGroup.findMany({ select: { id: true,name: true },orderBy: { name: "asc" } });
+
+  return <div className="flex min-h-screen w-full min-w-0 bg-[#f6f8fb]"><Sidebar shopeeAccounts={shopeeAccounts} overviewGroups={overviewGroups} /><div className="min-w-0 flex-1 overflow-x-clip"><Topbar shopeeAccounts={shopeeAccounts} overviewGroups={overviewGroups} /><main className="mx-auto w-full min-w-0 max-w-7xl p-4 sm:p-6 lg:p-8">{children}</main></div></div>;
 }

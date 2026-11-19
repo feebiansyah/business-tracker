@@ -7,7 +7,7 @@ import { getNavigationTitle } from "./navigation";
 import { mobileDrawerShouldClose } from "./mobile-navigation-state";
 import { SidebarNavigationPanel, type SidebarShopeeAccount } from "./sidebar";
 
-export function Topbar({ shopeeAccounts }: { shopeeAccounts: SidebarShopeeAccount[] }) {
+export function Topbar({ shopeeAccounts, overviewGroups = [] }: { shopeeAccounts: SidebarShopeeAccount[]; overviewGroups?: SidebarShopeeAccount[] }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -34,7 +34,7 @@ export function Topbar({ shopeeAccounts }: { shopeeAccounts: SidebarShopeeAccoun
     </header>
     {drawerOpen && <div className="fixed inset-0 z-50 bg-slate-950/55 lg:hidden" onClick={() => { if (mobileDrawerShouldClose("overlay")) closeDrawer(); }}>
       <aside className="flex h-dvh w-72 max-w-[calc(100vw-2.5rem)] flex-col bg-slate-950 text-slate-200 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <SidebarNavigationPanel key={pathname} pathname={pathname} shopeeAccounts={shopeeAccounts} onNavigate={() => { if (mobileDrawerShouldClose("navigation")) closeDrawer(); }} onClose={() => { if (mobileDrawerShouldClose("close-button")) closeDrawer(); }}/>
+        <SidebarNavigationPanel key={pathname} pathname={pathname} shopeeAccounts={shopeeAccounts} overviewGroups={overviewGroups} onNavigate={() => { if (mobileDrawerShouldClose("navigation")) closeDrawer(); }} onClose={() => { if (mobileDrawerShouldClose("close-button")) closeDrawer(); }}/>
       </aside>
     </div>}
   </>;

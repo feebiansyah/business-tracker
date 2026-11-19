@@ -96,6 +96,7 @@ model ShopeeAccount {
   status         String    @default("ACTIVE")
   createdAt      DateTime  @default(now())
   lastMetaSyncAt DateTime?
+  overviewGroupMember ShopeeOverviewGroupMember?
 
   metaAccounts            MetaAccount[]
   commissionImports       ShopeeCommissionImport[]
@@ -107,6 +108,23 @@ model ShopeeAccount {
   metaPrefilterRuns       MetaPrefilterRun[]
   metaPrefilterNotes      MetaPrefilterNote[]
   campaignPostTypeOverrides CampaignPostTypeOverride[]
+}
+
+model ShopeeOverviewGroup {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(191)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  members   ShopeeOverviewGroupMember[]
+}
+
+model ShopeeOverviewGroupMember {
+  groupId         Int
+  shopeeAccountId  Int @unique
+  group           ShopeeOverviewGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  shopeeAccount   ShopeeAccount @relation(fields: [shopeeAccountId], references: [id], onDelete: Restrict)
+
+  @@id([groupId, shopeeAccountId])
 }
 
 model CampaignPostTypeOverride {
