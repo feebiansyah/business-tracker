@@ -4,7 +4,7 @@ import { parseDashboardParams } from "../dashboard/params";
 import type { DashboardAccountData } from "../dashboard/queries";
 
 type ReadDb = Pick<PrismaClient, "$queryRaw">;
-type GroupScope = { id: number; name: string; members: { shopeeAccountId: number }[] };
+type GroupScope = { id: number; name: string; members: { shopeeAccountId: number; shopeeAccount?: { name: string } }[] };
 type Amount = Prisma.Decimal | number | null;
 const amount = (value: Amount) => value === null ? null : Number(value);
 const orders = { date: "date", budget: "budget", costWithFee: "costWithFee", commission: "commission", profit: "profit", profitPercent: "profitPercent" };
@@ -32,11 +32,13 @@ function metaCte(ids: number[], from: string, to: string) {
       WHERE (${from}='' OR d.date>=${from}) AND (${to}='' OR d.date<=${to})
     ), combined AS (
       SELECT date,
-        CASE WHEN COUNT(spend)=(SELECT COUNT(*) FROM members) THEN SUM(spend) ELSE NULL END AS budget,
+        SUM(spend) AS budget,
+        COUNT(*)-COUNT(spend) AS missingSpendMemberCount,
+        JSON_ARRAYAGG(CASE WHEN spend IS NULL THEN id ELSE NULL END) AS missingSpendMemberIds,
         CASE WHEN COUNT(commission)=(SELECT COUNT(*) FROM members) THEN SUM(commission) ELSE NULL END AS commission
       FROM member_days GROUP BY date
     ), daily_metrics AS (
-      SELECT date,budget,budget*1.05 AS costWithFee,commission,commission-budget*1.05 AS profit,
+      SELECT date,budget,missingSpendMemberIds,missingSpendMemberCount,budget*1.05 AS costWithFee,commission,commission-budget*1.05 AS profit,
         CASE WHEN budget=0 THEN NULL ELSE (commission-budget*1.05)/(budget*1.05)*100 END AS profitPercent
       FROM combined
     )`;
@@ -49,14 +51,14 @@ export async function getGroupPerformance(db: ReadDb, group: GroupScope, raw: Re
   const cte = metaCte(ids, state.from, state.to);
   const [summary] = await db.$queryRaw<{ total: bigint; incomplete: bigint; spend: Amount; commission: Amount }[]>(Prisma.sql`${cte}
     SELECT COUNT(*) AS total,
-      COALESCE(SUM(CASE WHEN budget IS NULL OR commission IS NULL THEN 1 ELSE 0 END),0) AS incomplete,
+      COALESCE(SUM(CASE WHEN missingSpendMemberCount>0 OR commission IS NULL THEN 1 ELSE 0 END),0) AS incomplete,
       SUM(CASE WHEN budget IS NOT NULL AND commission IS NOT NULL THEN budget ELSE NULL END) AS spend,
       SUM(CASE WHEN budget IS NOT NULL AND commission IS NOT NULL THEN commission ELSE NULL END) AS commission
     FROM daily_metrics`);
   const total = Number(summary?.total ?? 0), pageCount = Math.max(1, Math.ceil(total / requested.pageSize));
   const page = Math.min(requested.page, pageCount);
-  const rows = await db.$queryRaw<{ date: Date | string; budget: Amount; costWithFee: Amount; commission: Amount; profit: Amount; profitPercent: Amount }[]>(Prisma.sql`${cte}
-    SELECT date,budget,costWithFee,commission,profit,profitPercent FROM daily_metrics
+  const rows = await db.$queryRaw<{ date: Date | string; budget: Amount; costWithFee: Amount; commission: Amount; profit: Amount; profitPercent: Amount; missingSpendMemberIds: (number | null)[] | string }[]>(Prisma.sql`${cte}
+    SELECT date,budget,costWithFee,commission,profit,profitPercent,missingSpendMemberIds FROM daily_metrics
     ORDER BY ${Prisma.raw(orders[requested.sort])} IS NULL ASC, ${Prisma.raw(orders[requested.sort])} ${Prisma.raw(requested.dir === "asc" ? "ASC" : "DESC")},date DESC
     LIMIT ${requested.pageSize} OFFSET ${(page - 1) * requested.pageSize}`);
   const performance: DashboardAccountData = {
@@ -66,7 +68,17 @@ export async function getGroupPerformance(db: ReadDb, group: GroupScope, raw: Re
       budget: amount(r.budget), costWithFee: amount(r.costWithFee), commission: amount(r.commission), profit: amount(r.profit), profitPercent: amount(r.profitPercent) })),
     pagination: { total,page,pageCount,pageSize: requested.pageSize }, state: { ...requested,page },
   };
-  return { performance,state,incompleteDays: Number(summary?.incomplete ?? 0) };
+  const partialSpendByDate: Record<string, string[]> = {};
+  const names = new Map(group.members.map((m) => [m.shopeeAccountId,m.shopeeAccount?.name ?? `Akun ${m.shopeeAccountId}`]));
+  for (const row of rows) {
+    const missing: (number | null)[] = typeof row.missingSpendMemberIds === "string" ? JSON.parse(row.missingSpendMemberIds) : row.missingSpendMemberIds;
+    const ids = new Set(missing.filter((id): id is number => id !== null).map(Number));
+    if (ids.size > 0) {
+      const date = typeof row.date === "string" ? row.date.slice(0,10) : row.date.toISOString().slice(0,10);
+      partialSpendByDate[date] = group.members.filter((m) => ids.has(m.shopeeAccountId)).map((m) => names.get(m.shopeeAccountId)!);
+    }
+  }
+  return { performance,state,incompleteDays: Number(summary?.incomplete ?? 0),partialSpendByDate };
 }
 
 export async function getGroupReminders(db: ReadDb, ids: number[]) {

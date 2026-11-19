@@ -59,8 +59,8 @@ export function OverviewGroupReport({ group,report,reminders,search = "" }: Grou
       <button className="rounded-md bg-blue-600 px-3 py-2 text-white">Terapkan</button>
       <Link href={`/overview-gabungan/${group.id}`} className="rounded-md border border-slate-300 px-3 py-2">Reset</Link>
     </form>
-    <p className="text-xs text-slate-600">Ringkasan Meta mengikuti rumus existing dan hanya menjumlahkan tanggal dengan spend serta komisi seluruh anggota tersedia. {report.incompleteDays > 0 ? `${report.incompleteDays} tanggal belum lengkap; nilai yang belum tersedia ditampilkan —, bukan nol.` : "Tidak ada tanggal belum lengkap pada data laporan."}</p>
-    <ShopeePerformanceCard account={report.performance} dashboardState={report.state} preservedSearch={preservedSearch} />
+    <p className="text-xs text-slate-600">Ringkasan Meta mengikuti rumus existing dan hanya menjumlahkan tanggal dengan Spend tersedia dan komisi seluruh anggota tersedia. Spend menjumlahkan nilai yang tersedia; anggota tanpa data disebut pada tanggal terkait. {report.incompleteDays > 0 ? `${report.incompleteDays} tanggal belum lengkap; nilai yang belum tersedia ditampilkan —, bukan nol.` : "Tidak ada tanggal belum lengkap pada data laporan."}</p>
+    <ShopeePerformanceCard account={report.performance} dashboardState={report.state} preservedSearch={preservedSearch} partialSpendByDate={report.partialSpendByDate} />
     <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-3"><h3 className="font-semibold">WL terhubung ({report.performance.wlCount})</h3>
       <ul className="mt-2 grid min-w-0 gap-2 text-sm md:grid-cols-2">{accounts.flatMap((a) => a.metaAccounts.map((w) => <li key={w.id} className="min-w-0 break-words rounded-md border border-slate-100 p-2 [overflow-wrap:anywhere]"><span className="font-medium">{a.name} · {w.name}</span> <StatusBadge status={w.status} /><p className="text-xs text-slate-500">{w.accountId} · {w.businessManager?.name ?? "Tanpa BM"}</p></li>))}</ul>
     </section>
