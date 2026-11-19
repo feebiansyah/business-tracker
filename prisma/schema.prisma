@@ -38,6 +38,11 @@ enum AdsterraScheduleRunStatus {
   SKIPPED_SPECIAL_DAY
 }
 
+enum UserRole {
+  OPERATOR
+  REVIEWER
+}
+
 model User {
   id           Int       @id @default(autoincrement())
   email        String    @unique @db.VarChar(191)
@@ -46,7 +51,21 @@ model User {
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  role         UserRole  @default(OPERATOR)
   sessions     Session[]
+  dailyReviews CampaignDailyReview[]
+}
+
+model CampaignDailyReview {
+  userId       Int
+  campaignId   Int
+  businessDate DateTime @db.Date
+  reviewedAt   DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@id([userId, campaignId, businessDate])
+  @@index([campaignId, businessDate])
 }
 
 model Session {
@@ -372,6 +391,7 @@ model Campaign {
   metaAccountId Int
   metaAccount   MetaAccount @relation(fields: [metaAccountId], references: [id])
 
+  dailyReviews         CampaignDailyReview[]
   dailyMetrics         CampaignDailyMetric[]
   dailyBudgetSnapshots CampaignDailyBudgetSnapshot[]
   commissionCoverages  ShopeeCommissionCoverage[]

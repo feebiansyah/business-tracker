@@ -1,15 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { requireUser } from "@/lib/auth/session";
+import { readCampaignReviewsForToday } from "@/lib/filter/campaign-review";
 import { FilterTable } from "@/components/filter/filter-table";
 import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-modes";
 import { getCampaignWorkspaceData } from "@/lib/filter/queries";
 import { filterParamsToSearch, parseFilterParams, resetFilterParams } from "@/lib/filter/server-pagination";
 
 export async function CampaignWorkspacePage({ mode, params, searchParams }: { mode: CampaignMode; params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const user = await requireUser();
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const state = parseFilterParams(query);
   const data = await getCampaignWorkspaceData(Number(id), mode, state);
   if (!data) notFound();
+  const reviewState = await readCampaignReviewsForToday(user, data.campaigns.map(campaign => campaign.id));
   const config = campaignModeConfig[mode];
   const control = "h-10 w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal";
   return <section className="min-w-0 space-y-6">
@@ -44,6 +48,6 @@ export async function CampaignWorkspacePage({ mode, params, searchParams }: { mo
       <label className="grid min-w-0 gap-1 text-xs font-medium text-slate-600">Tanggal Mulai Tayang<input type="date" name="from" defaultValue={state.from} className={`${control} sm:w-auto`} /></label>
       <button type="submit" className="h-10 w-full rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-700 sm:w-auto">Terapkan</button><Link href={`?${filterParamsToSearch(resetFilterParams(state))}`} className="inline-flex h-10 w-full items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:w-auto">Reset</Link>
     </form>
-    <FilterTable mode={mode} shopeeAccountId={data.shopeeAccount.id} campaigns={data.campaigns} pagination={data.pagination} state={{ ...state, page: data.pagination.page }} />
+    <FilterTable reviewState={reviewState} mode={mode} shopeeAccountId={data.shopeeAccount.id} campaigns={data.campaigns} pagination={data.pagination} state={{ ...state, page: data.pagination.page }} />
   </section>;
 }
