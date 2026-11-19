@@ -18,7 +18,7 @@ export async function getCurrentUser(options: { readOnly?: boolean } = {}) {
   const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
   return resolveSessionUser(token, new Date(), {
-    findSession: (tokenHash) => prisma.session.findUnique({ where: { tokenHash }, select: { tokenHash: true, expiresAt: true, user: { select: { id: true, email: true, name: true, isActive: true } } } }),
+    findSession: (tokenHash) => prisma.session.findUnique({ where: { tokenHash }, select: { tokenHash: true, expiresAt: true, user: { select: { id: true, email: true, name: true, isActive: true, role: true } } } }),
     deleteSession: async (tokenHash) => { if (!options.readOnly) await prisma.session.deleteMany({ where: { tokenHash } }); },
   });
 }

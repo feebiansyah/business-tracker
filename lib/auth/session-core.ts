@@ -7,7 +7,7 @@ export function hashSessionToken(token: string) { return createHash("sha256").up
 export function sessionExpiry(now = new Date()) { return new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000); }
 export async function revokeSession(token: string, deps: { deleteSession(tokenHash: string): Promise<void> }) { await deps.deleteSession(hashSessionToken(token)); }
 
-type SessionRecord = { tokenHash: string; expiresAt: Date; user: { id: number; email: string; name: string; isActive: boolean } };
+type SessionRecord = { tokenHash: string; expiresAt: Date; user: { id: number; email: string; name: string; isActive: boolean; role?: "OPERATOR" | "REVIEWER" } };
 export async function resolveSessionUser(token: string, now: Date, deps: { findSession(tokenHash: string): Promise<SessionRecord | null>; deleteSession(tokenHash: string): Promise<void> }) {
   const tokenHash = hashSessionToken(token);
   const session = await deps.findSession(tokenHash);
@@ -17,5 +17,5 @@ export async function resolveSessionUser(token: string, now: Date, deps: { findS
     return null;
   }
   if (!session.user.isActive) return null;
-  return { id: session.user.id, email: session.user.email, name: session.user.name };
+  return { id: session.user.id, email: session.user.email, name: session.user.name, ...(session.user.role ? { role: session.user.role } : {}) };
 }

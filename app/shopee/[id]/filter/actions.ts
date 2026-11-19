@@ -10,6 +10,7 @@ import type { HistoryParams } from "@/lib/filter/server-pagination";
 import { campaignModeConfig, type CampaignMode } from "@/lib/filter/campaign-modes";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/session";
+import { recordCampaignReview } from "@/lib/filter/campaign-review";
 
 export type FilterSyncActionState = { success: boolean; message: string; summary?: FilterSyncSummary; metaBatch?: MetaSyncBatchResult };
 
@@ -40,11 +41,11 @@ export async function syncFilterAction(shopeeAccountId: number, previousState: F
 export type ManualMetricActionState = { success: boolean; message: string };
 
 export async function getFilterCampaignDetailAction(shopeeAccountId: number, mode: CampaignMode, campaignId: number, params: HistoryParams) {
-  await requireUser();
+  const user = await requireUser();
   try {
     const data = await getCampaignWorkspaceDetail(shopeeAccountId, mode, campaignId, params);
     return data
-      ? { success: true as const, data }
+      ? { success: true as const, data, review: user.role === "REVIEWER" ? await recordCampaignReview(user, data.campaign.id) : { status: "NOT_APPLICABLE" as const } }
       : { success: false as const, message: `Histori harian tidak ditemukan dalam scope ${campaignModeConfig[mode].title}.` };
   } catch {
     return { success: false as const, message: "Histori harian gagal dimuat." };
