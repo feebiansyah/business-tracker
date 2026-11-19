@@ -25,14 +25,14 @@ const rootLinkClass = "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm fo
 const inactiveRootClass = "text-slate-300 hover:bg-slate-800/70 hover:text-white";
 const activeRootClass = "bg-blue-500/15 text-blue-200 ring-1 ring-inset ring-blue-400/20";
 
-export function Sidebar({ shopeeAccounts }: { shopeeAccounts: SidebarShopeeAccount[] }) {
+export function Sidebar({ shopeeAccounts, overviewGroups = [] }: { shopeeAccounts: SidebarShopeeAccount[]; overviewGroups?: SidebarShopeeAccount[] }) {
   const pathname = usePathname();
   return <aside className="hidden h-screen w-56 shrink-0 flex-col bg-slate-950 text-slate-200 lg:sticky lg:top-0 lg:flex">
-    <SidebarNavigationPanel key={pathname} pathname={pathname} shopeeAccounts={shopeeAccounts}/>
+    <SidebarNavigationPanel key={pathname} pathname={pathname} shopeeAccounts={shopeeAccounts} overviewGroups={overviewGroups}/>
   </aside>;
 }
 
-export function SidebarNavigationPanel({ pathname, shopeeAccounts, onNavigate, onClose }: { pathname: string; shopeeAccounts: SidebarShopeeAccount[]; onNavigate?: () => void; onClose?: () => void }) {
+export function SidebarNavigationPanel({ pathname, shopeeAccounts, overviewGroups = [], onNavigate, onClose }: { pathname: string; shopeeAccounts: SidebarShopeeAccount[]; overviewGroups?: SidebarShopeeAccount[]; onNavigate?: () => void; onClose?: () => void }) {
   const shopeeActive = pathname === "/shopee" || pathname.startsWith("/shopee/");
   const [expansion, dispatchExpansion] = useReducer(reduceSidebarExpansion, pathname, createSidebarExpansionState);
   const ShopeeIcon = shopeeNavigation.icon;
@@ -103,6 +103,11 @@ export function SidebarNavigationPanel({ pathname, shopeeAccounts, onNavigate, o
         </div>}
       </NavigationGroup>
 
+      <NavigationGroup label="Overview Gabungan">
+        <p className="px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Overview Gabungan</p>
+        {overviewGroups.map((group) => <Link key={group.id} href={`/overview-gabungan/${group.id}`} onClick={onNavigate} className={cn(rootLinkClass,isNavigationItemActive(pathname,`/overview-gabungan/${group.id}`) ? activeRootClass : inactiveRootClass)}><span className="truncate">{group.name}</span></Link>)}
+        {overviewGroups.length === 0 && <p className="px-3 text-xs text-slate-500">Belum ada grup. Kelola melalui Settings.</p>}
+      </NavigationGroup>
       <div className="border-t border-slate-800 pt-4"><StaticNavigationLink item={settingsNavigation} pathname={pathname} onNavigate={onNavigate}/></div>
     </nav>
     <form action={logoutAction} className="shrink-0 border-t border-slate-800 p-2.5">
