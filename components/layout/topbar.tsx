@@ -5,9 +5,9 @@ import { Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { getNavigationTitle } from "./navigation";
 import { mobileDrawerShouldClose } from "./mobile-navigation-state";
-import { SidebarNavigationPanel, type SidebarShopeeAccount } from "./sidebar";
+import { SidebarNavigationPanel, type SidebarShopeeAccount, type SidebarOverviewGroup } from "./sidebar";
 
-export function Topbar({ shopeeAccounts, overviewGroups = [] }: { shopeeAccounts: SidebarShopeeAccount[]; overviewGroups?: SidebarShopeeAccount[] }) {
+export function Topbar({ shopeeAccounts, overviewGroups = [] }: { shopeeAccounts: SidebarShopeeAccount[]; overviewGroups?: SidebarOverviewGroup[] }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
 

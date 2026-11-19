@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer } from "react";
+import { useReducer, useState } from "react";
 import { ChevronDown, ChevronRight, LogOut, X } from "lucide-react";
 import { logoutAction } from "@/app/auth-actions";
 import Image from "next/image";
@@ -21,23 +21,61 @@ import {
 } from "./navigation";
 
 export type SidebarShopeeAccount = { id: number; name: string };
+export type SidebarOverviewGroup = SidebarShopeeAccount & { members: { shopeeAccountId: number }[] };
 const rootLinkClass = "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors";
 const inactiveRootClass = "text-slate-300 hover:bg-slate-800/70 hover:text-white";
 const activeRootClass = "bg-blue-500/15 text-blue-200 ring-1 ring-inset ring-blue-400/20";
 
-export function Sidebar({ shopeeAccounts, overviewGroups = [] }: { shopeeAccounts: SidebarShopeeAccount[]; overviewGroups?: SidebarShopeeAccount[] }) {
+export function Sidebar({ shopeeAccounts, overviewGroups = [] }: { shopeeAccounts: SidebarShopeeAccount[]; overviewGroups?: SidebarOverviewGroup[] }) {
   const pathname = usePathname();
   return <aside className="hidden h-screen w-56 shrink-0 flex-col bg-slate-950 text-slate-200 lg:sticky lg:top-0 lg:flex">
     <SidebarNavigationPanel key={pathname} pathname={pathname} shopeeAccounts={shopeeAccounts} overviewGroups={overviewGroups}/>
   </aside>;
 }
 
-export function SidebarNavigationPanel({ pathname, shopeeAccounts, overviewGroups = [], onNavigate, onClose }: { pathname: string; shopeeAccounts: SidebarShopeeAccount[]; overviewGroups?: SidebarShopeeAccount[]; onNavigate?: () => void; onClose?: () => void }) {
-  const shopeeActive = pathname === "/shopee" || pathname.startsWith("/shopee/");
-  const [expansion, dispatchExpansion] = useReducer(reduceSidebarExpansion, pathname, createSidebarExpansionState);
+export function SidebarNavigationPanel({ pathname, shopeeAccounts, overviewGroups = [], onNavigate, onClose }: { pathname: string; shopeeAccounts: SidebarShopeeAccount[]; overviewGroups?: SidebarOverviewGroup[]; onNavigate?: () => void; onClose?: () => void }) {
+  const shopeeActive = pathname === "/shopee" || pathname.startsWith("/shopee/") || pathname.startsWith("/overview-gabungan/");
+  const [expansion, dispatchExpansion] = useReducer(reduceSidebarExpansion, pathname, (path) => {
+    const initial = createSidebarExpansionState(path);
+    return { ...initial,shopeeExpanded: initial.shopeeExpanded || path.startsWith("/overview-gabungan/") };
+  });
+  const [groupExpansion, setGroupExpansion] = useState<Record<number, boolean>>({});
+  const groupedIds = new Set(overviewGroups.flatMap((group) => group.members.map((member) => member.shopeeAccountId)));
   const ShopeeIcon = shopeeNavigation.icon;
   const MetaIcon = metaAdsNavigation.icon;
   const showShopeeAccounts = expansion.shopeeExpanded;
+
+  const renderAccount = (account: SidebarShopeeAccount) => {
+    const state = getShopeeNavigationState(pathname, account.id);
+    const showWorkflows = expansion.expandedAccountId === account.id;
+    return <div key={account.id}>
+      <div className="flex items-center gap-1">
+        <Link href={`/shopee/${account.id}`} onClick={onNavigate} className={cn("min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors", state.accountActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/70 hover:text-white")}>
+          <span className="block truncate">{account.name}</span>
+        </Link>
+        <button type="button" aria-label={`${showWorkflows ? "Tutup" : "Buka"} menu ${account.name}`} aria-expanded={showWorkflows} onClick={() => dispatchExpansion({ type: "TOGGLE_ACCOUNT", accountId: account.id })} className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-800 hover:text-white">
+          {showWorkflows ? <ChevronDown className="size-3.5"/> : <ChevronRight className="size-3.5"/>}
+        </button>
+      </div>
+      {showWorkflows && <div className="ml-2.5 mt-1 space-y-0.5 border-l border-slate-700/50 pl-2.5">
+        {shopeeDirectWorkflows.map((workflow) => <ShopeeWorkflowLink key={workflow.key} accountId={account.id} workflow={workflow} activeWorkflow={state.activeWorkflow} onNavigate={onNavigate}/>)}
+        {shopeeWorkflowGroups.map((group) => {
+          const groupExpanded = expansion.expandedSubgroups.includes(group.key);
+          const groupActive = group.items.some((workflow) => workflow.key === state.activeWorkflow);
+          return <div key={group.key} className="pt-0.5">
+            <button type="button" aria-expanded={groupExpanded} onClick={() => dispatchExpansion({ type: "TOGGLE_SUBGROUP", subgroup: group.key })} className={cn("flex w-full items-center gap-1 rounded-md px-2.5 py-1 text-left text-[13px] font-medium transition-colors", groupActive ? "text-blue-200" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100")}>
+              <span className="min-w-0 flex-1 truncate">{group.label}</span>
+              {groupExpanded ? <ChevronDown className="size-3.5 shrink-0"/> : <ChevronRight className="size-3.5 shrink-0"/>}
+            </button>
+            {groupExpanded && <div className="ml-2 mt-0.5 space-y-0.5 border-l border-slate-700/40 pl-2">
+              {group.items.map((workflow) => <ShopeeWorkflowLink key={workflow.key} accountId={account.id} workflow={workflow} activeWorkflow={state.activeWorkflow} onNavigate={onNavigate}/>)}
+            </div>}
+          </div>;
+        })}
+      </div>}
+    </div>;
+
+  };
 
   return <>
     <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-800 px-4">
@@ -69,45 +107,26 @@ export function SidebarNavigationPanel({ pathname, shopeeAccounts, overviewGroup
         </div>
 
         {showShopeeAccounts && <div className="ml-4 mt-1.5 space-y-1.5 border-l border-slate-700/60 pl-2.5">
-          {shopeeAccounts.map((account) => {
-            const state = getShopeeNavigationState(pathname, account.id);
-            const showWorkflows = expansion.expandedAccountId === account.id;
-            return <div key={account.id}>
+          {overviewGroups.map((group) => {
+            const groupActive = isNavigationItemActive(pathname,`/overview-gabungan/${group.id}`) || group.members.some((member) => getShopeeNavigationState(pathname,member.shopeeAccountId).accountActive);
+            const expanded = groupExpansion[group.id] ?? groupActive;
+            return <div key={`group-${group.id}`}>
               <div className="flex items-center gap-1">
-                <Link href={`/shopee/${account.id}`} onClick={onNavigate} className={cn("min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors", state.accountActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/70 hover:text-white")}>
-                  <span className="block truncate">{account.name}</span>
+                <Link href={`/overview-gabungan/${group.id}`} aria-current={isNavigationItemActive(pathname,`/overview-gabungan/${group.id}`) ? "page" : undefined} onClick={onNavigate} className={cn("min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",groupActive ? activeRootClass : inactiveRootClass)}>
+                  <span className="block truncate">{group.name}</span>
                 </Link>
-                <button type="button" aria-label={`${showWorkflows ? "Tutup" : "Buka"} menu ${account.name}`} aria-expanded={showWorkflows} onClick={() => dispatchExpansion({ type: "TOGGLE_ACCOUNT", accountId: account.id })} className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-800 hover:text-white">
-                  {showWorkflows ? <ChevronDown className="size-3.5"/> : <ChevronRight className="size-3.5"/>}
+                <button type="button" aria-label={`${expanded ? "Tutup" : "Buka"} anggota ${group.name}`} aria-expanded={expanded} onClick={() => setGroupExpansion((current) => ({ ...current,[group.id]: !expanded }))} className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white">
+                  {expanded ? <ChevronDown className="size-3.5"/> : <ChevronRight className="size-3.5"/>}
                 </button>
               </div>
-              {showWorkflows && <div className="ml-2.5 mt-1 space-y-0.5 border-l border-slate-700/50 pl-2.5">
-                {shopeeDirectWorkflows.map((workflow) => <ShopeeWorkflowLink key={workflow.key} accountId={account.id} workflow={workflow} activeWorkflow={state.activeWorkflow} onNavigate={onNavigate}/>)}
-                {shopeeWorkflowGroups.map((group) => {
-                  const groupExpanded = expansion.expandedSubgroups.includes(group.key);
-                  const groupActive = group.items.some((workflow) => workflow.key === state.activeWorkflow);
-                  return <div key={group.key} className="pt-0.5">
-                    <button type="button" aria-expanded={groupExpanded} onClick={() => dispatchExpansion({ type: "TOGGLE_SUBGROUP", subgroup: group.key })} className={cn("flex w-full items-center gap-1 rounded-md px-2.5 py-1 text-left text-[13px] font-medium transition-colors", groupActive ? "text-blue-200" : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-100")}>
-                      <span className="min-w-0 flex-1 truncate">{group.label}</span>
-                      {groupExpanded ? <ChevronDown className="size-3.5 shrink-0"/> : <ChevronRight className="size-3.5 shrink-0"/>}
-                    </button>
-                    {groupExpanded && <div className="ml-2 mt-0.5 space-y-0.5 border-l border-slate-700/40 pl-2">
-                      {group.items.map((workflow) => <ShopeeWorkflowLink key={workflow.key} accountId={account.id} workflow={workflow} activeWorkflow={state.activeWorkflow} onNavigate={onNavigate}/>)}
-                    </div>}
-                  </div>;
-                })}
-              </div>}
+              {expanded && <div className="ml-2.5 mt-1 space-y-1 border-l border-slate-700/50 pl-2">{shopeeAccounts.filter((account) => group.members.some((member) => member.shopeeAccountId === account.id)).map(renderAccount)}</div>}
             </div>;
           })}
+          {shopeeAccounts.filter((account) => !groupedIds.has(account.id)).map(renderAccount)}
           {shopeeAccounts.length === 0 && <p className="px-3 py-2 text-xs text-slate-500">Belum ada akun aktif.</p>}
         </div>}
       </NavigationGroup>
 
-      <NavigationGroup label="Overview Gabungan">
-        <p className="px-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Overview Gabungan</p>
-        {overviewGroups.map((group) => <Link key={group.id} href={`/overview-gabungan/${group.id}`} onClick={onNavigate} className={cn(rootLinkClass,isNavigationItemActive(pathname,`/overview-gabungan/${group.id}`) ? activeRootClass : inactiveRootClass)}><span className="truncate">{group.name}</span></Link>)}
-        {overviewGroups.length === 0 && <p className="px-3 text-xs text-slate-500">Belum ada grup. Kelola melalui Settings.</p>}
-      </NavigationGroup>
       <div className="border-t border-slate-800 pt-4"><StaticNavigationLink item={settingsNavigation} pathname={pathname} onNavigate={onNavigate}/></div>
     </nav>
     <form action={logoutAction} className="shrink-0 border-t border-slate-800 p-2.5">
