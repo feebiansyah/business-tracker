@@ -16,7 +16,7 @@ test("review color needs server acknowledgement for this reviewer, campaign and 
   assert.equal(isCampaignReviewedToday(state, [mark], 41, new Date("2026-11-19T17:00:00Z")), false);
 });
 
-test("only reviewer rows and their frozen Campaign cell receive the soft review background", () => {
+test("reviewed rows have consistent blue hover, left accent and a small accessible check; other rows stay unchanged", () => {
   const require = createRequire(import.meta.url), React = require("react"), { renderToStaticMarkup } = require("react-dom/server");
   const { FilterTable } = loadTs("components/filter/filter-table.tsx", {
     "next/navigation": { useRouter: () => ({ push() {} }) },
@@ -27,15 +27,34 @@ test("only reviewer rows and their frozen Campaign cell receive the soft review 
     "@/components/meta-campaign-controls/campaign-manager-modal": { CampaignManagerModal: () => null, createCampaignPreviewStore: () => new Map() },
   });
   const campaign = { id: 41, metaCampaignId: "meta-41", name: "Campaign", wlName: "WL", startTime: null, budget: 1, days: 1, totalSpend: 1, costWithFee: 1.05, totalCommission: null, profit: null, profitPercent: null, hasPendingNote: false };
-  for (const [reviewState, expected] of [
+  for (const mode of ["filter", "fix", "off-filter", "off-fix"]) for (const [reviewState, expected] of [
     [null, false],
     [{ userId: 1, businessDate: "2026-11-06", campaignIds: [] }, false],
     [{ userId: 1, businessDate: "2026-11-06", campaignIds: [41] }, true],
     [{ userId: 1, businessDate: "2026-11-05", campaignIds: [41] }, false],
   ]) {
-    const html = renderToStaticMarkup(React.createElement(FilterTable, { mode: "filter", shopeeAccountId: 7, campaigns: [campaign], reviewState,
+    const html = renderToStaticMarkup(React.createElement(FilterTable, { mode, shopeeAccountId: 7, campaigns: [campaign, { ...campaign, id: 42, name: "Not reviewed" }], reviewState,
       pagination: { page: 1, pageCount: 1, total: 1, pageSize: 25 }, state: { q: "", wl: null, from: "", sort: "name", dir: "asc", page: 1, pageSize: 25 } }));
     const body = html.split("<tbody")[1];
-    assert.equal((body.match(/bg-blue-50/g) || []).length, expected ? 2 : 0);
+    const rows = [...body.matchAll(/<tr\b([^>]*)>([\s\S]*?)<\/tr>/g)];
+    assert.equal(rows.length, 2);
+    const firstCell = rows[0][2].match(/<td\b([^>]*)>/)[1];
+    if (expected) {
+      assert.match(rows[0][1], /bg-blue-100/);
+      assert.match(rows[0][1], /hover:bg-blue-200/);
+      assert.match(rows[0][1], /\[&amp;&gt;td\]:bg-inherit/);
+      assert.match(firstCell, /before:w-0\.5/);
+      assert.match(firstCell, /before:bg-blue-500/);
+      assert.match(rows[0][2], /title="Sudah direview hari ini"/);
+      assert.match(rows[0][2], /aria-label="Sudah direview hari ini"/);
+      assert.match(rows[0][2], /size-3\.5[^"]*text-blue-700/);
+    } else {
+      assert.doesNotMatch(rows[0][1], /bg-blue|hover:bg/);
+      assert.match(firstCell, /bg-white/);
+      assert.doesNotMatch(rows[0][2], /Sudah direview hari ini|before:bg-blue/);
+    }
+    assert.doesNotMatch(rows[1][1], /bg-blue|hover:bg/);
+    assert.match(rows[1][2].match(/<td\b([^>]*)>/)[1], /bg-white/);
+    assert.doesNotMatch(rows[1][2], /Sudah direview hari ini|before:bg-blue/);
   }
 });
