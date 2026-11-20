@@ -8,6 +8,7 @@ import type { PostTypeResult } from "@/lib/campaign-post-type/model";
 import { readPrefilterData, runPrefilterBatch } from "@/lib/meta-prefilter/service";
 import type { PrefilterBatch, PrefilterData, PrefilterSlot } from "@/lib/meta-prefilter/types";
 import { savePrefilterNote, type NoteInput } from "@/lib/meta-prefilter/notes";
+import { isManualAwalClosed, manualAwalClosedMessage } from "@/lib/meta-prefilter/manual-window";
 
 export async function savePrefilterPostTypeAction(input: PrefilterPostTypeInput): Promise<PostTypeResult> {
   await requireUser({ readOnly: true });
@@ -27,6 +28,7 @@ export async function savePrefilterNoteAction(input: NoteInput) {
 export async function snapshotPrefilterAction(shopeeAccountId: number, slot: PrefilterSlot, runId?: string): Promise<{ success: true; batch: PrefilterBatch } | { success: false; message: string }> {
   const startedAt = Date.now(), receivedAt = new Date();
   await requireUser({ readOnly: true });
+  if (slot === "AWAL" && isManualAwalClosed(new Date())) return { success: false, message: manualAwalClosedMessage };
   try {
     const batch = await runPrefilterBatch({ shopeeAccountId,slot,runId,owner: randomUUID(),receivedAt,startedAt });
     return { success: true, batch };

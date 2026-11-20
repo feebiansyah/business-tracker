@@ -5,6 +5,7 @@ import { readPrefilterAction, savePrefilterNoteAction, savePrefilterPostTypeActi
 import { PostTypeSelect } from "@/components/filter/post-type-select";
 import { postTypeLabels, type ManualPostType, type PostTypeInput } from "@/lib/campaign-post-type/model";
 import type { PrefilterData, PrefilterProgress, PrefilterRow, PrefilterSlot } from "@/lib/meta-prefilter/types";
+import { isManualAwalClosed, manualAwalDeadline, manualAwalClosedMessage } from "@/lib/meta-prefilter/manual-window";
 
 const slots = ["AWAL","AKHIR"] as const;
 const label = { AWAL: "Snapshot Awal", AKHIR: "Snapshot Akhir" };
@@ -15,8 +16,10 @@ const time = (value: string) => new Intl.DateTimeFormat("id-ID",{ dateStyle: "me
 const clicks = (value: string | bigint | null | undefined) => value == null ? "—" : new Intl.NumberFormat("id-ID").format(BigInt(value));
 const numericCell = "whitespace-nowrap px-2 py-2 text-right tabular-nums";
 
-export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
+export function PrefilterWorkspace({ initial, serverNow }: { initial: PrefilterData; serverNow: number }) {
   const [data,setData] = useState(initial), [busy,setBusy] = useState<PrefilterSlot | null>(null);
+  const serverClock = useRef<{ now: number; clientAt: number | null }>({ now: serverNow,clientAt: null });
+  const [awalClosed,setAwalClosed] = useState(isManualAwalClosed(new Date(serverNow)));
   const [notice,setNotice] = useState<{ text: string; ok?: boolean } | null>(null);
   const [query,setQuery] = useState(""), [wl,setWl] = useState("");
   const [drafts,setDrafts] = useState<Record<string,string>>({});
@@ -28,6 +31,17 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
   // Editors retain the server's COMPLETE-only membership rule.
   const editableIds = new Set(slots.flatMap(slot=>data.snapshots[slot]?.status === "COMPLETE" ? data.snapshots[slot]!.rows.map(row=>row.metaCampaignId) : []));
   const hasPartial = slots.some(slot=>data.snapshots[slot]?.status === "PARTIAL");
+  useEffect(()=>{
+    // Anchor the UI cutoff to server time, not the operator's clock/timezone.
+    const clientNow = Date.now();
+    if (serverClock.current.clientAt === null) serverClock.current.clientAt = clientNow;
+    const now = serverClock.current.now + clientNow - serverClock.current.clientAt;
+    const deadline = manualAwalDeadline(new Date(now));
+    setAwalClosed(now >= deadline);
+    if (now >= deadline) return;
+    const timer = setTimeout(()=>setAwalClosed(true),deadline-now);
+    return ()=>clearTimeout(timer);
+  },[data.businessDate]);
   useEffect(()=>()=>{ epoch.current++; },[initial.account.id]);
   useEffect(()=>{
     // Local expiry only: no polling, provider request, or automatic snapshot.
@@ -75,6 +89,9 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
     return result;
   }
   async function capture(slot: PrefilterSlot) {
+    if (slot === "AWAL" && awalClosed) {
+      setAwalClosed(true); setNotice({ text: manualAwalClosedMessage }); return;
+    }
     if (inFlight.current || noteSaves.current.size) return;
     inFlight.current = true; const ticket = epoch.current;
     setBusy(slot); setNotice(null);
@@ -138,7 +155,8 @@ export function PrefilterWorkspace({ initial }: { initial: PrefilterData }) {
         {snapshot ? <><p className="text-xs leading-relaxed text-slate-600">Klik: {time(snapshot.requestedAt)}<br/>Selesai: {time(snapshot.finishedAt)} · {snapshot.rows.length} campaign teramati dengan spend &gt; 0</p>{snapshot.status === "PARTIAL" && <p role="alert" className="text-xs font-medium text-amber-800">Data belum lengkap (PARTIAL).</p>}</> : <p className="text-xs text-slate-500">Belum ada snapshot selesai yang tersedia hari ini.</p>}
         {snapshot?.skipped.length ? <p className="break-words text-xs text-amber-800">WL dilewati: {snapshot.skipped.join("; ")}. Data WL tersebut tidak termasuk snapshot.</p> : null}
         {snapshot?.message && <p className="break-words text-xs text-amber-800">{snapshot.message}</p>}
-        <button type="button" disabled={!!busy || savingNote || !!(progress && progress.slot !== slot && ["RUNNING","PAUSED_RATE_LIMIT"].includes(progress.status))} onClick={()=>capture(slot)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy === slot ? "Mengambil…" : `${resume ? "Lanjutkan" : snapshot ? "Perbarui" : "Ambil"} ${label[slot]}`}</button>
+        <button type="button" disabled={(slot === "AWAL" && awalClosed) || !!busy || savingNote || !!(progress && progress.slot !== slot && ["RUNNING","PAUSED_RATE_LIMIT"].includes(progress.status))} onClick={()=>capture(slot)} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">{busy === slot ? "Mengambil…" : `${resume ? "Lanjutkan" : snapshot ? "Perbarui" : "Ambil"} ${label[slot]}`}</button>
+        {slot === "AWAL" && awalClosed && <p className="text-xs text-slate-600">{manualAwalClosedMessage}</p>}
       </section>;
     })}</div>
     {hasPartial && <p className="text-xs text-slate-600">Data PARTIAL hanya untuk dibaca. Note, Jenis, dan Selesai dapat diubah jika campaign tersedia pada snapshot COMPLETE.</p>}

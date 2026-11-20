@@ -10,11 +10,37 @@ function harness(action, data=initial, save=async()=>({success:false,message:"Ga
   const hook=make=>{const i=cursor++;if(!(i in hooks))hooks[i]=make();return[hooks[i],i];};
   const fakeReact={...React,useRef:v=>hook(()=>({current:v}))[0],useState:v=>{const[value,i]=hook(()=>v);return[value,v=>{hooks[i]=typeof v==="function"?v(hooks[i]):v;}];},useEffect:fn=>{hook(()=>{effects.push(fn());return true;});}};
   const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/components/filter/post-type-select":postTypeSelect,__date:Date,react:fakeReact,"@/app/shopee/[id]/prefilter/actions":{savePrefilterPostTypeAction:options.typeSave,savePrefilterNoteAction:save,snapshotPrefilterAction:action,readPrefilterAction:async()=>{readCalls++;return{success:true,data:options.read?await options.read():data};}}});
-  const render=()=>{cursor=0;return api.PrefilterWorkspace({initial:data});};
+  const render=()=>{cursor=0;return api.PrefilterWorkspace({initial:data,serverNow:options.serverNow??Date.parse("2026-11-07T03:00:00Z")});};
   const inputs=tree=>{const found=[];function visit(n){if(!n||typeof n!=="object")return;if(n.type==="input")found.push(n);for(const c of React.Children.toArray(n.props?.children))visit(c);}visit(tree);return found;};
   const buttons=tree=>{const result=[];function visit(n){if(!n||typeof n!=="object")return;if(n.type==="button")result.push(n);for(const child of React.Children.toArray(n.props?.children))visit(child);}visit(tree);return result;};
   return{render,buttons,inputs,unmount:()=>effects.forEach(fn=>fn?.()),readCalls:()=>readCalls};
 }
+
+test("AWAL button follows server WIB cutoff, retains COMPLETE, and leaves AKHIR enabled",async()=>{
+  for(const [serverTime,blocked] of [["2026-11-20T10:59:00Z",false],["2026-11-20T11:00:00Z",true],["2026-11-20T12:00:00Z",true]]){
+    let calls=0;
+    const snapshot={status:"COMPLETE",runId:"old",requestedAt:"2026-11-20T02:30:00Z",finishedAt:"2026-11-20T02:31:00Z",skipped:[],rows:[]};
+    const h=harness(async()=>{calls++;return{success:false,message:"Rejected"};},{...initial,businessDate:"2026-11-20",snapshots:{AWAL:snapshot,AKHIR:null}},undefined,{serverNow:Date.parse(serverTime)});
+    try{
+      const [awal,akhir]=h.buttons(h.render());
+      assert.equal(!!awal.props.disabled,blocked);assert.equal(!!akhir.props.disabled,false);
+      if(blocked){await awal.props.onClick();assert.equal(calls,0);const html=renderToStaticMarkup(h.render());assert.match(html,/Snapshot Awal tidak dapat diperbarui setelah pukul 18.00 WIB/);assert.match(html,/09\.30\.00/);}
+    }finally{h.unmount();}
+  }
+});
+test("open page disables AWAL at server-anchored 18:00 without a snapshot or polling",t=>{
+  t.mock.timers.enable({apis:["setTimeout","Date"],now:Date.parse("2030-01-01T00:00:00Z")});
+  let calls=0;
+  const h=harness(async()=>{calls++;},{...initial,businessDate:"2030-01-01"},undefined,{serverNow:Date.parse("2026-11-20T10:59:00Z")});
+  try{
+    assert.equal(!!h.buttons(h.render())[0].props.disabled,false);
+    t.mock.timers.tick(60_000);
+    const [awal,akhir]=h.buttons(h.render());
+    assert.equal(!!awal.props.disabled,true);assert.equal(!!akhir.props.disabled,false);
+    assert.equal(calls,0);assert.equal(h.readCalls(),0);
+  }finally{h.unmount();}
+});
+
 test("manual snapshot locks duplicate clicks, stops on unmount, and never polls",async()=>{
   let calls=0,resolve;const gate=new Promise(r=>{resolve=r;});
   const h=harness(async()=>{calls++;await gate;return{success:true,batch:{progress:{runId:"run1",slot:"AWAL",businessDate:"2026-11-07",status:"COMPLETE",current:1,total:1,pages:2,skipped:[],message:null},shouldContinue:false,blocked:false}};});
@@ -38,7 +64,7 @@ test("only snapshot CPC cells at or above 200 are red; lower and missing values 
 test("two slots and zero-click CPC are visible with internal table scrolling",()=>{
   const api=loadTs("components/meta-prefilter/workspace.tsx",{"@/components/filter/post-type-select":postTypeSelect,"@/app/shopee/[id]/prefilter/actions":{}});
   const data={...initial,snapshots:{AWAL:{status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:17:42Z",finishedAt:"2026-11-07T03:18:00Z",skipped:[],rows:[{metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",configuredStatus:"ACTIVE",effectiveStatus:"ACTIVE",spend:"100",withFee:"105",clicks:"0",cpc:null}]},AKHIR:null}};
-  const html=renderToStaticMarkup(React.createElement(api.PrefilterWorkspace,{initial:data}));
+  const html=renderToStaticMarkup(React.createElement(api.PrefilterWorkspace,{initial:data,serverNow:Date.parse("2026-11-07T03:00:00Z")}));
   assert.match(html,/Snapshot Awal/);assert.match(html,/Snapshot Akhir/);assert.match(html,/10\.17\.42/);assert.match(html,/>CPC<\/th>/);assert.match(html,/overflow-auto/);assert.doesNotMatch(html,/<details/);
   assert.equal((html.match(/<td /g)||[]).length,14);assert.match(html,/Note Campaign/);assert.match(html,/Selesai Campaign/);
 });
@@ -72,7 +98,7 @@ test("table freezes both header levels and Campaign; money uses rounded Indonesi
   const row={metaCampaignId:"123",campaignName:"Campaign",metaAccountId:1,wlName:"WL",spend:"10000",withFee:"11062.8",clicks:"1",cpc:"2500.5"};
   const snapshot=rows=>({status:"COMPLETE",runId:"r",requestedAt:"2026-11-07T03:00:00Z",finishedAt:"2026-11-07T03:01:00Z",skipped:[],rows});
   const data={...initial,snapshots:{AWAL:snapshot([row]),AKHIR:snapshot([{...row,withFee:"9812.4",cpc:null}])}};
-  const html=renderToStaticMarkup(React.createElement(api.PrefilterWorkspace,{initial:data}));
+  const html=renderToStaticMarkup(React.createElement(api.PrefilterWorkspace,{initial:data,serverNow:Date.parse("2026-11-07T03:00:00Z")}));
   assert.match(html,/<thead class="[^"]*sticky top-0 z-20/);
   assert.match(html,/<th[^>]*class="[^"]*sticky left-0 z-30/);
   assert.match(html,/<td class="[^"]*sticky left-0 z-10/);
