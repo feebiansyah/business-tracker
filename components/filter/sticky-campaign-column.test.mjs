@@ -25,8 +25,29 @@ test("financial text colors are shared by all modes; zero/missing stay neutral a
   ]){
     const html=renderToStaticMarkup(React.createElement(FilterTable,{mode,shopeeAccountId:7,campaigns:[{...base,totalCommission,profit,profitPercent}],pagination:{page:1,pageCount:1,total:1,pageSize:25},state:{q:"",wl:null,from:"",sort:"name",dir:"asc",page:1,pageSize:25}}));
     const cells=[...html.split("<tbody")[1].matchAll(/<td\b([^>]*)>/g)];
+    assert.match(html,/<tbody[^>]*><tr class="odd:bg-white even:bg-slate-50"/);
     for(const [offset,color]of want.entries())assert(cells[8+offset][1].includes(color),`${mode}, profit ${profit}, percent ${profitPercent}, cell ${8+offset}: ${color}`);
   }
+});
+
+test("Overview and import history stripe data rows only, leaving empty states unchanged",()=>{
+  const require=createRequire(import.meta.url),React=require("react"),{renderToStaticMarkup}=require("react-dom/server");
+  const {ShopeePerformanceCard}=loadTs("components/dashboard/shopee-performance-card.tsx",{
+    "next/link":{default:({children,...p})=>React.createElement("a",p,children)},
+    "./dashboard-page-size-select":{DashboardPageSizeSelect:()=>null},
+  });
+  const {ImportHistoryTable}=loadTs("components/shopee-import/import-history-table.tsx");
+  const day={date:"2026-11-18",budget:100,costWithFee:105,commission:200,profit:95,profitPercent:90.47};
+  const state={from:"",to:"",accounts:{1:{sort:"date",dir:"asc",page:1,pageSize:25}}};
+  const renderOverview=days=>renderToStaticMarkup(React.createElement(ShopeePerformanceCard,{account:{id:1,name:"Overview",wlCount:1,summary:day,days,state:state.accounts[1],pagination:{total:days.length,page:1,pageCount:1,pageSize:25}},dashboardState:state}));
+  const row={id:1,createdAt:"2026-11-18T00:00:00Z",originalFilename:"import.csv",dateFrom:"2026-11-18",dateTo:"2026-11-18",csvRowCount:2,matchedCount:2,unmatchedCount:0,matchedCommission:"200",unmatchedCommission:"0"};
+  for(const html of [renderOverview([day,{...day,date:"2026-11-19"}]),renderToStaticMarkup(React.createElement(ImportHistoryTable,{rows:[row,{...row,id:2}]}))]){
+    const data=html.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/)[1];
+    assert.equal((data.match(/class="odd:bg-white even:bg-slate-50"/g)||[]).length,2);
+    assert.doesNotMatch(html.split("<tbody")[0],/odd:bg|even:bg/);
+  }
+  assert.doesNotMatch(renderOverview([]),/odd:bg|even:bg/);
+  assert.doesNotMatch(renderToStaticMarkup(React.createElement(ImportHistoryTable,{rows:[]})),/odd:bg|even:bg/);
 });
 
 test("daily history commission stays neutral while profit and percentage share profit sign",()=>{
@@ -90,8 +111,11 @@ test("history TOTAL sums every row and recomputes weighted ratios with existing 
   });
   const rows = [row(1, 100, 210, 10, 2), row(2, 300, 630, 90, 18)];
   const before = JSON.stringify(rows), html = render(rows);
+  assert.equal((html.match(/class="odd:bg-white even:bg-slate-50"/g)||[]).length,2);
+  assert.doesNotMatch(render([]),/odd:bg|even:bg/);
   const footer = html.match(/<tfoot[^>]*>([\s\S]*?)<\/tfoot>/)?.[1];
   assert(footer, "sticky TOTAL footer must be rendered");
+  assert.doesNotMatch(footer,/odd:bg|even:bg/);
   const cells = [...footer.matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/g)];
   assert.equal(cells.length, 13);
   assert.deepEqual(cells.map(c => c[2].replace(/<[^>]+>/g, "").replace(/\u00a0/g, " ")),

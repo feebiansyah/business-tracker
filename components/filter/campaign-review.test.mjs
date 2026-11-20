@@ -50,11 +50,13 @@ test("reviewed rows have consistent blue hover, left accent and a small accessib
       assert.match(rows[0][2], /size-3\.5[^"]*text-blue-700/);
     } else {
       assert.doesNotMatch(rows[0][1], /bg-blue|hover:bg/);
-      assert.match(firstCell, /bg-white/);
+      assert.match(rows[0][1], /odd:bg-white even:bg-slate-50/);
+      assert.match(firstCell, /bg-inherit/);
       assert.doesNotMatch(rows[0][2], /Sudah direview hari ini|before:bg-blue/);
     }
     assert.doesNotMatch(rows[1][1], /bg-blue|hover:bg/);
-    assert.match(rows[1][2].match(/<td\b([^>]*)>/)[1], /bg-white/);
+    assert.match(rows[1][1], /odd:bg-white even:bg-slate-50/);
+    assert.match(rows[1][2].match(/<td\b([^>]*)>/)[1], /bg-inherit/);
     assert.doesNotMatch(rows[1][2], /Sudah direview hari ini|before:bg-blue/);
   }
 });
