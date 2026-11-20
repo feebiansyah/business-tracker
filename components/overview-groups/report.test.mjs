@@ -30,7 +30,7 @@ test("group report labels each origin, keeps unknown values and exposes no combi
   assert.match(html,/Tanpa data Spend: Akun 2/);
 });
 
-test("individual performance card keeps its baseline render without group-only notices",()=>{
+test("individual performance card keeps its baseline content apart from striped row styling",()=>{
   const {ShopeePerformanceCard}=loadTs("components/dashboard/shopee-performance-card.tsx",{
     "next/link":{default:({children,...p})=>React.createElement("a",p,children)},
     "./dashboard-page-size-select":{DashboardPageSizeSelect:()=>null},
@@ -39,5 +39,5 @@ test("individual performance card keeps its baseline render without group-only n
   const props={account,dashboardState:{from:"",to:"",accounts:{1:account.state}}};
   const html=renderToStaticMarkup(React.createElement(ShopeePerformanceCard,props));
   assert.doesNotMatch(html,/Data sebagian/);
-  assert.equal(createHash("sha256").update(html).digest("hex"),"7fe6d51791ce30830f923b3a5d779d0a065bca655c5691e0086420a594082558");
+  assert.equal(createHash("sha256").update(html.replaceAll(' class="odd:bg-white even:bg-slate-50"', "")).digest("hex"),"7fe6d51791ce30830f923b3a5d779d0a065bca655c5691e0086420a594082558");
 });
