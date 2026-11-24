@@ -83,12 +83,12 @@ export function decodeAndParseCsv(bytes: Uint8Array): CsvRecord[] {
   }
 
   const indexes = REQUIRED_HEADERS.map((header) => candidate.headers.indexOf(header));
-  const tagLink1Index = candidate.headers.indexOf("Tag_link1");
   const tagLink3Index = candidate.headers.indexOf("Tag_link3");
   return candidate.records.map(({ record, info }, index) => ({
     logicalRow: info.lines || index + 2,
     orderedAt: record[indexes[0]] ?? "",
-    ...(tagLink1Index < 0 ? {} : { tagLink1: record[tagLink1Index] ?? "" }),
+    tagLink1: record[indexes[1]] ?? "",
+    // Keep the established DTO/database field names while Barra matches campaigns by Tag_link1.
     tagLink2: record[indexes[1]] ?? "",
     ...(tagLink3Index < 0 ? {} : { tagLink3: record[tagLink3Index] ?? "" }),
     commission: record[indexes[2]] ?? "",

@@ -69,7 +69,7 @@ export function ImportWorkflow({ shopeeAccountId, history, historyPagination, hi
   return <div className="min-w-0 space-y-6">
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h3 className="font-semibold text-slate-950">Upload CSV Komisi</h3>
-      <p className="mt-1 text-sm text-slate-500">Maksimal 15 MiB dan 100.000 baris data, tidak termasuk header.</p>
+      <p className="mt-1 text-sm text-slate-500">Impor komisi berdasarkan Tag Link 1. Maksimal 15 MiB dan 100.000 baris data, tidak termasuk header.</p>
       <div className="mt-4 flex min-w-0 flex-wrap items-stretch gap-3 sm:items-center">
         <input aria-label="File CSV" type="file" accept=".csv,text/csv,application/vnd.ms-excel" disabled={busy} onChange={(event) => dispatch({ type: "FILE_CHANGED", file: event.target.files?.[0] ?? null })} className="block w-full min-w-0 max-w-full text-sm sm:w-auto"/>
         <Button className="w-full sm:w-auto" disabled={busy || !state.file} onClick={preview}>{state.phase === "previewing" ? "Memproses…" : "Preview"}</Button>

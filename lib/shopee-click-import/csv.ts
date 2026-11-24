@@ -38,10 +38,11 @@ export function parseShopeeClickCsv(bytes: Uint8Array): ParsedClickCsv {
   let ignoredRowCount = 0;
   for (const [index, item] of selected.records.entries()) {
     const parts = (item.record[tagIndex] ?? "").trim().split("-");
-    const tagLink2 = (parts[1] ?? "").trim();
+    // Barra identifies Meta campaigns with the first segment of Shopee Tag_link.
+    const tagLink2 = (parts[0] ?? "").trim();
     if (!tagLink2) { ignoredRowCount += 1; continue; }
     rows.push({ logicalRow: item.info.lines || index + 2, date: parseShopeeDate(item.record[timeIndex] ?? "", item.info.lines || index + 2), tagLink2, normalizedTagLink2: tagLink2.trim().toUpperCase() });
   }
-  if (!rows.length) throw new ShopeeImportError("CSV_NO_META_ROWS", "CSV tidak memiliki Tag Link 2 yang dapat diproses.");
+  if (!rows.length) throw new ShopeeImportError("CSV_NO_META_ROWS", "CSV tidak memiliki Tag Link 1 yang dapat diproses.");
   return { rows, csvRowCount: selected.records.length, processedRowCount: rows.length, ignoredRowCount };
 }

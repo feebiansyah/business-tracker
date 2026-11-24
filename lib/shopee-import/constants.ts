@@ -1,6 +1,6 @@
 export const REQUIRED_HEADERS = [
   "Waktu Pemesanan",
-  "Tag_link2",
+  "Tag_link1",
   "Komisi Bersih Affiliate (Rp)",
 ] as const;
 
