@@ -24,7 +24,7 @@ const profitColor = (value: number | null) => value === null || value === 0 ? "t
 function percent(value: number | null) { return value === null ? "—" : `${value.toFixed(2)}%`; }
 function commission(value: number | null, imported: boolean) { const display = dailyCommissionDisplay(value, imported); return typeof display === "number" ? formatRupiah(display) : display; }
 
-function sumHistoryValue(rows: DailyRow[], key: "commission" | "profit" | "clickFp" | "shopeeClicks") {
+function sumHistoryValue(rows: DailyRow[], key: "commission" | "clickFp" | "shopeeClicks") {
   const values = rows.map((row) => row[key]).filter((value): value is number => value !== null);
   return values.length ? values.reduce((total, value) => total + value, 0) : null;
 }
@@ -53,11 +53,11 @@ export function CampaignDailyTable({ mode, shopeeAccountId, campaignId, rows: in
   const totalSpend = rows.reduce((total, row) => total + row.spend, 0);
   const totalCostWithFee = rows.reduce((total, row) => total + row.costWithFee, 0);
   const totalCommission = sumHistoryValue(rows, "commission");
-  const totalProfit = sumHistoryValue(rows, "profit");
   const totalClickFp = sumHistoryValue(rows, "clickFp");
   const totalShopeeClicks = sumHistoryValue(rows, "shopeeClicks");
   const totalRatios = calculateFinancialMetrics(totalSpend, totalCommission, totalClickFp, totalShopeeClicks);
-  const totalProfitPercent = totalProfit === null || totalCostWithFee === 0 ? null : totalProfit / totalCostWithFee * 100;
+  const totalProfit = totalRatios.profit;
+  const totalProfitPercent = totalRatios.profitPercent;
   const totalCpcFp = !totalClickFp ? null : totalSpend / totalClickFp;
   function navigate(change: Partial<HistoryParams>) { const next = withHistoryChange(state, change); if (onStateChange) onStateChange(next); else router.push(`?${historyParamsToSearch(next)}`); }
   function changeSort(sort: HistorySortKey) { navigate({ sort, dir: sort === state.sort && state.dir === "asc" ? "desc" : "asc" }); }
