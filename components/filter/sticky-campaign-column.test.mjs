@@ -92,7 +92,7 @@ test("all four routes continue to use the shared campaign workspace", async () =
   }
 });
 
-test("history TOTAL sums every row and recomputes weighted ratios with existing formulas", () => {
+test("history TOTAL includes spend from days whose commission is not imported", () => {
   const require = createRequire(import.meta.url), React = require("react"), { renderToStaticMarkup } = require("react-dom/server");
   const { CampaignDailyTable } = loadTs("components/filter/campaign-daily-table.tsx", {
     "next/navigation": { useRouter: () => ({ push() {}, refresh() {} }) },
@@ -140,6 +140,6 @@ test("history TOTAL sums every row and recomputes weighted ratios with existing 
   for (const i of [4, 5, 6, 7, 8, 9, 10]) assert.equal(values[i][2], "—");
   const partial = render([row(1, 100, 210, 10, 2), row(2, 300, null, null, null)]).match(/<tfoot[^>]*>([\s\S]*?)<\/tfoot>/)[1];
   const known = [...partial.matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/g)];
-  assert.equal(known[4][2].replace(/\u00a0/g, " "), "Rp 105");
-  assert.equal(known[5][2], "25.00%");
+  assert.equal(known[4][2].replace(/\u00a0/g, " "), "-Rp 210");
+  assert.equal(known[5][2], "-50.00%");
 });
