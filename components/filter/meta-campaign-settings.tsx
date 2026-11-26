@@ -28,12 +28,14 @@ function SettingsCard({ value, reference = false, manualType }: { value: MetaAdS
 export function MetaCampaignSettings({ mode, shopeeAccountId, campaignId, compact = false, summary }: { mode: CampaignMode; shopeeAccountId: number; campaignId: number; compact?: boolean; summary?: ReactNode }) {
   const [result, setResult] = useState<MetaCampaignSettingsActionResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [failedPreviewUrl, setFailedPreviewUrl] = useState<string | null>(null);
   const gateRef = useRef(createMetaSettingsRequestGate());
   const load = useCallback(async () => {
     const gate = gateRef.current;
     const request = gate.begin();
     if (request === null) return;
     setBusy(true);
+    setFailedPreviewUrl(null);
     let next: MetaCampaignSettingsActionResult;
     try { next = await getMetaCampaignSettingsAction({ mode, shopeeAccountId, campaignId }); }
     catch { next = { success: false, message: "Pengaturan Meta belum dapat dibaca. Tidak ada data yang diubah." }; }
@@ -54,14 +56,14 @@ export function MetaCampaignSettings({ mode, shopeeAccountId, campaignId, compac
         {fields.map(([key, label]) => <div key={key} className="min-w-0"><dt className="font-medium text-slate-500">{label}</dt><dd className="break-words text-slate-800">{reference ? key === "contentType" ? resolvePostType(result?.success ? result.manualPostType : null, reference[key]) : reference[key] || "—" : "—"}</dd></div>)}
       </dl>;
     if (!summary) return information;
-    if (!reference?.previewUrl) return <div className="min-w-0 shrink-0">{summary}{information}</div>;
+    if (!reference?.previewUrl || reference.previewUrl === failedPreviewUrl) return <div className="min-w-0 shrink-0">{summary}{information}</div>;
     return <div className="grid min-w-0 shrink-0 grid-cols-[minmax(0,1fr)_6.5rem] gap-x-2 sm:grid-cols-[minmax(0,1fr)_7.5rem]">
       <div className="min-w-0">{summary}</div>
       <div className="min-w-0">{information}</div>
       <div className="row-span-2 row-start-1 col-start-2 min-h-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
         {/* Meta provides a short-lived external CDN URL, so next/image cannot safely optimize it. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={reference.previewUrl} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.parentElement?.remove(); }} />
+        <img src={reference.previewUrl} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" onError={() => setFailedPreviewUrl(reference.previewUrl)} />
       </div>
     </div>;
   }
