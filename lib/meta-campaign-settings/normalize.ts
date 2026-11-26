@@ -98,6 +98,20 @@ function contentType(ads: UnknownRecord[]) {
   return kinds.length === 1 ? kinds[0] : `Campuran (${kinds.join(", ")})`;
 }
 
+function previewUrl(ads: UnknownRecord[]) {
+  const sorted = [...ads].sort((a, b) => {
+    const aTime = text(a.created_time) ? Date.parse(text(a.created_time)!) : Number.POSITIVE_INFINITY;
+    const bTime = text(b.created_time) ? Date.parse(text(b.created_time)!) : Number.POSITIVE_INFINITY;
+    const safeA = Number.isNaN(aTime) ? Number.POSITIVE_INFINITY : aTime;
+    const safeB = Number.isNaN(bTime) ? Number.POSITIVE_INFINITY : bTime;
+    return safeA - safeB || (id(a.id) ?? "").localeCompare(id(b.id) ?? "", "en", { numeric: true });
+  });
+  const value = text(record(sorted[0]?.creative)?.thumbnail_url);
+  if (!value) return null;
+  try { return new URL(value).protocol === "https:" ? value : null; }
+  catch { return null; }
+}
+
 function comparable(value: MetaAdSetSettings) {
   return JSON.stringify([value.contentType, value.placements, value.age, value.locations, value.gender]);
 }
@@ -124,6 +138,7 @@ export function normalizeMetaCampaignSettings(input: { adSets: unknown[]; ads: u
       effectiveStatus: text(source.effective_status),
       contentType: contentType(adsByAdSet.get(adSetId) ?? []),
       placements: placements(targeting), age: age(targeting), locations: locations(targeting), gender: gender(targeting),
+      previewUrl: previewUrl(adsByAdSet.get(adSetId) ?? []),
     };
   }).filter((value): value is MetaAdSetSettings => value !== null).sort((a, b) => {
     const aTime = a.createdAt ? Date.parse(a.createdAt) : Number.POSITIVE_INFINITY;
