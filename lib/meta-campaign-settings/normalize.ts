@@ -106,10 +106,27 @@ function previewUrl(ads: UnknownRecord[]) {
     const safeB = Number.isNaN(bTime) ? Number.POSITIVE_INFINITY : bTime;
     return safeA - safeB || (id(a.id) ?? "").localeCompare(id(b.id) ?? "", "en", { numeric: true });
   });
-  const value = text(record(sorted[0]?.creative)?.thumbnail_url);
-  if (!value) return null;
-  try { return new URL(value).protocol === "https:" ? value : null; }
-  catch { return null; }
+  const creative = record(sorted[0]?.creative);
+  const story = record(creative?.object_story_spec);
+  const link = record(story?.link_data);
+  const template = record(story?.template_data);
+  const firstChild = (value: UnknownRecord | null) => record(Array.isArray(value?.child_attachments) ? value.child_attachments[0] : null);
+  const video = record(story?.video_data);
+  const candidates = [
+    firstChild(link)?.picture,
+    firstChild(template)?.picture,
+    link?.picture,
+    template?.picture,
+    video?.image_url,
+    creative?.thumbnail_url,
+  ];
+  for (const candidate of candidates) {
+    const value = text(candidate);
+    if (!value) continue;
+    try { if (new URL(value).protocol === "https:") return value; }
+    catch { continue; }
+  }
+  return null;
 }
 
 function comparable(value: MetaAdSetSettings) {
