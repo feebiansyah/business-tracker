@@ -8,10 +8,10 @@ const BASIC_FIELDS = ["id", "name", "account_id", "configured_status", "effectiv
 const TRANSIENT_CODES = new Set([1, 2, 4, 17, 32, 613]);
 const MAX_REQUESTS = 100;
 const MAX_OBJECTS = 5_000;
-const CREATIVE_FIELDS = ["id", "object_type", "video_id", "effective_object_story_id", "object_story_spec", "asset_feed_spec"] as const;
+const CREATIVE_FIELDS = ["id", "object_type", "video_id", "effective_object_story_id", "object_story_spec", "asset_feed_spec", "thumbnail_url"] as const;
 const SETTINGS_FIELDS = {
   adsets: ["id", "name", "campaign_id", "created_time", "configured_status", "effective_status", "targeting"],
-  ads: ["id", "name", "campaign_id", "adset_id", "configured_status", "effective_status", `creative{${CREATIVE_FIELDS.join(",")}}`],
+  ads: ["id", "name", "campaign_id", "adset_id", "created_time", "configured_status", "effective_status", `creative{${CREATIVE_FIELDS.join(",")}}`],
 } as const;
 export type MetaReadPage = { rows: unknown[]; after: string | null };
 
