@@ -11,7 +11,6 @@ export type MetaAdSetSettings = {
   age: string;
   locations: string;
   gender: string;
-  previewUrl: string | null;
 };
 
 export type MetaCampaignSettingsView = {
