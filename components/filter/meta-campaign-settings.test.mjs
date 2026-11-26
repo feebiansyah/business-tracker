@@ -71,3 +71,16 @@ test("compact settings place an unlabeled preview beside both summary rows",()=>
   assert.match(html,/row-span-2/);
   assert.doesNotMatch(html,/Preview|Iklan tertua|Acuan/);
 });
+
+test("compact settings collapse the preview column after the image fails",()=>{
+  const require=createRequire(import.meta.url),React=require("react"),{renderToStaticMarkup}=require("react-dom/server");
+  const url="https://scontent.fbcdn.net/expired.jpg";
+  const reference={id:"111",name:"Reference",contentType:"Gambar",placements:"Feed",age:"18–65",locations:"Indonesia",gender:"Semua",previewUrl:url};
+  const result={success:true,target:{shopeeName:"Shop",wlName:"WL"},manualPostType:null,data:{adSetCount:1,reference,differences:[],sameAcrossAll:true,partial:false,warnings:[]}};
+  let state=0;
+  const {MetaCampaignSettings}=loadTs("components/filter/meta-campaign-settings.tsx",{react:{...React,useState:()=>[[result,false,url][state++],()=>{}]},"@/app/shopee/[id]/filter/meta-settings-actions":{}});
+  const summary=React.createElement("div",{id:"campaign-summary"},"TOTAL SPEND");
+  const html=renderToStaticMarkup(React.createElement(MetaCampaignSettings,{mode:"filter",shopeeAccountId:7,campaignId:1,compact:true,summary}));
+  assert.match(html,/id="campaign-summary"/);
+  assert.doesNotMatch(html,/<img|grid-cols-\[minmax/);
+});
