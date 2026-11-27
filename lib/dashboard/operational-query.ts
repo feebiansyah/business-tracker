@@ -18,6 +18,11 @@ export async function getOperationalDashboard(now: Date, db: OperationalDb) {
           _count: { select: { campaigns: { where: { metaStatus: "ACTIVE" } } } },
         },
       },
+      metaSyncRuns: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { status: true, _count: { select: { progress: { where: { status: "FAILED" } } } } },
+      },
       commissionImports: {
         where: { dateFrom: { lte: target }, dateTo: { gte: target } },
         select: { id: true },
@@ -29,10 +34,10 @@ export async function getOperationalDashboard(now: Date, db: OperationalDb) {
         take: 1,
       },
       clickaduCampaignConfigs: {
-        select: { historySyncedThrough: true, lastBlacklistReplacedAt: true },
+        select: { lastBlacklistReplacedAt: true },
       },
       adsterraCampaignConfigs: {
-        select: { id: true, campaignId: true, label: true, historySyncedThrough: true, lastBlacklistReplacedAt: true },
+        select: { id: true, campaignId: true, label: true, lastBlacklistReplacedAt: true },
       },
     },
   }), db.$queryRaw<{ shopeeAccountId: number; count: bigint | number }[]>`
@@ -49,6 +54,7 @@ export async function getOperationalDashboard(now: Date, db: OperationalDb) {
     id: account.id,
     name: account.name,
     metaAccounts: account.metaAccounts.map((wl) => ({ status: wl.status, spendHistorySyncedThrough: wl.spendHistorySyncedThrough, activeCampaignCount: wl._count.campaigns })),
+    latestMetaSync: account.metaSyncRuns[0] ? { status: account.metaSyncRuns[0].status, failedWlCount: account.metaSyncRuns[0]._count.progress } : null,
     commissionCovered: account.commissionImports.length > 0,
     clickCovered: account.clickImports.length > 0,
     pendingNoteCount: pendingNotes.get(account.id) ?? 0,
