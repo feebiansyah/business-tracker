@@ -2,6 +2,7 @@ export type OperationalAccountInput = {
   id: number;
   name: string;
   metaAccounts: { status?: string; spendHistorySyncedThrough: Date | null; activeCampaignCount: number }[];
+  latestMetaSync?: { status: string; failedWlCount: number } | null;
   commissionCovered: boolean;
   clickCovered: boolean;
   pendingNoteCount: number;
@@ -13,7 +14,7 @@ export type OperationalAccountStatus = {
   id: number;
   name: string;
   wlCount: number;
-  meta: { complete: boolean; coveredWlCount: number; totalWlCount: number };
+  meta: { complete: boolean; coveredWlCount: number; totalWlCount: number; failedWlCount: number };
   commissionComplete: boolean;
   clickComplete: boolean;
   complete: boolean;
@@ -49,7 +50,9 @@ export function buildOperationalDashboard(accounts: OperationalAccountInput[], t
     // WL aktif tetap mengikuti aturan kelengkapan yang sudah ada.
     const eligibleWl = account.metaAccounts.filter((wl) => wl.status === undefined || wl.status === "ACTIVE");
     const coveredWlCount = eligibleWl.filter((wl) => wl.spendHistorySyncedThrough !== null && dateKey(wl.spendHistorySyncedThrough) >= targetDate).length;
-    const metaComplete = account.metaAccounts.length > 0 && coveredWlCount === eligibleWl.length;
+    const failedWlCount = account.latestMetaSync?.failedWlCount ?? 0;
+    const latestSyncFailed = account.latestMetaSync?.status === "PARTIAL" || account.latestMetaSync?.status === "FAILED" || failedWlCount > 0;
+    const metaComplete = account.metaAccounts.length > 0 && coveredWlCount === eligibleWl.length && !latestSyncFailed;
     const emptyActiveWlCount = account.metaAccounts.filter((wl) => wl.status === "ACTIVE" && wl.activeCampaignCount === 0).length;
     const clickaduNeverReplacedCount = account.clickaduCampaignConfigs.filter((config) => config.lastBlacklistReplacedAt === null).length;
     const adsterraNeverReplacedCount = account.adsterraCampaignConfigs.filter((config) => config.lastBlacklistReplacedAt === null).length;
@@ -58,7 +61,7 @@ export function buildOperationalDashboard(accounts: OperationalAccountInput[], t
       id: account.id,
       name: account.name,
       wlCount: account.metaAccounts.length,
-      meta: { complete: metaComplete, coveredWlCount, totalWlCount: eligibleWl.length },
+      meta: { complete: metaComplete, coveredWlCount, totalWlCount: eligibleWl.length, failedWlCount },
       commissionComplete: account.commissionCovered,
       clickComplete: account.clickCovered,
       complete,

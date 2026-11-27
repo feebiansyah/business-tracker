@@ -29,6 +29,7 @@ export default async function DashboardPage() {
             {data.accounts.map((account) => {
               const reminders = [
                 account.pendingNoteCount > 0 ? `${account.pendingNoteCount} catatan belum selesai` : null,
+                account.meta.failedWlCount > 0 ? `Meta: ${account.meta.failedWlCount} WL gagal pada Sync terakhir` : null,
                 account.emptyActiveWlCount > 0 ? `${account.emptyActiveWlCount} WL aktif tanpa campaign aktif` : null,
                 account.clickaduNeverReplacedCount > 0 ? `Clickadu: ${account.clickaduNeverReplacedCount} campaign belum Replace Zone` : null,
                 account.adsterraNeverReplacedCount > 0 ? `Adsterra: ${account.adsterraNeverReplacedCount} campaign belum Replace Placement` : null,
@@ -36,7 +37,7 @@ export default async function DashboardPage() {
               return <tr key={account.id}>
                 <td className="max-w-64 break-words px-3 py-2 align-top font-medium"><Link href={`/shopee/${account.id}`} className="text-blue-700 hover:underline">{account.name}</Link></td>
                 <td className="px-3 py-2 align-top"><div className="flex flex-wrap gap-x-3 gap-y-2">
-                  <div><p className="mb-1 text-xs text-slate-500">Meta</p><DataStatus complete={account.meta.complete} detail={`${account.meta.coveredWlCount}/${account.meta.totalWlCount} WL`} /></div>
+                  <div><p className="mb-1 text-xs text-slate-500">Meta</p><DataStatus complete={account.meta.complete} detail={`${account.meta.coveredWlCount}/${account.meta.totalWlCount} WL${account.meta.failedWlCount > 0 ? ` · ${account.meta.failedWlCount} gagal` : ""}`} /></div>
                   <div><p className="mb-1 text-xs text-slate-500">Komisi</p><DataStatus complete={account.commissionComplete} detail={account.commissionComplete ? "Lengkap" : "Belum"} /></div>
                   <div><p className="mb-1 text-xs text-slate-500">Klik Shopee</p><DataStatus complete={account.clickComplete} detail={account.clickComplete ? "Lengkap" : "Belum"} /></div>
                 </div></td>
