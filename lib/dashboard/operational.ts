@@ -51,8 +51,8 @@ export function buildOperationalDashboard(accounts: OperationalAccountInput[], t
     const eligibleWl = account.metaAccounts.filter((wl) => wl.status === undefined || wl.status === "ACTIVE");
     const coveredWlCount = eligibleWl.filter((wl) => wl.spendHistorySyncedThrough !== null && dateKey(wl.spendHistorySyncedThrough) >= targetDate).length;
     const failedWlCount = account.latestMetaSync?.failedWlCount ?? 0;
-    const latestSyncFailed = account.latestMetaSync?.status === "PARTIAL" || account.latestMetaSync?.status === "FAILED" || failedWlCount > 0;
-    const metaComplete = account.metaAccounts.length > 0 && coveredWlCount === eligibleWl.length && !latestSyncFailed;
+    const latestSyncIncomplete = account.latestMetaSync !== null && account.latestMetaSync !== undefined && account.latestMetaSync.status !== "COMPLETE";
+    const metaComplete = account.metaAccounts.length > 0 && coveredWlCount === eligibleWl.length && !latestSyncIncomplete && failedWlCount === 0;
     const emptyActiveWlCount = account.metaAccounts.filter((wl) => wl.status === "ACTIVE" && wl.activeCampaignCount === 0).length;
     const clickaduNeverReplacedCount = account.clickaduCampaignConfigs.filter((config) => config.lastBlacklistReplacedAt === null).length;
     const adsterraNeverReplacedCount = account.adsterraCampaignConfigs.filter((config) => config.lastBlacklistReplacedAt === null).length;
